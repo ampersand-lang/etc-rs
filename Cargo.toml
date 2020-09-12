@@ -12,3 +12,4 @@ uuid = { version = "0.8", features = ["v4"] }
 hashbrown = "0.9"
 parking_lot = "0.11"
 failure = "0.1"
+smallvec = "1.4"

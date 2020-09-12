@@ -4,6 +4,9 @@ pub mod error;
 pub mod assets;
 pub mod system;
 pub mod pipeline;
+pub mod ast;
+pub mod types;
+pub mod values;
 
 use assets::*;
 use system::*;

@@ -123,6 +123,7 @@ dependencies = [
  "hashbrown",
  "parking_lot",
  "rayon",
+ "smallvec",
  "uuid",
 ]
 
