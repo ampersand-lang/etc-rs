@@ -1,0 +1,14 @@
+[package]
+name = "etc-rs"
+version = "0.1.0"
+authors = ["Szymon Walter <waltersz@protonmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rayon = "1.4"
+uuid = { version = "0.8", features = ["v4"] }
+hashbrown = "0.9"
+parking_lot = "0.11"
+failure = "0.1"
