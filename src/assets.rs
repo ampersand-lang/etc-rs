@@ -536,6 +536,8 @@ impl World {
     }
 }
 
+unsafe impl Sync for World {}
+
 pub trait Res {
     fn borrow(world: &World);
     unsafe fn release(world: &World);

@@ -1,10 +1,13 @@
 use failure::Fallible;
 
+pub mod error;
 pub mod assets;
 pub mod system;
+pub mod pipeline;
 
 use assets::*;
 use system::*;
+use pipeline::*;
 
 fn tiny_system(lazy: &mut LazyUpdate, res: Resources<(&i32, &String)>) -> Fallible<()> {
     for (_, i) in res.iter::<i32>() {
@@ -22,7 +25,10 @@ fn main() {
     let world = World::new();
     world.init_asset::<i32>();
     world.init_asset::<String>();
-    let mut system = tiny_system.system();
-    system.run(&world).unwrap();
-    system.run(&world).unwrap();
+    let system = tiny_system.system();
+    let mut pipeline = Pipeline::new();
+    pipeline.add_stage("init");
+    pipeline.add_system_to_stage("init", system);
+    pipeline.run(&world).unwrap();
+    pipeline.run(&world).unwrap();
 }
