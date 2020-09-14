@@ -49,19 +49,55 @@ where
     }
 }
 
-impl<Args: AssetBundle, F> IntoForAllSystem<Args> for F
-where
-    F: FnMut(&mut LazyUpdate, Resources<Args>) -> Fallible<()> + Send + Sync + 'static,
-{
-    fn system(mut self) -> Box<dyn System> {
-        Box::new(ForAllSystem {
-            f: move |world| {
-                let mut lazy = LazyUpdate::new();
-                let result = (self)(&mut lazy, world.resources::<Args>());
-                lazy.commit(&world);
-                result
-            },
-            id: SystemId::new(),
-        })
+macro_rules! impl_into_for_all {
+    ( $( $t:ident ),+ ) => {
+        impl<$( $t : AssetBundle ),*, F> IntoForAllSystem<( $( $t, )* )> for F
+        where
+            F: FnMut(&mut LazyUpdate, $( Resources<$t> ),*) -> Fallible<()> + Send + Sync + 'static,
+        {
+            fn system(mut self) -> Box<dyn System> {
+                Box::new(ForAllSystem {
+                    f: move |world| {
+                        let mut lazy = LazyUpdate::new();
+                        let result = (self)(
+                            &mut lazy,
+                            $(
+                                world.resources::<$t>()
+                            ),*
+                        );
+                        lazy.commit(&world);
+                        result
+                    },
+                    id: SystemId::new(),
+                })
+            }
+        }
     }
 }
+
+impl_into_for_all!(Ra);
+impl_into_for_all!(Ra, Rb);
+impl_into_for_all!(Ra, Rb, Rc);
+impl_into_for_all!(Ra, Rb, Rc, Rd);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr, Rs);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr, Rs, Rt);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr, Rs, Rt, Ru);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr, Rs, Rt, Ru, Rv);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr, Rs, Rt, Ru, Rv, Rw);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr, Rs, Rt, Ru, Rv, Rw, Rx);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr, Rs, Rt, Ru, Rv, Rw, Rx, Ry);
+impl_into_for_all!(Ra, Rb, Rc, Rd, Re, Rf, Rg, Rh, Ri, Rj, Rk, Rl, Rm, Rn, Ro, Rp, Rq, Rr, Rs, Rt, Ru, Rv, Rw, Rx, Ry, Rz);

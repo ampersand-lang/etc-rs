@@ -1,8 +1,9 @@
+use std::mem;
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 use std::any::{TypeId, Any};
 use std::ptr::NonNull;
-use std::convert::{AsRef, AsMut};
+use std::convert::{AsRef, AsMut, TryInto};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
@@ -12,6 +13,14 @@ use hashbrown::{HashMap, HashSet};
 use parking_lot::RawRwLock;
 use parking_lot::lock_api::RawRwLock as _;
 use uuid::Uuid;
+
+use crate::lir::repr::{Repr, ReprExt};
+use crate::types::TypeInfo;
+
+const NAMESPACE_ETC: Uuid = Uuid::from_bytes([
+    0x6b, 0xa7, 0xb8, 0x1f, 0x9d, 0xad, 0x11, 0xd1,
+    0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
+]);
 
 pub type SyncLock = Arc<RawRwLock>;
 
@@ -801,6 +810,22 @@ impl<T> Handle<T> {
         Self(Uuid::new_v4(), PhantomData)
     }
 
+    pub fn from_name<U, V: AsRef<[u8]> + ?Sized>(u: Handle<U>, v: &V) -> Self {
+        Self(Uuid::new_v5(&u.0, v.as_ref()), PhantomData)
+    }
+
+    pub fn from_hash<U: AsRef<[u8]>>(u: &U) -> Self {
+        Self(Uuid::new_v5(&NAMESPACE_ETC, u.as_ref()), PhantomData)
+    }
+
+    pub fn from_u128(v: u128) -> Self {
+        Self(Uuid::from_u128(v), PhantomData)
+    }
+
+    pub fn as_u128(&self) -> u128 {
+        self.0.as_u128()
+    }
+
     pub fn into_untyped(self) -> UntypedHandle {
         UntypedHandle(self.0)
     }
@@ -840,6 +865,36 @@ impl<T> Hash for Handle<T> {
         H: Hasher,
     {
         self.0.hash(state);
+    }
+}
+
+impl<T: 'static> Repr for Handle<T> {
+    fn type_info(&self) -> TypeInfo {
+        Self::static_type_info()
+    }
+
+    fn write_bytes(&self, out: &mut [u8]) {
+        out.copy_from_slice(&self.0.as_u128().to_le_bytes());
+    }
+
+    fn copy_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() != mem::size_of::<u128>() {
+            panic!("attempt to copy from slice of invalid length");
+        }
+        self.0 = Uuid::from_u128(u128::from_le_bytes(bytes.try_into().unwrap()));
+    }
+}
+
+impl<T: 'static> ReprExt for Handle<T> {
+    fn static_type_info() -> TypeInfo {
+        TypeInfo::new(mem::size_of::<u128>(), mem::align_of::<u128>())
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Self {
+        if bytes.len() != mem::size_of::<u128>() {
+            panic!("attempt to copy from slice of invalid length");
+        }
+        Handle(Uuid::from_u128(u128::from_le_bytes(bytes.try_into().unwrap())), PhantomData)
     }
 }
 
