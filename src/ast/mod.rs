@@ -17,6 +17,7 @@ pub enum Kind {
     Function,
     Application,
     Binding,
+    Tuple,
 }
 
 #[derive(Debug, Clone, Copy)]

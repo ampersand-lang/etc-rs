@@ -21,7 +21,8 @@ pub fn const_update(
                     Kind::Block 
                     | Kind::Function
                     | Kind::Application
-                    | Kind::Binding => {
+                    | Kind::Binding
+                    | Kind::Tuple => {
                         let mut is_const = true;
                         for child in &node.children {
                             let node = child.as_ref()

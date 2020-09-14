@@ -4,6 +4,7 @@ use smallvec::SmallVec;
 use num_enum::{TryFromPrimitive, IntoPrimitive};
 
 use crate::assets::{Handle, Resources};
+use crate::scope::ScopeId;
 use crate::lir::target::Target;
 use crate::lir::repr::{Repr, ReprExt};
 
@@ -139,6 +140,14 @@ pub struct TypeId {
 }
 
 impl TypeId {
+    pub fn new_placeholder() -> Self {
+        Self {
+            group: TypeGroup::None,
+            // XXX: is it correct to put a random handle here?
+            concrete: TypeOrPlaceholder::Placeholder(Handle::new()),
+        }
+    }
+    
     fn size_of(&self, res: &Resources<&NamedType>, target: &Target) -> Option<usize> {
         match self.concrete {
             TypeOrPlaceholder::Type(handle) => {
@@ -273,6 +282,7 @@ impl ReprExt for TypeId {
 pub enum TypeOrPlaceholder {
     Type(Handle<NamedType>),
     Placeholder(Handle<String>),
+    Dispatch(ScopeId, Handle<String>),
 }
 
 #[repr(u8)]
@@ -328,7 +338,7 @@ pub enum Type {
     },
     Function {
         result_type: TypeId,
-        parameters: SmallVec<[TypeId; 4]>,
+        param_types: SmallVec<[TypeId; 4]>,
     },
     Pointer(TypeId),
     Array(TypeId, usize),

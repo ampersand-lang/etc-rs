@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use failure::Fallible;
 use uuid::Uuid;
 
-use crate::assets::{AssetBundle, LazyUpdate, Resources, World};
+use crate::assets::{Asset, AssetBundle, LazyUpdate, Static, Resources, World};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SystemId(Uuid);
@@ -24,7 +24,7 @@ pub trait System: Send + Sync + 'static {
     }
 }
 
-pub trait IntoForAllSystem<Args> {
+pub trait IntoForAllSystem<Statics, Args> {
     fn system(self) -> Box<dyn System>;
 }
 
@@ -49,9 +49,43 @@ where
     }
 }
 
+macro_rules! impl_into_for_all_static {
+    ( $( $s:ident ),* ; $( $t:ident ),+ ) => {
+        impl<$( $s : Asset ),* , $( $t : AssetBundle ),*, F> IntoForAllSystem<( $( $s, )* ) , ( $( $t, )* )> for F
+        where
+            F: FnMut(&mut LazyUpdate, $( &Static<$s> ),* , $( Resources<$t> ),*) -> Fallible<()> + Send + Sync + 'static,
+        {
+            fn system(mut self) -> Box<dyn System> {
+                Box::new(ForAllSystem {
+                    f: move |world| {
+                        let mut lazy = LazyUpdate::new();
+                        $(
+                            world.borrow::<$s>();
+                        )*
+                        let result = (self)(
+                            &mut lazy,
+                            $(
+                                unsafe {
+                                    world.static_global::<$s>()
+                                }
+                            ),* ,
+                            $(
+                                world.resources::<$t>()
+                            ),*
+                        );
+                        lazy.commit(&world);
+                        result
+                    },
+                    id: SystemId::new(),
+                })
+            }
+        }
+    }
+}
+
 macro_rules! impl_into_for_all {
     ( $( $t:ident ),+ ) => {
-        impl<$( $t : AssetBundle ),*, F> IntoForAllSystem<( $( $t, )* )> for F
+        impl<$( $t : AssetBundle ),*, F> IntoForAllSystem<(), ( $( $t, )* )> for F
         where
             F: FnMut(&mut LazyUpdate, $( Resources<$t> ),*) -> Fallible<()> + Send + Sync + 'static,
         {
@@ -72,6 +106,11 @@ macro_rules! impl_into_for_all {
                 })
             }
         }
+
+        impl_into_for_all_static!(Sa ; $( $t ),*);
+        impl_into_for_all_static!(Sa, Sb ; $( $t ),*);
+        impl_into_for_all_static!(Sa, Sb, Sc ; $( $t ),*);
+        impl_into_for_all_static!(Sa, Sb, Sc, Sd ; $( $t ),*);
     }
 }
 

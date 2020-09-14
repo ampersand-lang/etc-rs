@@ -9,7 +9,7 @@ use crate::scope::ScopeId;
 pub type DispatchId = Handle<Dispatcher>;
 
 #[derive(Debug, Clone, Hash)]
-pub struct Name(ScopeId, Cow<'static, str>);
+pub struct Name(pub(crate) ScopeId, pub(crate) Cow<'static, str>);
 
 #[derive(Debug, Clone, Copy)]
 pub enum IsFunction {
@@ -74,6 +74,10 @@ impl Dispatcher {
         Handle::from_name(self.name.0, self.name.1.as_ref())
     }
 
+    pub fn push(&mut self, def: Definition) {
+        self.definitions.push(def);
+    }
+
     pub fn query(&self, q: &Query) -> SmallVec<[&Definition; 1]> {
         let mut result = SmallVec::new();
         for def in &self.definitions {
@@ -107,6 +111,14 @@ impl Definition {
             arg_types: None,
             result_type,
         }
+    }
+
+    pub fn arg_types(&self) -> Option<&[TypeId]> {
+        self.arg_types.as_ref().map(AsRef::as_ref)
+    }
+
+    pub fn result_type(&self) -> TypeId {
+        self.result_type
     }
     
     pub fn matches(&self, q: &Query) -> bool {

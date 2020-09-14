@@ -146,6 +146,11 @@ impl<T: Asset> Assets<T> {
         })
     }
     
+    pub fn remove(&mut self, handle: Handle<T>) -> Option<T> {
+        self.changed.remove(&handle);
+        self.assets.remove(&handle)
+    }
+    
     pub fn static_get_mut(&mut self, handle: Handle<T>) -> Option<StaticRefMut<'_, T>> {
         let ptr = self.assets.get_mut(&handle).map(|t| unsafe {
             NonNull::new_unchecked(t as *const _ as *mut _)
@@ -371,6 +376,8 @@ impl<'a, T: Asset> AsMut<T> for StaticRefMut<'a, T> {
 #[derive(Default)]
 struct WorldInner {
     resources: HashMap<TypeId, Box<dyn Storage>>,
+    globals: HashMap<TypeId, Box<dyn Any + Send>>,
+    changed: HashMap<TypeId, bool>,
     locks: HashMap<TypeId, SyncLock>,
 }
 
@@ -401,6 +408,34 @@ impl World {
         }
     }
 
+    pub fn init_static<T: Asset + Default>(&self) {
+        self.lock.lock_exclusive();
+        
+        let world = unsafe { &mut *self.world.get() };
+        let id = TypeId::of::<Static<T>>();
+        world.locks.insert(id, Arc::new(RawRwLock::INIT));
+        world.globals.insert(id, Box::new(Static::<T>::default()));
+        world.changed.insert(id, false);
+        
+        unsafe {
+            self.lock.unlock_exclusive();
+        }
+    }
+
+    pub fn add_static<T: Asset>(&self, value: T) {
+        self.lock.lock_exclusive();
+        
+        let world = unsafe { &mut *self.world.get() };
+        let id = TypeId::of::<Static<T>>();
+        world.locks.insert(id, Arc::new(RawRwLock::INIT));
+        world.globals.insert(id, Box::new(Static { asset: value }));
+        world.changed.insert(id, false);
+        
+        unsafe {
+            self.lock.unlock_exclusive();
+        }
+    }
+
     pub fn insert<T: Asset>(&mut self, handle: Handle<T>, t: T) {
         self.lock.lock_shared();
         
@@ -410,6 +445,73 @@ impl World {
         unsafe {
             self.lock.unlock_shared();
         }
+    }
+
+    pub fn global<T: Asset>(&self) -> Ref<'_, Static<T>> {
+        self.lock.lock_shared();
+        
+        let world = unsafe { &*self.world.get() };
+        let lock = world.locks[&TypeId::of::<Static<T>>()].clone();
+        lock.lock_shared();
+        let result = world.globals[&TypeId::of::<Static<T>>()].downcast_ref::<Static<T>>().unwrap();
+        let result = Ref {
+            ptr: unsafe { NonNull::new_unchecked(result as *const _ as *mut _) },
+            lock,
+            _phantom: PhantomData,
+        };
+        
+        unsafe {
+            self.lock.unlock_shared();
+        }
+        
+        result
+    }
+
+    pub fn global_mut<T: Asset>(&self) -> RefMut<'_, Static<T>> {
+        self.lock.lock_shared();
+        
+        let world = unsafe { &mut *self.world.get() };
+        let lock = world.locks[&TypeId::of::<Static<T>>()].clone();
+        lock.lock_exclusive();
+        let result = world.globals.get_mut(&TypeId::of::<Static<T>>()).unwrap().downcast_mut::<Static<T>>().unwrap();
+        let changed = world.changed.get_mut(&TypeId::of::<Static<T>>()).unwrap();
+        let result = unsafe {
+            RefMut {
+                ptr: NonNull::new_unchecked(result as _),
+                changed: NonNull::new_unchecked(changed as _),
+                lock,
+                _phantom: PhantomData,
+            }
+        };
+        
+        unsafe {
+            self.lock.unlock_shared();
+        }
+        
+        result
+    }
+
+    pub unsafe fn static_global<T: Asset>(&self) -> &Static<T> {
+        self.lock.lock_shared();
+        
+        let world = &*self.world.get();
+        let result = world.globals[&TypeId::of::<Static<T>>()].downcast_ref::<Static<T>>().unwrap();
+        
+        self.lock.unlock_shared();
+        
+        result
+    }
+
+    pub unsafe fn static_global_mut<T: Asset>(&self) -> &mut Static<T> {
+        self.lock.lock_shared();
+        
+        let world = &mut *self.world.get();
+        let result = world.globals.get_mut(&TypeId::of::<Static<T>>()).unwrap().downcast_mut::<Static<T>>().unwrap();
+        *world.changed.get_mut(&TypeId::of::<Static<T>>()).unwrap() = true;
+        
+        self.lock.unlock_shared();
+        
+        result
     }
 
     pub fn get<T: Asset>(&self, handle: Handle<T>) -> Option<Ref<'_, T>> {
@@ -458,6 +560,18 @@ impl World {
         
         let world = &mut *self.world.get();
         let result = world.resources.get_mut(&TypeId::of::<T>()).unwrap().downcast_mut::<Assets<T>>().unwrap().iter_mut();
+        
+        self.lock.unlock_shared();
+
+        result
+    }
+
+    
+    pub unsafe fn remove<T: Asset>(&self, handle: Handle<T>) -> Option<T> {
+        self.lock.lock_shared();
+        
+        let world = &mut *self.world.get();
+        let result = world.resources.get_mut(&TypeId::of::<T>()).unwrap().downcast_mut::<Assets<T>>().unwrap().remove(handle);
         
         self.lock.unlock_shared();
 
@@ -550,6 +664,7 @@ unsafe impl Sync for World {}
 pub trait Res {
     fn borrow(world: &World);
     unsafe fn release(world: &World);
+    unsafe fn remove<T: Asset>(world: &World, handle: Handle<T>) -> Option<T>;
     unsafe fn get<T: Asset>(world: &World, handle: Handle<T>) -> Option<StaticRef<'_, T>>;
     unsafe fn get_mut<T: Asset>(world: &World, handle: Handle<T>) -> Option<StaticRefMut<'_, T>>;
 }
@@ -561,6 +676,10 @@ impl<'a, T: Asset> Res for &'a T {
     
     unsafe fn release(world: &World) {
         world.release::<T>()
+    }
+    
+    unsafe fn remove<U: Asset>(_world: &World, _handle: Handle<U>) -> Option<U> {
+        None
     }
     
     unsafe fn get<U: Asset>(world: &World, handle: Handle<U>) -> Option<StaticRef<'_, U>> {
@@ -585,6 +704,13 @@ impl<'a, T: Asset> Res for &'a mut T {
         world.release_mut::<T>()
     }
     
+    unsafe fn remove<U: Asset>(world: &World, handle: Handle<U>) -> Option<U> {
+        if TypeId::of::<U>() == TypeId::of::<T>() {
+            world.remove(handle)
+        } else {
+            None
+        }
+    }
     unsafe fn get<U: Asset>(world: &World, handle: Handle<U>) -> Option<StaticRef<'_, U>> {
         if TypeId::of::<U>() == TypeId::of::<T>() {
             world.static_get(handle)
@@ -613,6 +739,7 @@ pub trait AsIterMut {
 pub trait AssetBundle {
     fn borrow(world: &World);
     unsafe fn release(world: &World);
+    unsafe fn remove<T: Asset>(world: &World, handle: Handle<T>) -> Option<T>;
     unsafe fn get<T: Asset>(world: &World, handle: Handle<T>) -> Option<StaticRef<'_, T>>;
     unsafe fn get_mut<T: Asset>(world: &World, handle: Handle<T>) -> Option<StaticRefMut<'_, T>>;
 }
@@ -621,6 +748,10 @@ impl AssetBundle for () {
     fn borrow(_world: &World) {}
     unsafe fn release(_world: &World) {}
     
+    unsafe fn remove<T: Asset>(_world: &World, _handle: Handle<T>) -> Option<T> {
+        None
+    }
+
     unsafe fn get<T: Asset>(_world: &World, _handle: Handle<T>) -> Option<StaticRef<'_, T>> {
         None
     }
@@ -637,6 +768,10 @@ impl<A: Res> AssetBundle for A {
 
     unsafe fn release(world: &World) {
         A::release(world);
+    }
+    
+    unsafe fn remove<T: Asset>(world: &World, handle: Handle<T>) -> Option<T> {
+        A::remove(world, handle)
     }
     
     unsafe fn get<T: Asset>(world: &World, handle: Handle<T>) -> Option<StaticRef<'_, T>> {
@@ -681,6 +816,15 @@ macro_rules! impl_asset_bundle {
                 $(
                     <$t as Res>::release(world);
                 )*
+            }
+    
+            unsafe fn remove<T1: Asset>(world: &World, handle: Handle<T1>) -> Option<T1> {
+                $(
+                    if let Some(result) = <$t as Res>::remove::<T1>(world, handle) {
+                        return Some(result);
+                    }
+                )*
+                None
             }
     
             unsafe fn get<T1: Asset>(world: &World, handle: Handle<T1>) -> Option<StaticRef<'_, T1>> {
@@ -771,6 +915,12 @@ impl<A: AssetBundle> Drop for Resources<A> {
 }
 
 impl<A: AssetBundle> Resources<A> {
+    pub fn remove<T: Asset>(&mut self, handle: Handle<T>) -> Option<T> {
+        unsafe {
+            A::remove::<T>(&mut self.world, handle)
+        }
+    }
+    
     pub fn get<T: Asset>(&self, handle: Handle<T>) -> Option<StaticRef<'_, T>> {
         unsafe {
             A::get::<T>(&self.world, handle)
@@ -797,6 +947,25 @@ impl<A: AssetBundle + AsIterMut> Resources<A> {
         unsafe {
             A::as_iter_mut::<T>(&self.world)
         }
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct Static<T: Asset> {
+    asset: T,
+}
+
+impl<T: Asset> Deref for Static<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.asset
+    }
+}
+
+impl<T: Asset> DerefMut for Static<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.asset
     }
 }
 

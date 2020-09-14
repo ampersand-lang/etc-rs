@@ -29,6 +29,7 @@ fn main() {
     world.init_asset::<ExecutionContext>();
     world.init_asset::<Dispatcher>();
     world.init_asset::<Scope>();
+    world.init_asset::<String>();
     
     let mut pipeline = Pipeline::new();
     pipeline.add_stage(pass::CONST_PASS);
