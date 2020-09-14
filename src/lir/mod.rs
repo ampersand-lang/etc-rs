@@ -22,10 +22,11 @@ pub struct TypedValue {
     pub val: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Value {
-    Ref(Binding),
+    Unit,
     Global(GlobId),
+    Unref(context::VirtualAddress),
     Address(context::VirtualAddress),
     Uint(u64),
     Type(TypeId),

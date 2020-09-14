@@ -7,8 +7,7 @@ use crate::types::NamedType;
 
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
-pub struct ValueBuilder;
+pub struct ValueBuilder<'a>(pub(crate) FunctionBuilder<'a>);
 
 pub struct Builder<'a> {
     pub(crate) res: Resources<&'a NamedType>,
@@ -34,7 +33,7 @@ impl<'a> Builder<'a> {
 }
 
 pub struct FunctionBuilder<'a> {
-    builder: Builder<'a>,
+    pub(crate) builder: Builder<'a>,
     counter: Vec<Binding>,
     stack_ptr: u64,
     param_types: SmallVec<[TypeId; 4]>,
@@ -121,6 +120,40 @@ impl<'a> FunctionBuilder<'a> {
             .type_info(&self.builder.res, &self.builder.ctx.target)
             .size as u64
             * n;
+        self
+    }
+
+    pub fn build_store(mut self, t: TypeId, addr: Value, v: Value) -> Self {
+        self.body.push(Ir {
+            binding: None,
+            instr: Instruction::Return,
+            args: smallvec![Value::Type(t), addr, v],
+        });
+        self
+    }
+
+    pub fn build_call(mut self, out: &mut Value, t: TypeId, args: SmallVec<[Value; 4]>) -> Self {
+        let counter = self.counter.last_mut().unwrap();
+        let binding = *counter;
+        counter.1 += 1;
+        self.body.push(Ir {
+            binding: Some(binding),
+            instr: Instruction::Call,
+            args,
+        });
+        let addr = self.stack_ptr;
+        let addr = PhysicalAddress(Section::Stack, addr as u32);
+        self.builder
+            .ctx
+            .bindings
+            .current_mut()
+            .bindings
+            .insert(binding.1, addr);
+        let addr = self.builder.ctx.to_virtual(addr);
+        *out = Value::Unref(addr);
+        self.stack_ptr += t
+            .type_info(&self.builder.res, &self.builder.ctx.target)
+            .size as u64;
         self
     }
 

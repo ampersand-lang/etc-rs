@@ -1,7 +1,7 @@
 use assets::*;
 use ast::{Node, RootNode};
 use dispatch::Dispatcher;
-use lir::context::ExecutionContext;
+use lir::{context::ExecutionContext, Binding};
 use pipeline::*;
 use scope::Scope;
 use system::*;
@@ -30,6 +30,7 @@ fn main() {
     world.init_asset::<Dispatcher>();
     world.init_asset::<Scope>();
     world.init_asset::<String>();
+    world.init_asset::<Binding>();
 
     let mut pipeline = Pipeline::new();
     pipeline.add_stage(pass::CONST_PASS);

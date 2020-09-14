@@ -159,6 +159,8 @@ pub struct ExecutionContext {
 }
 
 impl ExecutionContext {
+    pub const MAIN: GlobId = 0;
+
     pub fn new(target: Target) -> Self {
         Self {
             target,
@@ -283,7 +285,6 @@ impl ExecutionContext {
         match ir.instr {
             Instruction::Alloca => {
                 let t = match ir.args[0] {
-                    Value::Ref(binding) => TypeId::from_bytes(self.get(binding, *type_info::TYPE)?),
                     Value::Global(handle) => match self.data[handle] {
                         Global::Constant(Value::Type(t)) => t,
                         _ => return Err(From::from(TypeError)),
@@ -301,7 +302,6 @@ impl ExecutionContext {
             }
             Instruction::Store => {
                 let t = match ir.args[0] {
-                    Value::Ref(binding) => TypeId::from_bytes(self.get(binding, *type_info::TYPE)?),
                     Value::Global(handle) => match self.data[handle] {
                         Global::Constant(Value::Type(t)) => t,
                         _ => return Err(From::from(TypeError)),
@@ -311,9 +311,6 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
-                    Value::Ref(binding) => {
-                        VirtualAddress::from_bytes(self.get(binding, *type_info::POINTER64)?)
-                    }
                     Value::Global(handle) => match self.data[handle] {
                         Global::Constant(Value::Address(ptr)) => ptr,
                         _ => return Err(From::from(TypeError)),
@@ -323,9 +320,10 @@ impl ExecutionContext {
                 };
                 let mut value = vec![0_u8; t.size];
                 match ir.args[2] {
-                    Value::Ref(binding) => value.copy_from_slice(self.get(binding, t)?),
+                    Value::Unit => {}
                     Value::Global(handle) => todo!(),
                     Value::Uint(int) => int.write_bytes(&mut value),
+                    Value::Unref(addr) => value.copy_from_slice(self.read(addr, 0..t.size)?),
                     Value::Address(addr) => addr.write_bytes(&mut value),
                     Value::Type(typ) => typ.write_bytes(&mut value),
                     Value::Node(node) => node.write_bytes(&mut value),
@@ -335,7 +333,6 @@ impl ExecutionContext {
             }
             Instruction::Load => {
                 let t = match ir.args[0] {
-                    Value::Ref(binding) => TypeId::from_bytes(self.get(binding, *type_info::TYPE)?),
                     Value::Global(handle) => match self.data[handle] {
                         Global::Constant(Value::Type(t)) => t,
                         _ => return Err(From::from(TypeError)),
@@ -345,9 +342,6 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
-                    Value::Ref(binding) => {
-                        VirtualAddress::from_bytes(self.get(binding, *type_info::POINTER64)?)
-                    }
                     Value::Global(handle) => match self.data[handle] {
                         Global::Constant(Value::Address(ptr)) => ptr,
                         _ => return Err(From::from(TypeError)),
@@ -379,9 +373,6 @@ impl ExecutionContext {
                 let mut children: SmallVec<[Option<NodeId>; 4]> = SmallVec::new();
                 for child in &ir.args[1..] {
                     match child {
-                        Value::Ref(binding) => children.push(Some(NodeId::from_bytes(
-                            self.get(*binding, *type_info::NODE)?,
-                        ))),
                         Value::Global(handle) => match self.data[*handle] {
                             Global::Constant(Value::Node(n)) => children.push(Some(n)),
                             _ => return Err(From::from(TypeError)),
@@ -453,9 +444,10 @@ impl ExecutionContext {
 
             let mut value = vec![0_u8; t.size];
             match val {
-                Value::Ref(binding) => value.copy_from_slice(self.get(*binding, t)?),
+                Value::Unit => {}
                 Value::Global(handle) => todo!(),
                 Value::Uint(int) => int.write_bytes(&mut value),
+                Value::Unref(addr) => value.copy_from_slice(self.read(*addr, 0..t.size)?),
                 Value::Address(addr) => addr.write_bytes(&mut value),
                 Value::Type(typ) => typ.write_bytes(&mut value),
                 Value::Node(node) => node.write_bytes(&mut value),
