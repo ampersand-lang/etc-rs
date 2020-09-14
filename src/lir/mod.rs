@@ -1,14 +1,14 @@
 use smallvec::SmallVec;
 
 use crate::assets::Handle;
-use crate::types::TypeId;
 use crate::ast::NodeId;
+use crate::types::TypeId;
 
 pub mod builder;
 pub mod compile;
 pub mod context;
-pub mod target;
 pub mod repr;
+pub mod target;
 
 pub type ThreadId = Handle<context::ExecutionContext>;
 

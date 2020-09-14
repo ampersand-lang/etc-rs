@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use smallvec::SmallVec;
 
 use crate::assets::Handle;
-use crate::types::TypeId;
 use crate::scope::ScopeId;
+use crate::types::TypeId;
 
 pub type DispatchId = Handle<Dispatcher>;
 
@@ -59,7 +59,7 @@ impl Dispatcher {
             definitions: Vec::new(),
         }
     }
-    
+
     pub fn with_definitions<I>(name: Name, defs: I) -> Self
     where
         I: IntoIterator<Item = Definition>,
@@ -104,7 +104,7 @@ impl Definition {
             result_type,
         }
     }
-    
+
     pub fn new_variable(result_type: TypeId) -> Self {
         Self {
             is_func: false,
@@ -120,7 +120,7 @@ impl Definition {
     pub fn result_type(&self) -> TypeId {
         self.result_type
     }
-    
+
     pub fn matches(&self, q: &Query) -> bool {
         match (self.is_func, q.is_func) {
             (_, IsFunction::Maybe) => {}

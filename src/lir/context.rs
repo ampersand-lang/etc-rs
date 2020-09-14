@@ -1,12 +1,12 @@
+use std::convert::{TryFrom, TryInto};
 use std::mem;
 use std::ops::Range;
-use std::convert::{TryInto, TryFrom};
 
-use hashbrown::HashMap;
 use failure::{Fail, Fallible};
+use hashbrown::HashMap;
 
-use crate::ast::{self, Node};
 use crate::assets::{LazyUpdate, Resources};
+use crate::ast::{self, Node};
 use crate::lir::repr::*;
 use crate::lir::target::Target;
 use crate::types::{NamedType, TypeInfo};
@@ -18,9 +18,9 @@ pub mod type_info {
     use lazy_static::lazy_static;
 
     use crate::ast::NodeId;
-    use crate::types::{TypeId, TypeInfo};
     use crate::lir::repr::*;
-    
+    use crate::types::{TypeId, TypeInfo};
+
     use super::VirtualAddress;
 
     lazy_static! {
@@ -97,7 +97,7 @@ pub type ScopeId = usize;
 pub struct Scope {
     pub(crate) parent: Option<ScopeId>,
     pub(crate) base_ptr: u64,
-    pub(crate) bindings: HashMap<i32, PhysicalAddress>
+    pub(crate) bindings: HashMap<i32, PhysicalAddress>,
 }
 
 #[derive(Debug, Clone)]
@@ -184,11 +184,20 @@ impl ExecutionContext {
 
     pub fn to_physical(&self, addr: VirtualAddress) -> Option<PhysicalAddress> {
         if addr.0 >= self.stack_addr {
-            Some(PhysicalAddress(Section::Stack, (addr.0 - self.stack_addr) as _))
+            Some(PhysicalAddress(
+                Section::Stack,
+                (addr.0 - self.stack_addr) as _,
+            ))
         } else if addr.0 >= self.heap_addr {
-            Some(PhysicalAddress(Section::Heap, (addr.0 - self.heap_addr) as _))
+            Some(PhysicalAddress(
+                Section::Heap,
+                (addr.0 - self.heap_addr) as _,
+            ))
         } else if addr.0 >= self.data_addr {
-            Some(PhysicalAddress(Section::Data, (addr.0 - self.data_addr) as _))
+            Some(PhysicalAddress(
+                Section::Data,
+                (addr.0 - self.data_addr) as _,
+            ))
         } else {
             None
         }
@@ -202,17 +211,27 @@ impl ExecutionContext {
         }
     }
 
-    pub fn copy_from_virtual_to_virtual(&mut self, src: VirtualAddress, dst: VirtualAddress, range: Range<usize>) -> Fallible<()> {
+    pub fn copy_from_virtual_to_virtual(
+        &mut self,
+        src: VirtualAddress,
+        dst: VirtualAddress,
+        range: Range<usize>,
+    ) -> Fallible<()> {
         let src = self.to_physical(src).ok_or(NullAccess)?;
         let dst = self.to_physical(dst).ok_or(NullAccess)?;
         self.copy_from_physical_to_physical(src, dst, range)
     }
 
-    pub fn copy_from_physical_to_physical(&mut self, src: PhysicalAddress, dst: PhysicalAddress, range: Range<usize>) -> Fallible<()> {
+    pub fn copy_from_physical_to_physical(
+        &mut self,
+        src: PhysicalAddress,
+        dst: PhysicalAddress,
+        range: Range<usize>,
+    ) -> Fallible<()> {
         let src_section = src.0;
         let dst_section = dst.0;
-        let src = range.start + src.1 as usize .. range.end + src.1 as usize;
-        let dst = range.start + dst.1 as usize .. range.end + dst.1 as usize;
+        let src = range.start + src.1 as usize..range.end + src.1 as usize;
+        let dst = range.start + dst.1 as usize..range.end + dst.1 as usize;
         match (src_section, dst_section) {
             (Section::Data, _) => Err(From::from(InvalidSectionAccess)),
             (_, Section::Data) => Err(From::from(InvalidSectionAccess)),
@@ -229,7 +248,7 @@ impl ExecutionContext {
     }
 
     pub fn read_physical(&self, addr: PhysicalAddress, range: Range<usize>) -> Fallible<&[u8]> {
-        let range = range.start + addr.1 as usize .. range.end + addr.1 as usize;
+        let range = range.start + addr.1 as usize..range.end + addr.1 as usize;
         match addr.0 {
             Section::Data => Err(From::from(InvalidSectionAccess)),
             Section::Heap => Ok(&self.heap[range]),
@@ -243,7 +262,7 @@ impl ExecutionContext {
     }
 
     pub fn write_physical(&mut self, addr: PhysicalAddress, bytes: &[u8]) -> Fallible<()> {
-        let range = addr.1 as usize .. bytes.len() + addr.1 as usize;
+        let range = addr.1 as usize..bytes.len() + addr.1 as usize;
         match addr.0 {
             Section::Data => Err(From::from(InvalidSectionAccess)),
             Section::Heap => Ok(self.heap[range].copy_from_slice(bytes)),
@@ -255,7 +274,12 @@ impl ExecutionContext {
         self.read_physical(self.bindings.get(binding).unwrap(), 0..type_info.size)
     }
 
-    fn execute(&mut self, lazy: &mut LazyUpdate, res: &Resources<&NamedType>, ir: Ir) -> Fallible<Result> {
+    fn execute(
+        &mut self,
+        lazy: &mut LazyUpdate,
+        res: &Resources<&NamedType>,
+        ir: Ir,
+    ) -> Fallible<Result> {
         match ir.instr {
             Instruction::Alloca => {
                 let t = match ir.args[0] {
@@ -287,7 +311,9 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
-                    Value::Ref(binding) => VirtualAddress::from_bytes(self.get(binding, *type_info::POINTER64)?),
+                    Value::Ref(binding) => {
+                        VirtualAddress::from_bytes(self.get(binding, *type_info::POINTER64)?)
+                    }
                     Value::Global(handle) => match self.data[handle] {
                         Global::Constant(Value::Address(ptr)) => ptr,
                         _ => return Err(From::from(TypeError)),
@@ -319,7 +345,9 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
-                    Value::Ref(binding) => VirtualAddress::from_bytes(self.get(binding, *type_info::POINTER64)?),
+                    Value::Ref(binding) => {
+                        VirtualAddress::from_bytes(self.get(binding, *type_info::POINTER64)?)
+                    }
                     Value::Global(handle) => match self.data[handle] {
                         Global::Constant(Value::Address(ptr)) => ptr,
                         _ => return Err(From::from(TypeError)),
@@ -337,7 +365,7 @@ impl ExecutionContext {
                     Value::Global(handle) => handle,
                     _ => return Err(From::from(TypeError)),
                 };
-                
+
                 self.call_stack.push(self.instr_ptr);
                 self.instr_ptr = ExecAddress(func as _, 0);
 
@@ -351,9 +379,9 @@ impl ExecutionContext {
                 let mut children: SmallVec<[Option<NodeId>; 4]> = SmallVec::new();
                 for child in &ir.args[1..] {
                     match child {
-                        Value::Ref(binding) => {
-                            children.push(Some(NodeId::from_bytes(self.get(*binding, *type_info::NODE)?)))
-                        }
+                        Value::Ref(binding) => children.push(Some(NodeId::from_bytes(
+                            self.get(*binding, *type_info::NODE)?,
+                        ))),
                         Value::Global(handle) => match self.data[*handle] {
                             Global::Constant(Value::Node(n)) => children.push(Some(n)),
                             _ => return Err(From::from(TypeError)),
@@ -411,12 +439,18 @@ impl ExecutionContext {
         }
     }
 
-    pub fn call(&mut self, lazy: &mut LazyUpdate, res: &Resources<&NamedType>, f: GlobId, args: &[TypedValue]) -> Fallible<Value> {
+    pub fn call(
+        &mut self,
+        lazy: &mut LazyUpdate,
+        res: &Resources<&NamedType>,
+        f: GlobId,
+        args: &[TypedValue],
+    ) -> Fallible<Value> {
         self.call_stack.push(self.instr_ptr);
         self.instr_ptr = ExecAddress(f as _, 0);
         for TypedValue { typ, val } in args {
             let t = typ.type_info(res, &self.target);
-            
+
             let mut value = vec![0_u8; t.size];
             match val {
                 Value::Ref(binding) => value.copy_from_slice(self.get(*binding, t)?),
@@ -427,7 +461,7 @@ impl ExecutionContext {
                 Value::Node(node) => node.write_bytes(&mut value),
             }
             self.write_physical(PhysicalAddress(Section::Stack, self.stack_ptr as _), &value)?;
-            
+
             self.stack_ptr += t.size;
         }
         let result = self.run(lazy, res);

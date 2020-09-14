@@ -1,5 +1,5 @@
-use std::mem;
 use std::convert::TryInto;
+use std::mem;
 
 use crate::types::TypeInfo;
 
@@ -7,7 +7,7 @@ pub trait Repr: 'static {
     fn type_info(&self) -> TypeInfo;
     fn write_bytes(&self, out: &mut [u8]);
     fn copy_from_bytes(&mut self, bytes: &[u8]);
-    
+
     fn to_bytes(&self) -> Vec<u8> {
         let t = self.type_info();
         let mut bytes = vec![0; t.size];
@@ -25,11 +25,11 @@ impl<A: Repr> Repr for (A,) {
     fn type_info(&self) -> TypeInfo {
         self.0.type_info()
     }
-    
+
     fn write_bytes(&self, out: &mut [u8]) {
         self.0.write_bytes(out);
     }
-    
+
     fn copy_from_bytes(&mut self, bytes: &[u8]) {
         self.0.copy_from_bytes(bytes);
     }
@@ -39,7 +39,7 @@ impl<A: ReprExt> ReprExt for (A,) {
     fn static_type_info() -> TypeInfo {
         A::static_type_info()
     }
-    
+
     fn from_bytes(bytes: &[u8]) -> Self {
         (A::from_bytes(bytes),)
     }
@@ -51,13 +51,13 @@ impl<A: Repr, B: Repr> Repr for (A, B) {
         t.size += self.0.type_info().size;
         t
     }
-    
+
     fn write_bytes(&self, out: &mut [u8]) {
         let t = self.0.type_info();
         self.0.write_bytes(&mut out[..t.size]);
         self.1.write_bytes(&mut out[t.size..]);
     }
-    
+
     fn copy_from_bytes(&mut self, bytes: &[u8]) {
         let t = self.0.type_info();
         self.0.copy_from_bytes(&bytes[..t.size]);
@@ -71,10 +71,13 @@ impl<A: ReprExt, B: ReprExt> ReprExt for (A, B) {
         t.size += B::static_type_info().size;
         t
     }
-    
+
     fn from_bytes(bytes: &[u8]) -> Self {
         let t = A::static_type_info();
-        (A::from_bytes(&bytes[..t.size]), B::from_bytes(&bytes[t.size..]))
+        (
+            A::from_bytes(&bytes[..t.size]),
+            B::from_bytes(&bytes[t.size..]),
+        )
     }
 }
 
@@ -109,7 +112,7 @@ macro_rules! impl_repr_num {
                 <$t>::from_le_bytes(bytes.try_into().unwrap())
             }
         }
-    }
+    };
 }
 
 impl_repr_num!(u8);

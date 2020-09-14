@@ -1,6 +1,6 @@
 use crate::assets::Handle;
-use crate::types::TypeId;
 use crate::lir::GlobId;
+use crate::types::TypeId;
 
 pub type FuncId = GlobId;
 pub type ValueId = Handle<Value>;

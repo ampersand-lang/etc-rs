@@ -1,11 +1,11 @@
-use smallvec::SmallVec;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use smallvec::SmallVec;
 
 use crate::assets::{AssetBundle, Handle, Resources};
-use crate::types::TypeId;
-use crate::values::ValueId;
 use crate::lir::{ThreadId, Value};
 use crate::scope::ScopeId;
+use crate::types::TypeId;
+use crate::values::ValueId;
 
 pub type NodeId = Handle<Node>;
 
@@ -55,8 +55,12 @@ impl Node {
             children: children.into_iter().collect(),
         }
     }
-    
-    pub fn with_parent<I: IntoIterator<Item = Option<NodeId>>>(parent: NodeId, kind: Kind, children: I) -> Self {
+
+    pub fn with_parent<I: IntoIterator<Item = Option<NodeId>>>(
+        parent: NodeId,
+        kind: Kind,
+        children: I,
+    ) -> Self {
         Node {
             parent: Some(parent),
             id: NodeId::new(),
@@ -70,15 +74,15 @@ impl Node {
             children: children.into_iter().collect(),
         }
     }
-    
+
     pub fn id(&self) -> NodeId {
         self.id
     }
-    
+
     pub fn parent(&self) -> Option<NodeId> {
         self.parent
     }
-    
+
     pub fn visit<A: AssetBundle, F>(&self, visit: Visit, res: &Resources<A>, mut f: F)
     where
         F: FnMut(&Resources<A>, Option<&Self>),
@@ -87,8 +91,7 @@ impl Node {
             f(res, Some(self));
         }
         for child in &self.children {
-            let node = child.as_ref()
-                .map(|handle| res.get(*handle).unwrap());
+            let node = child.as_ref().map(|handle| res.get(*handle).unwrap());
             f(res, node.as_ref().map(AsRef::as_ref));
         }
         if let Visit::Postorder = visit {

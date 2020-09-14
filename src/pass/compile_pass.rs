@@ -2,7 +2,7 @@ use failure::Fallible;
 
 use crate::assets::{LazyUpdate, Resources};
 use crate::ast::{Node, RootNode};
-use crate::lir::{ThreadId, context::ExecutionContext, compile::Compile, target::Target};
+use crate::lir::{compile::Compile, context::ExecutionContext, target::Target, ThreadId};
 use crate::types::NamedType;
 
 pub fn compile_update(

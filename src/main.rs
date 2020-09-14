@@ -1,24 +1,24 @@
 use assets::*;
-use system::*;
-use pipeline::*;
 use ast::{Node, RootNode};
+use dispatch::Dispatcher;
 use lir::context::ExecutionContext;
+use pipeline::*;
+use scope::Scope;
+use system::*;
 use types::NamedType;
 use values::Value;
-use dispatch::Dispatcher;
-use scope::Scope;
 
-pub mod error;
 pub mod assets;
-pub mod system;
-pub mod pipeline;
 pub mod ast;
+pub mod dispatch;
+pub mod error;
+pub mod lir;
+pub mod pass;
+pub mod pipeline;
+pub mod scope;
+pub mod system;
 pub mod types;
 pub mod values;
-pub mod pass;
-pub mod lir;
-pub mod dispatch;
-pub mod scope;
 
 fn main() {
     let world = World::new();
@@ -30,7 +30,7 @@ fn main() {
     world.init_asset::<Dispatcher>();
     world.init_asset::<Scope>();
     world.init_asset::<String>();
-    
+
     let mut pipeline = Pipeline::new();
     pipeline.add_stage(pass::CONST_PASS);
     pipeline.add_stage(pass::INFER_PASS);

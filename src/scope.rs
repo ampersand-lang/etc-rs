@@ -9,9 +9,7 @@ pub struct Scope {
 
 impl Scope {
     pub fn new() -> Self {
-        Self {
-            parent: None,
-        }
+        Self { parent: None }
     }
 
     pub fn with_parent(parent: ScopeId) -> Self {

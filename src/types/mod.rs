@@ -1,18 +1,18 @@
 use std::convert::TryFrom;
 
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use smallvec::SmallVec;
-use num_enum::{TryFromPrimitive, IntoPrimitive};
 
 use crate::assets::{Handle, Resources};
-use crate::scope::ScopeId;
-use crate::lir::target::Target;
 use crate::lir::repr::{Repr, ReprExt};
+use crate::lir::target::Target;
+use crate::scope::ScopeId;
 
 pub mod primitive {
     use lazy_static::lazy_static;
 
     use super::*;
-    
+
     lazy_static! {
         pub static ref UNIT: TypeId = {
             TypeId {
@@ -20,98 +20,84 @@ pub mod primitive {
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref TYPE: TypeId = {
             TypeId {
                 group: TypeGroup::Type,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref S8: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref S16: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref S32: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref S64: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref SINT: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref U8: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref U16: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref U32: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref U64: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref UINT: TypeId = {
             TypeId {
                 group: TypeGroup::Int,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref FLOAT32: TypeId = {
             TypeId {
                 group: TypeGroup::Float,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref FLOAT64: TypeId = {
             TypeId {
                 group: TypeGroup::Float,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
-        
         pub static ref FLOAT: TypeId = {
             TypeId {
                 group: TypeGroup::Float,
@@ -147,7 +133,7 @@ impl TypeId {
             concrete: TypeOrPlaceholder::Placeholder(Handle::new()),
         }
     }
-    
+
     fn size_of(&self, res: &Resources<&NamedType>, target: &Target) -> Option<usize> {
         match self.concrete {
             TypeOrPlaceholder::Type(handle) => {
@@ -168,10 +154,21 @@ impl TypeId {
                     Type::Float => Some(target.pointer_width / 8),
                     // TODO: alignment rules
                     // TODO: None-returns
-                    Type::Struct { ref fields } => Some(fields.iter().map(|t| t.size_of(res, target).unwrap_or(0)).sum::<usize>()),
+                    Type::Struct { ref fields } => Some(
+                        fields
+                            .iter()
+                            .map(|t| t.size_of(res, target).unwrap_or(0))
+                            .sum::<usize>(),
+                    ),
                     Type::Tagged { .. } => todo!(),
                     Type::Enum { width } => Some(width / 8),
-                    Type::Union { ref fields } => Some(fields.iter().map(|t| t.size_of(res, target).unwrap_or(0)).max().unwrap_or(0)),
+                    Type::Union { ref fields } => Some(
+                        fields
+                            .iter()
+                            .map(|t| t.size_of(res, target).unwrap_or(0))
+                            .max()
+                            .unwrap_or(0),
+                    ),
                     Type::Function { .. } => Some(target.pointer_width / 8),
                     Type::Pointer(..) => Some(target.pointer_width / 8),
                     Type::Array(t, n) => t.size_of(res, target).map(|size| size * n),
@@ -181,7 +178,7 @@ impl TypeId {
             _ => None,
         }
     }
-    
+
     fn align_of(&self, res: &Resources<&NamedType>, target: &Target) -> Option<usize> {
         match self.concrete {
             TypeOrPlaceholder::Type(handle) => {
@@ -202,10 +199,18 @@ impl TypeId {
                     Type::Float => Some(target.pointer_align / 8),
                     // TODO: alignment rules
                     // TODO: None-returns
-                    Type::Struct { ref fields } => fields.get(0).map(|t| t.size_of(res, target).unwrap_or(1)),
+                    Type::Struct { ref fields } => {
+                        fields.get(0).map(|t| t.size_of(res, target).unwrap_or(1))
+                    }
                     Type::Tagged { .. } => todo!(),
                     Type::Enum { width } => Some(width / 8),
-                    Type::Union { ref fields } => Some(fields.iter().map(|t| t.size_of(res, target).unwrap_or(1)).max().unwrap_or(1)),
+                    Type::Union { ref fields } => Some(
+                        fields
+                            .iter()
+                            .map(|t| t.size_of(res, target).unwrap_or(1))
+                            .max()
+                            .unwrap_or(1),
+                    ),
                     Type::Function { .. } => Some(target.pointer_align / 8),
                     Type::Pointer(..) => Some(target.pointer_align / 8),
                     Type::Array(t, n) => t.size_of(res, target).map(|size| size * n),
@@ -215,7 +220,7 @@ impl TypeId {
             _ => None,
         }
     }
-    
+
     pub fn type_info(&self, res: &Resources<&NamedType>, target: &Target) -> TypeInfo {
         TypeInfo {
             size: self.size_of(res, target).unwrap_or(0),
@@ -249,7 +254,7 @@ impl Repr for TypeId {
         let tuple: (u8, u128) = (self.group.into(), t.as_u128());
         tuple.type_info()
     }
-    
+
     fn write_bytes(&self, out: &mut [u8]) {
         let t = match self.concrete {
             TypeOrPlaceholder::Type(t) => t,
@@ -258,7 +263,7 @@ impl Repr for TypeId {
         let tuple: (u8, u128) = (self.group.into(), t.as_u128());
         tuple.write_bytes(out);
     }
-    
+
     fn copy_from_bytes(&mut self, _: &[u8]) {
         panic!("TypeId is immutable");
     }
@@ -268,7 +273,7 @@ impl ReprExt for TypeId {
     fn static_type_info() -> TypeInfo {
         <(u8, u128)>::static_type_info()
     }
-    
+
     fn from_bytes(bytes: &[u8]) -> Self {
         let tuple = <(u8, u128)>::from_bytes(bytes);
         Self {

@@ -1,8 +1,8 @@
-use smallvec::{smallvec, SmallVec};
 use hashbrown::HashMap;
+use smallvec::{smallvec, SmallVec};
 
-use crate::lir::context::*;
 use crate::assets::Resources;
+use crate::lir::context::*;
 use crate::types::NamedType;
 
 use super::*;
@@ -68,7 +68,7 @@ impl<'a> FunctionBuilder<'a> {
             instr: Instruction::Begin,
             args: smallvec![Value::Uint(next as _)],
         });
-        
+
         self
     }
 
@@ -83,7 +83,7 @@ impl<'a> FunctionBuilder<'a> {
             instr: Instruction::End,
             args: SmallVec::new(),
         });
-        
+
         self
     }
 
@@ -98,9 +98,17 @@ impl<'a> FunctionBuilder<'a> {
         });
         let addr = self.stack_ptr;
         let addr = PhysicalAddress(Section::Stack, addr as u32);
-        self.builder.ctx.bindings.current_mut().bindings.insert(binding.1, addr);
+        self.builder
+            .ctx
+            .bindings
+            .current_mut()
+            .bindings
+            .insert(binding.1, addr);
         *out = Value::Address(self.builder.ctx.to_virtual(addr));
-        self.stack_ptr += t.type_info(&self.builder.res, &self.builder.ctx.target).size as u64 * n;
+        self.stack_ptr += t
+            .type_info(&self.builder.res, &self.builder.ctx.target)
+            .size as u64
+            * n;
         self
     }
 }

@@ -18,15 +18,14 @@ pub fn const_update(
                     Kind::Nil => {
                         make_const.insert(node.id());
                     }
-                    Kind::Block 
+                    Kind::Block
                     | Kind::Function
                     | Kind::Application
                     | Kind::Binding
                     | Kind::Tuple => {
                         let mut is_const = true;
                         for child in &node.children {
-                            let node = child.as_ref()
-                                .map(|handle| res.get(*handle).unwrap());
+                            let node = child.as_ref().map(|handle| res.get(*handle).unwrap());
                             if let Some(node) = node {
                                 if !node.is_const {
                                     is_const = false;
