@@ -21,14 +21,15 @@ impl<'a> Builder<'a> {
     }
 
     pub fn function(self) -> FunctionBuilder<'a> {
-        FunctionBuilder {
+        let mut f = FunctionBuilder {
             builder: self,
             counter: Vec::new(),
             stack_ptr: 0,
-            param_types: None,
+            param_types: SmallVec::new(),
             result_type: None,
             body: Vec::new(),
-        }
+        };
+        f.begin()
     }
 }
 
@@ -36,20 +37,31 @@ pub struct FunctionBuilder<'a> {
     builder: Builder<'a>,
     counter: Vec<Binding>,
     stack_ptr: u64,
-    param_types: Option<SmallVec<[TypeId; 4]>>,
+    param_types: SmallVec<[TypeId; 4]>,
     result_type: Option<TypeId>,
     body: Vec<Ir>,
 }
 
 impl<'a> FunctionBuilder<'a> {
-    pub fn build(self) -> Builder<'a> {
+    pub fn build(self, idx: &mut GlobId) -> Builder<'a> {
         let mut builder = self.builder;
+        *idx = builder.ctx.data.len();
         builder.ctx.data.push(Global::Function(Function {
-            param_types: self.param_types.expect("no parameter types given"),
+            param_types: self.param_types,
             result_type: self.result_type.expect("no result type given"),
             body: self.body,
         }));
         builder
+    }
+
+    pub fn parameter(mut self, t: TypeId) -> Self {
+        self.param_types.push(t);
+        self
+    }
+
+    pub fn result(mut self, t: TypeId) -> Self {
+        self.result_type = Some(t);
+        self
     }
 
     pub fn begin(mut self) -> Self {
@@ -109,6 +121,15 @@ impl<'a> FunctionBuilder<'a> {
             .type_info(&self.builder.res, &self.builder.ctx.target)
             .size as u64
             * n;
+        self
+    }
+
+    pub fn build_return(mut self, v: Value) -> Self {
+        self.body.push(Ir {
+            binding: None,
+            instr: Instruction::Return,
+            args: smallvec![v],
+        });
         self
     }
 }

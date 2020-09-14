@@ -12,17 +12,17 @@ pub mod target;
 
 pub type ThreadId = Handle<context::ExecutionContext>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Binding(pub(crate) usize, pub(crate) i32);
 pub type GlobId = usize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedValue {
     pub typ: TypeId,
     pub val: Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Ref(Binding),
     Global(GlobId),
@@ -69,4 +69,35 @@ pub struct Function {
 pub enum Global {
     Function(Function),
     Constant(Value),
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::assets::*;
+    use crate::types::*;
+
+    use super::context::*;
+    use super::target::*;
+    use super::*;
+
+    #[test]
+    fn sanity() {
+        let world = World::new();
+        world.init_asset::<NamedType>();
+
+        let mut lazy = LazyUpdate::new();
+
+        let mut main = 0;
+        let (res, mut ctx) =
+            ExecutionContext::builder(world.resources::<&NamedType>(), Target::default())
+                .function()
+                .result(*primitive::SINT)
+                .build_return(Value::Uint(5))
+                .build(&mut main)
+                .build();
+        assert_eq!(
+            ctx.call(&mut lazy, &res, main, &[]).unwrap(),
+            Value::Uint(5)
+        );
+    }
 }

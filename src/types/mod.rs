@@ -119,7 +119,7 @@ impl TypeInfo {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeId {
     pub group: TypeGroup,
     pub concrete: TypeOrPlaceholder,
@@ -283,7 +283,7 @@ impl ReprExt for TypeId {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeOrPlaceholder {
     Type(Handle<NamedType>),
     Placeholder(Handle<String>),
@@ -291,7 +291,7 @@ pub enum TypeOrPlaceholder {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 pub enum TypeGroup {
     None,
     Type,
@@ -307,13 +307,13 @@ pub enum TypeGroup {
     Slice,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NamedType {
     pub name: Option<String>,
     pub t: Type,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     S8,
     S16,

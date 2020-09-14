@@ -45,14 +45,14 @@ pub struct InvalidSectionAccess;
 #[fail(display = "type error")]
 pub struct TypeError;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
     Data,
     Heap,
     Stack,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VirtualAddress(pub(crate) u64);
 
 impl Repr for VirtualAddress {
@@ -85,7 +85,7 @@ impl ReprExt for VirtualAddress {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PhysicalAddress(pub(crate) Section, pub(crate) u32);
 
 #[derive(Debug, Clone, Copy)]
@@ -118,7 +118,7 @@ impl Scopes {
         self.list[key.0].bindings.get(&key.1).copied()
     }
 
-    pub fn enter(&mut self, id: ScopeId) {
+    pub fn begin(&mut self, id: ScopeId) {
         self.curr.push(id);
     }
 
@@ -404,7 +404,7 @@ impl ExecutionContext {
                     Value::Uint(n) => n,
                     _ => return Err(From::from(TypeError)),
                 };
-                self.bindings.enter(n as _);
+                self.bindings.begin(n as _);
                 debug_assert_eq!(self.stack_ptr as u64, self.bindings.current().base_ptr);
                 Ok(Result::Continue)
             }
@@ -413,7 +413,7 @@ impl ExecutionContext {
                 Ok(Result::Continue)
             }
             Instruction::Return => {
-                if self.call_stack.is_empty() {
+                if self.call_stack.len() == 1 {
                     let result = Result::Return(ir.args[0].clone());
                     self.stack_ptr = self.bindings.end() as _;
                     Ok(result)
