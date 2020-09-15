@@ -10,7 +10,7 @@ pub struct MultiError {
 impl Display for MultiError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for error in &self.errors {
-            writeln!(f, "  {}", error)?;
+            writeln!(f, "{}", error)?;
         }
         Ok(())
     }

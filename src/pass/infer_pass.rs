@@ -9,16 +9,14 @@ use crate::ast::{Kind, Node, RootNode, Visit};
 use crate::dispatch::*;
 use crate::scope::Scope;
 use crate::types::{primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
-use crate::values::Value;
+use crate::values::Payload;
 
 pub fn infer_update(
     lazy: &mut LazyUpdate,
     roots: Resources<&RootNode>,
-    payloads: Resources<&Value>,
     scopes: Resources<&Scope>,
     mut dispatch: Resources<&mut Dispatcher>,
     named_types: Resources<&NamedType>,
-    strings: Resources<&String>,
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<()> {
     for (_, root_node) in roots.iter::<RootNode>() {
@@ -28,24 +26,17 @@ pub fn infer_update(
             if let Some(node) = node {
                 match node.kind {
                     Kind::Nil => {
-                        let typ = match &*payloads.get(node.payload.unwrap()).unwrap() {
-                            Value::Unit => primitive::UNIT.clone(),
-                            Value::Int(_) => primitive::SINT.clone(),
-                            Value::Float(_) => primitive::FLOAT.clone(),
-                            Value::String(_) => todo!(),
-                            Value::Identifier(string) => {
-                                let handle = Handle::new();
-                                lazy.insert(handle, string.clone());
-                                TypeId {
-                                    group: TypeGroup::None,
-                                    concrete: TypeOrPlaceholder::Dispatch(
-                                        node.scope.unwrap(),
-                                        handle,
-                                    ),
-                                }
-                            }
-                            Value::Type(_) => primitive::TYPE.clone(),
-                            Value::Function(_) => todo!(),
+                        let typ = match node.payload.unwrap() {
+                            Payload::Unit => primitive::UNIT.clone(),
+                            Payload::Integer(_) => primitive::SINT.clone(),
+                            Payload::Float(_) => primitive::FLOAT.clone(),
+                            Payload::String(_) => todo!(),
+                            Payload::Identifier(string) => TypeId {
+                                group: TypeGroup::None,
+                                concrete: TypeOrPlaceholder::Dispatch(node.scope.unwrap(), string),
+                            },
+                            Payload::Type(_) => primitive::TYPE.clone(),
+                            Payload::Function(_) => todo!(),
                         };
                         types.insert(node.id(), typ);
                     }
@@ -61,9 +52,8 @@ pub fn infer_update(
                         let param_tuple = &*nodes.get::<Node>(node.children[0].unwrap()).unwrap();
                         let param_types = match param_tuple.kind {
                             Kind::Nil => {
-                                match &*payloads.get::<Value>(param_tuple.payload.unwrap()).unwrap()
-                                {
-                                    Value::Identifier(_) => smallvec![TypeId::new_placeholder()],
+                                match param_tuple.payload.unwrap() {
+                                    Payload::Identifier(_) => smallvec![TypeId::new_placeholder()],
                                     // other patterns
                                     _ => todo!(),
                                 }
@@ -76,11 +66,8 @@ pub fn infer_update(
                                         let param = &*nodes.get::<Node>(param.unwrap()).unwrap();
                                         match param.kind {
                                             Kind::Nil => {
-                                                match &*payloads
-                                                    .get::<Value>(param.payload.unwrap())
-                                                    .unwrap()
-                                                {
-                                                    Value::Identifier(_) => {
+                                                match param.payload.unwrap() {
+                                                    Payload::Identifier(_) => {
                                                         TypeId::new_placeholder()
                                                     }
                                                     // other patterns
@@ -132,15 +119,7 @@ pub fn infer_update(
                                     }
                                 }
                                 TypeOrPlaceholder::Dispatch(scope, handle) => {
-                                    let name = Name(
-                                        scope,
-                                        strings
-                                            .get::<String>(handle)
-                                            .unwrap()
-                                            .as_ref()
-                                            .clone()
-                                            .into(),
-                                    );
+                                    let name = Name(scope, handle);
                                     let args = node.children[1..]
                                         .iter()
                                         .map(|param| {
@@ -151,9 +130,11 @@ pub fn infer_update(
                                                 .unwrap()
                                         })
                                         .collect();
-                                    let dispatch = dispatch.get::<Dispatcher>(
-                                        DispatchId::from_name(name.0, &name.1.as_ref()),
-                                    );
+                                    let dispatch =
+                                        dispatch.get::<Dispatcher>(DispatchId::from_name(
+                                            name.0,
+                                            &name.1.as_u128().to_le_bytes(),
+                                        ));
                                     if let Some(dispatch) = dispatch {
                                         let query =
                                             Query::new(name, IsFunction::Yes, Some(args), None);
@@ -180,8 +161,8 @@ pub fn infer_update(
                         let ident = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
                         let ident = match ident.kind {
                             Kind::Nil => {
-                                match &*payloads.get::<Value>(ident.payload.unwrap()).unwrap() {
-                                    Value::Identifier(ident) => ident.clone(),
+                                match ident.payload.unwrap() {
+                                    Payload::Identifier(ident) => ident,
                                     // TODO: other bindings
                                     _ => todo!(),
                                 }
@@ -190,7 +171,7 @@ pub fn infer_update(
                             _ => todo!(),
                         };
                         let scope = node.scope.unwrap();
-                        let handle = DispatchId::from_name(scope, &ident);
+                        let handle = DispatchId::from_name(scope, &ident.as_u128().to_le_bytes());
                         let binding = nodes
                             .get::<Node>(node.children[2].unwrap())
                             .unwrap()
@@ -216,7 +197,7 @@ pub fn infer_update(
                             }
                             d
                         } else {
-                            let name = Name(scope, ident.into());
+                            let name = Name(scope, ident);
                             if let Some(param_types) = param_types {
                                 Dispatcher::with_definitions(
                                     name,
@@ -253,6 +234,11 @@ pub fn infer_update(
                         };
                         types.insert(node.id(), typ);
                     }
+                    Kind::Declaration => todo!(),
+                    Kind::Array => todo!(),
+                    Kind::TupleType => todo!(),
+                    Kind::Index => todo!(),
+                    Kind::Dotted => todo!(),
                 }
             }
         });

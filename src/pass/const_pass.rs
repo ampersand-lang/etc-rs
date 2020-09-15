@@ -15,6 +15,7 @@ pub fn const_update(
         root.visit(Visit::Postorder, &nodes, |res, node| {
             if let Some(node) = node {
                 match node.kind {
+                    // TODO: don't
                     Kind::Nil => {
                         make_const.insert(node.id());
                     }
@@ -22,7 +23,12 @@ pub fn const_update(
                     | Kind::Function
                     | Kind::Application
                     | Kind::Binding
-                    | Kind::Tuple => {
+                    | Kind::Declaration
+                    | Kind::Tuple
+                    | Kind::TupleType
+                    | Kind::Index
+                    | Kind::Dotted
+                    | Kind::Array => {
                         let mut is_const = true;
                         for child in &node.children {
                             let node = child.as_ref().map(|handle| res.get(*handle).unwrap());

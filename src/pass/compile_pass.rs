@@ -4,7 +4,7 @@ use crate::assets::{LazyUpdate, Resources};
 use crate::ast::{Node, RootNode};
 use crate::lir::{compile::Compile, context::ExecutionContext, target::Target, ThreadId, Value};
 use crate::types::NamedType;
-use crate::values::Value as Payload;
+use crate::values::Payload;
 
 pub fn compile_update(
     lazy: &mut LazyUpdate,

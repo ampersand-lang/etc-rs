@@ -1054,6 +1054,10 @@ pub struct UntypedHandle(Uuid);
 pub struct Handle<T>(Uuid, PhantomData<T>);
 
 impl<T> Handle<T> {
+    pub fn nil() -> Self {
+        Self(Uuid::nil(), PhantomData)
+    }
+
     pub fn new() -> Self {
         Self(Uuid::new_v4(), PhantomData)
     }

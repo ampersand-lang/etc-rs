@@ -7,7 +7,7 @@ use crate::lir::builder::*;
 use crate::lir::context::ExecutionContext;
 use crate::lir::{GlobId, Value};
 use crate::types::NamedType;
-use crate::values::Value as Payload;
+use crate::values::Payload;
 
 pub trait Compile<B>: Asset + Sized {
     type Output;
@@ -60,18 +60,19 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
         // PERF: can we avoid this clone?
         let this = res.get::<Node>(handle).unwrap().as_ref().clone();
         let value = match this.kind {
-            Kind::Nil => match &*res.get::<Payload>(this.payload.unwrap()).unwrap() {
-                Payload::Int(i) => (Value::Uint(*i), builder.0),
-                Payload::Type(t) => (Value::Type(*t), builder.0),
+            Kind::Nil => match this.payload.unwrap() {
+                Payload::Integer(i) => (Value::Uint(i), builder.0),
+                Payload::Type(t) => (Value::Type(t), builder.0),
                 Payload::Identifier(ident) => {
-                    let handle = Handle::from_name(this.scope.unwrap(), ident);
+                    let handle =
+                        Handle::from_name(this.scope.unwrap(), &ident.as_u128().to_le_bytes());
                     let value = match *res.get::<Value>(handle).expect("binding not found") {
                         Value::Address(addr) => Value::Unref(addr),
                         ref x => x.clone(),
                     };
                     (value, builder.0)
                 }
-                Payload::Function(id) => (Value::Global(*id), builder.0),
+                Payload::Function(id) => (Value::Global(id), builder.0),
                 _ => todo!(),
             },
             Kind::Block => {
@@ -127,19 +128,23 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     .build_store(this.type_of.unwrap(), addr, v);
 
                 let ident = res.get::<Node>(this.children[0].unwrap()).unwrap();
-                let ident = res.get::<Payload>(ident.payload.unwrap()).unwrap();
-                let ident = match &*ident {
+                let ident = match ident.payload.unwrap() {
                     Payload::Identifier(ident) => ident,
                     // TODO: other bindings
                     _ => todo!(),
                 };
 
                 let scope = this.scope.unwrap();
-                let handle = Handle::from_name(scope, ident);
+                let handle = Handle::from_name(scope, &ident.as_u128().to_le_bytes());
                 res.insert::<Value>(handle, addr);
                 (Value::Unit, builder)
             }
             Kind::Tuple => todo!(),
+            Kind::Declaration => todo!(),
+            Kind::Array => todo!(),
+            Kind::TupleType => todo!(),
+            Kind::Index => todo!(),
+            Kind::Dotted => todo!(),
         };
         Ok(value)
     }

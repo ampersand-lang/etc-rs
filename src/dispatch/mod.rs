@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use smallvec::SmallVec;
 
 use crate::assets::Handle;
@@ -9,7 +7,7 @@ use crate::types::TypeId;
 pub type DispatchId = Handle<Dispatcher>;
 
 #[derive(Debug, Clone, Hash)]
-pub struct Name(pub(crate) ScopeId, pub(crate) Cow<'static, str>);
+pub struct Name(pub(crate) ScopeId, pub(crate) Handle<String>);
 
 #[derive(Debug, Clone, Copy)]
 pub enum IsFunction {
@@ -42,7 +40,7 @@ impl Query {
     }
 
     pub fn id(&self) -> DispatchId {
-        Handle::from_name(self.name.0, self.name.1.as_ref())
+        Handle::from_name(self.name.0, &self.name.1.as_u128().to_le_bytes())
     }
 }
 
@@ -71,7 +69,7 @@ impl Dispatcher {
     }
 
     pub fn id(&self) -> DispatchId {
-        Handle::from_name(self.name.0, self.name.1.as_ref())
+        Handle::from_name(self.name.0, &self.name.1.as_u128().to_le_bytes())
     }
 
     pub fn push(&mut self, def: Definition) {

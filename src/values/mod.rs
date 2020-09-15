@@ -3,15 +3,14 @@ use crate::lir::GlobId;
 use crate::types::TypeId;
 
 pub type FuncId = GlobId;
-pub type ValueId = Handle<Value>;
 
-#[derive(Debug, Clone)]
-pub enum Value {
+#[derive(Debug, Clone, Copy)]
+pub enum Payload {
     Unit,
-    Int(u64),
+    Integer(u64),
     Float(f64),
-    String(String),
-    Identifier(String),
+    String(Handle<String>),
+    Identifier(Handle<String>),
     Type(TypeId),
     Function(FuncId),
 }

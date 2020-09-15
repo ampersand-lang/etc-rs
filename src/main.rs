@@ -6,13 +6,14 @@ use pipeline::*;
 use scope::Scope;
 use system::*;
 use types::NamedType;
-use values::Value;
 
 pub mod assets;
 pub mod ast;
 pub mod dispatch;
 pub mod error;
+pub mod lexer;
 pub mod lir;
+pub mod parser;
 pub mod pass;
 pub mod pipeline;
 pub mod scope;
@@ -24,7 +25,6 @@ fn main() {
     let world = World::new();
     world.init_asset::<RootNode>();
     world.init_asset::<Node>();
-    world.init_asset::<Value>();
     world.init_asset::<NamedType>();
     world.init_asset::<ExecutionContext>();
     world.init_asset::<Dispatcher>();
