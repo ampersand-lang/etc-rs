@@ -1048,6 +1048,18 @@ impl<T: Asset> DerefMut for Static<T> {
     }
 }
 
+impl<T: Asset> AsRef<T> for Static<T> {
+    fn as_ref(&self) -> &T {
+        self.deref()
+    }
+}
+
+impl<T: Asset> AsMut<T> for Static<T> {
+    fn as_mut(&mut self) -> &mut T {
+        self.deref_mut()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UntypedHandle(Uuid);
 

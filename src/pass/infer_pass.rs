@@ -138,7 +138,7 @@ pub fn infer_update(
                                     if let Some(dispatch) = dispatch {
                                         let query =
                                             Query::new(name, IsFunction::Yes, Some(args), None);
-                                        let results = dispatch.query(&query);
+                                        let results = dispatch.query(&query, &named_types);
                                         match results.len() {
                                             // TODO: traverse parents
                                             0 => todo!(),

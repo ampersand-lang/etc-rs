@@ -3,7 +3,7 @@ use peekmore_asref::PeekMore;
 use assets::*;
 use ast::{Node, RootNode};
 use dispatch::Dispatcher;
-use lir::{context::ExecutionContext, Binding, Value};
+use lir::{context::ExecutionContext, target::Target, Elems, Fields, Variants, Bytes, Binding, Value};
 use pipeline::*;
 use scope::Scope;
 use system::*;
@@ -11,6 +11,8 @@ use types::NamedType;
 use values::Payload;
 use lexer::{Lexer, Location};
 use parser::{grammar, State};
+
+pub mod utils;
 
 pub mod assets;
 pub mod ast;
@@ -41,6 +43,11 @@ fn main() {
     world.init_asset::<String>();
     world.init_asset::<Binding>();
     world.init_asset::<Location>();
+    world.init_asset::<Elems>();
+    world.init_asset::<Fields>();
+    world.init_asset::<Variants>();
+    world.init_asset::<Bytes>();
+    world.init_static::<Target>();
 
     let node = grammar::parse(&mut State {
         lexer: Lexer::new("hello.amp", SRC, world.resources::<(&mut String, &mut Location)>()).peekmore(),
@@ -52,12 +59,10 @@ fn main() {
     world.insert(handle, root);
 
     let mut pipeline = Pipeline::new();
-    pipeline.add_stage(pass::CONST_PASS);
     pipeline.add_stage(pass::SCOPE_PASS);
     pipeline.add_stage(pass::INFER_PASS);
     pipeline.add_stage(pass::COMPILE_PASS);
     pipeline.add_stage(pass::EXEC_PASS);
-    pipeline.add_system_to_stage(pass::CONST_PASS, pass::const_update.system());
     pipeline.add_system_to_stage(pass::SCOPE_PASS, pass::scope_update.system());
     pipeline.add_system_to_stage(pass::INFER_PASS, pass::infer_update.system());
     pipeline.add_system_to_stage(pass::COMPILE_PASS, pass::compile_update.system());

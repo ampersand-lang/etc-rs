@@ -125,3 +125,5 @@ impl_repr_num!(i16);
 impl_repr_num!(i32);
 impl_repr_num!(i64);
 impl_repr_num!(i128);
+impl_repr_num!(f32);
+impl_repr_num!(f64);

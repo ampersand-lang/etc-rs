@@ -16,21 +16,31 @@ pub type ThreadId = Handle<context::ExecutionContext>;
 pub struct Binding(pub(crate) usize, pub(crate) i32);
 pub type GlobId = usize;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedValue {
     pub typ: TypeId,
     pub val: Value,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub type Elems = SmallVec<[Value; 4]>;
+pub type Fields = SmallVec<[TypedValue; 4]>;
+pub type Variants = SmallVec<[Fields; 4]>;
+pub type Bytes = SmallVec<[u8; 32]>;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
     Unit,
     Global(GlobId),
     Unref(context::VirtualAddress),
     Address(context::VirtualAddress),
     Uint(u64),
+    Float(f64),
     Type(TypeId),
     Node(NodeId),
+    Array(Handle<Elems>),
+    Struct(Handle<Fields>),
+    Tagged(Handle<Value>, Handle<Fields>, Handle<Variants>),
+    Union(Handle<Bytes>),
 }
 
 #[derive(Debug, Clone)]

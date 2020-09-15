@@ -60,7 +60,7 @@ macro_rules! impl_into_for_all_static {
                     f: move |world| {
                         let mut lazy = LazyUpdate::new();
                         $(
-                            world.borrow::<$s>();
+                            world.borrow::<Static<$s>>();
                         )*
                         let result = (self)(
                             &mut lazy,
@@ -73,6 +73,11 @@ macro_rules! impl_into_for_all_static {
                                 world.resources::<$t>()
                             ),*
                         );
+                        $(
+                            unsafe {
+                                world.release::<Static<$s>>();
+                            }
+                        )*
                         lazy.commit(&world);
                         result
                     },

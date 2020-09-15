@@ -323,10 +323,15 @@ impl ExecutionContext {
                     Value::Unit => {}
                     Value::Global(handle) => todo!(),
                     Value::Uint(int) => int.write_bytes(&mut value),
+                    Value::Float(flt) => flt.write_bytes(&mut value),
                     Value::Unref(addr) => value.copy_from_slice(self.read(addr, 0..t.size)?),
                     Value::Address(addr) => addr.write_bytes(&mut value),
                     Value::Type(typ) => typ.write_bytes(&mut value),
                     Value::Node(node) => node.write_bytes(&mut value),
+                    Value::Array(_) => todo!(),
+                    Value::Struct(_) => todo!(),
+                    Value::Union(_) => todo!(),
+                    Value::Tagged(..) => todo!(),
                 }
                 self.write(ptr, &value)?;
                 Ok(Result::Continue)
@@ -409,7 +414,9 @@ impl ExecutionContext {
                     self.stack_ptr = self.bindings.end() as _;
                     Ok(result)
                 } else {
-                    todo!()
+                    self.stack_ptr = self.bindings.end() as _;
+                    self.instr_ptr = self.call_stack.pop().unwrap();
+                    Ok(Result::Continue)
                 }
             }
         }
@@ -447,10 +454,15 @@ impl ExecutionContext {
                 Value::Unit => {}
                 Value::Global(handle) => todo!(),
                 Value::Uint(int) => int.write_bytes(&mut value),
+                Value::Float(flt) => flt.write_bytes(&mut value),
                 Value::Unref(addr) => value.copy_from_slice(self.read(*addr, 0..t.size)?),
                 Value::Address(addr) => addr.write_bytes(&mut value),
                 Value::Type(typ) => typ.write_bytes(&mut value),
                 Value::Node(node) => node.write_bytes(&mut value),
+                Value::Array(_) => todo!(),
+                Value::Struct(_) => todo!(),
+                Value::Union(_) => todo!(),
+                Value::Tagged(..) => todo!(),
             }
             self.write_physical(PhysicalAddress(Section::Stack, self.stack_ptr as _), &value)?;
 

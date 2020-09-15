@@ -5,16 +5,17 @@ use crate::assets::{Asset, Handle, Resources};
 use crate::ast::{Kind, Node};
 use crate::lir::builder::*;
 use crate::lir::context::ExecutionContext;
-use crate::lir::{GlobId, Value};
 use crate::types::NamedType;
 use crate::values::Payload;
+
+use super::*;
 
 pub trait Compile<B>: Asset + Sized {
     type Output;
 
     fn compile(
         handle: Handle<Self>,
-        res: &mut Resources<(&mut Self, &Payload, &mut Value)>,
+        res: &mut Resources<(&mut Self, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
         builder: B,
     ) -> Fallible<Self::Output>;
 }
@@ -24,7 +25,7 @@ impl<'a> Compile<Builder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
-        res: &mut Resources<(&mut Self, &Payload, &mut Value)>,
+        res: &mut Resources<(&mut Self, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
         builder: Builder<'a>,
     ) -> Fallible<Self::Output> {
         let root = res.get::<Node>(handle).unwrap();
@@ -39,7 +40,7 @@ impl<'a> Compile<FunctionBuilder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
-        res: &mut Resources<(&mut Self, &Payload, &mut Value)>,
+        res: &mut Resources<(&mut Self, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
         builder: FunctionBuilder<'a>,
     ) -> Fallible<Self::Output> {
         let (v, f) = Node::compile(handle, res, ValueBuilder(builder))?;
@@ -54,15 +55,18 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
-        res: &mut Resources<(&mut Self, &Payload, &mut Value)>,
+        res: &mut Resources<(&mut Self, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
         mut builder: ValueBuilder<'a>,
     ) -> Fallible<Self::Output> {
         // PERF: can we avoid this clone?
         let this = res.get::<Node>(handle).unwrap().as_ref().clone();
         let value = match this.kind {
             Kind::Nil => match this.payload.unwrap() {
+                Payload::Unit => (Value::Unit, builder.0),
                 Payload::Integer(i) => (Value::Uint(i), builder.0),
+                Payload::Float(f) => (Value::Float(f), builder.0),
                 Payload::Type(t) => (Value::Type(t), builder.0),
+                Payload::String(string) => todo!(),
                 Payload::Identifier(ident) => {
                     let handle =
                         Handle::from_name(this.scope.unwrap(), &ident.as_u128().to_le_bytes());
@@ -73,7 +77,6 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     (value, builder.0)
                 }
                 Payload::Function(id) => (Value::Global(id), builder.0),
-                _ => todo!(),
             },
             Kind::Block => {
                 let mut result = Value::Unit;
@@ -139,9 +142,30 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 res.insert::<Value>(handle, addr);
                 (Value::Unit, builder)
             }
-            Kind::Tuple => todo!(),
-            Kind::Declaration => todo!(),
-            Kind::Array => todo!(),
+            Kind::Tuple => {
+                let mut result = Fields::new();
+                for expr in &this.children {
+                    let (v, f) = Node::compile(expr.unwrap(), res, builder)?;
+                    builder = ValueBuilder(f);
+                    let expr = res.get::<Node>(expr.unwrap()).unwrap();
+                    result.push(TypedValue { val: v, typ: expr.type_of.unwrap() });
+                }
+                let handle = Handle::new();
+                res.insert::<Fields>(handle, result);
+                (Value::Struct(handle), builder.0)
+            }
+            Kind::Declaration => Node::compile(this.children[0].unwrap(), res, builder)?,
+            Kind::Array => {
+                let mut result = Elems::new();
+                for expr in &this.children {
+                    let (v, f) = Node::compile(expr.unwrap(), res, builder)?;
+                    builder = ValueBuilder(f);
+                    result.push(v);
+                }
+                let handle = Handle::new();
+                res.insert::<Elems>(handle, result);
+                (Value::Array(handle), builder.0)
+            }
             Kind::Index => todo!(),
             Kind::Dotted => todo!(),
         };

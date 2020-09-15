@@ -3,6 +3,7 @@ use std::convert::TryFrom;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use smallvec::SmallVec;
 
+use crate::utils::IntPtr;
 use crate::assets::{Handle, Resources};
 use crate::lir::repr::{Repr, ReprExt};
 use crate::lir::target::Target;
@@ -152,14 +153,16 @@ impl TypeId {
                     Type::Float32 => Some(4),
                     Type::Float64 => Some(8),
                     Type::Float => Some(target.pointer_width / 8),
-                    // TODO: alignment rules
-                    // TODO: None-returns
-                    Type::Struct { ref fields } => Some(
-                        fields
-                            .iter()
-                            .map(|t| t.size_of(res, target).unwrap_or(0))
-                            .sum::<usize>(),
-                    ),
+                    Type::Struct { ref fields } => {
+                        let mut size = 0;
+                        let mut align = 1;
+                        for t in fields {
+                            size = size.align_up(align);
+                            size += t.size_of(res, target)?;
+                            align = t.align_of(res, target)?;
+                        }
+                        Some(size)
+                    }
                     Type::Tagged { .. } => todo!(),
                     Type::Enum { width } => Some(width / 8),
                     Type::Union { ref fields } => Some(
@@ -197,10 +200,8 @@ impl TypeId {
                     Type::Float32 => Some(4),
                     Type::Float64 => Some(8),
                     Type::Float => Some(target.pointer_align / 8),
-                    // TODO: alignment rules
-                    // TODO: None-returns
                     Type::Struct { ref fields } => {
-                        fields.get(0).map(|t| t.size_of(res, target).unwrap_or(1))
+                        fields.get(0).map(|t| t.align_of(res, target)).unwrap_or(Some(1))
                     }
                     Type::Tagged { .. } => todo!(),
                     Type::Enum { width } => Some(width / 8),
@@ -228,7 +229,7 @@ impl TypeId {
         }
     }
 
-    pub fn matches(&self, other: &TypeId) -> bool {
+    pub fn matches(&self, other: &TypeId, res: &Resources<&NamedType>) -> bool {
         match (self.group, other.group) {
             (_, TypeGroup::None) => return true,
             (TypeGroup::Type, TypeGroup::Type) => return true,
@@ -238,8 +239,7 @@ impl TypeId {
         }
 
         match (self.concrete, other.concrete) {
-            // TODO: deep matches
-            (TypeOrPlaceholder::Type(a), TypeOrPlaceholder::Type(b)) => a == b,
+            (TypeOrPlaceholder::Type(a), TypeOrPlaceholder::Type(b)) => a.matches(b, res),
             _ => true,
         }
     }
@@ -305,6 +305,66 @@ pub enum TypeGroup {
     Pointer,
     Array,
     Slice,
+}
+
+trait Matches {
+    fn matches(&self, other: &Self, res: &Resources<&NamedType>) -> bool;
+}
+
+impl Matches for SmallVec<[TypeId; 4]> {
+    fn matches(&self, other: &Self, res: &Resources<&NamedType>) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        
+        for (a, b) in self.iter().zip(other) {
+            if !a.matches(b, res) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl Handle<NamedType> {
+    pub fn matches(self, other: Self, res: &Resources<&NamedType>) -> bool {
+        let this = res.get::<NamedType>(self).unwrap();
+        let other = res.get::<NamedType>(other).unwrap();
+        match (&this.t, &other.t) {
+            (Type::S8, Type::S8) => true,
+            (Type::S16, Type::S16) => true,
+            (Type::S32, Type::S32) => true,
+            (Type::S64, Type::S64) => true,
+            (Type::Sint, Type::Sint) => true,
+            (Type::U8, Type::U8) => true,
+            (Type::U16, Type::U16) => true,
+            (Type::U32, Type::U32) => true,
+            (Type::U64, Type::U64) => true,
+            (Type::Uint, Type::Uint) => true,
+            (Type::Float32, Type::Float32) => true,
+            (Type::Float64, Type::Float64) => true,
+            (Type::Float, Type::Float) => true,
+            (Type::Struct { fields: ref a_fields }, Type::Struct { fields: ref b_fields }) => {
+                this.name == other.name && a_fields.matches(b_fields, res)
+            }
+            (Type::Enum { width: a_width }, Type::Enum { width: b_width }) => {
+                this.name == other.name && a_width == b_width
+            }
+            (Type::Union { fields: ref a_fields }, Type::Union { fields: ref b_fields }) => {
+                this.name == other.name && a_fields.matches(b_fields, res)
+            }
+            (
+                Type::Function { result_type: ref a_result, param_types: ref a_fields },
+                Type::Function { result_type: ref b_result, param_types: ref b_fields },
+            ) => {
+                a_result.matches(b_result, res) && a_fields.matches(b_fields, res)
+            }
+            (Type::Pointer(a), Type::Pointer(b)) => a.matches(&b, res),
+            (Type::Array(a, al), Type::Array(b, bl)) => al == bl && a.matches(&b, res),
+            (Type::Slice(a), Type::Slice(b)) => a.matches(&b, res),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

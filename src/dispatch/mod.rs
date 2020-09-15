@@ -1,8 +1,8 @@
 use smallvec::SmallVec;
 
-use crate::assets::Handle;
+use crate::assets::{Handle, Resources};
 use crate::scope::ScopeId;
-use crate::types::TypeId;
+use crate::types::{NamedType, TypeId};
 
 pub type DispatchId = Handle<Dispatcher>;
 
@@ -76,10 +76,10 @@ impl Dispatcher {
         self.definitions.push(def);
     }
 
-    pub fn query(&self, q: &Query) -> SmallVec<[&Definition; 1]> {
+    pub fn query(&self, q: &Query, res: &Resources<&NamedType>) -> SmallVec<[&Definition; 1]> {
         let mut result = SmallVec::new();
         for def in &self.definitions {
-            if def.matches(q) {
+            if def.matches(q, res) {
                 result.push(def);
             }
         }
@@ -119,7 +119,7 @@ impl Definition {
         self.result_type
     }
 
-    pub fn matches(&self, q: &Query) -> bool {
+    pub fn matches(&self, q: &Query, res: &Resources<&NamedType>) -> bool {
         match (self.is_func, q.is_func) {
             (_, IsFunction::Maybe) => {}
             (true, IsFunction::Yes) => {}
@@ -136,7 +136,7 @@ impl Definition {
                     return false;
                 }
                 for (a, b) in a.iter().zip(b) {
-                    if !a.matches(b) {
+                    if !a.matches(b, res) {
                         return false;
                     }
                 }
@@ -144,7 +144,7 @@ impl Definition {
         }
 
         if let Some(b) = q.result_type.as_ref() {
-            if !self.result_type.matches(b) {
+            if !self.result_type.matches(b, res) {
                 return false;
             }
         }
