@@ -21,8 +21,8 @@ pub struct UnexpectedEof;
 pub struct UnexpectedToken(TokenKind, Location);
 
 pub struct State<'a, 'res> {
-    pub(self) lexer: PeekMoreIterator<Lexer<'a, 'res>>,
-    pub(self) nodes: Resources<&'res mut Node>,
+    pub(crate) lexer: PeekMoreIterator<Lexer<'a, 'res>>,
+    pub(crate) nodes: Resources<&'res mut Node>,
 }
 
 #[inline]
@@ -212,9 +212,9 @@ pub fn atom(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<NodeId> {
                     };
                     let mut node = Node::new(Kind::Nil, iter::empty());
                     node.payload = Some(payload);
-                    let id = NodeId::new();
-                    state.nodes.insert(id, node);
-                    Ok(id)
+                    let handle = node.id();
+                    state.nodes.insert(handle, node);
+                    Ok(handle)
                 } else {
                     Err(From::from(UnexpectedToken(tok.kind, state.lexer.as_ref().res.get::<Location>(tok.location).unwrap().as_ref().clone())))
                 }

@@ -423,7 +423,7 @@ impl World {
         self.lock.lock_shared();
 
         let world = unsafe { &mut *self.world.get() };
-        let lock = world.locks[&TypeId::of::<Static<T>>()].clone();
+        let lock = world.locks[&TypeId::of::<T>()].clone();
         lock.lock_exclusive();
         world
             .resources

@@ -70,7 +70,7 @@ fn root(state: &mut State) -> Fallible<NodeId> {
     let (body, rest) = and(repeat(stmt), optional(expr))(state)?;
     let body = body.into_iter().map(Some).chain(iter::once(rest));
     let node = Node::new(Kind::Block, body);
-    let handle = NodeId::new();
+    let handle = node.id();
     state.nodes.insert(handle, node);
     Ok(handle)
 }
@@ -98,7 +98,7 @@ fn binding(state: &mut State) -> Fallible<NodeId> {
             .chain(iter::once(typ))
             .chain(iter::once(Some(value))),
     );
-    let handle = NodeId::new();
+    let handle = node.id();
     state.nodes.insert(handle, node);
     Ok(handle)
 }
@@ -111,7 +111,7 @@ fn declaration(state: &mut State) -> Fallible<NodeId> {
                     Kind::Declaration,
                     iter::once(Some(name)).chain(iter::once(Some(typ))),
                 );
-                let handle = NodeId::new();
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle
             })
@@ -131,7 +131,7 @@ fn binary(state: &mut State) -> Fallible<NodeId> {
                         .chain(iter::once(Some(a)))
                         .chain(iter::once(Some(b))),
                 );
-                let handle = NodeId::new();
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle
             })
@@ -156,7 +156,7 @@ fn application(state: &mut State) -> Fallible<NodeId> {
                         .chain(iter::once(Some(first)))
                         .chain(rest.into_iter().map(|(_, arg)| Some(arg))),
                 );
-                let handle = NodeId::new();
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle
             })
@@ -175,7 +175,7 @@ fn function(state: &mut State) -> Fallible<NodeId> {
                         Kind::Function,
                         iter::once(Some(args)).chain(iter::once(Some(body))),
                     );
-                    let handle = NodeId::new();
+                    let handle = node.id();
                     state.nodes.insert(handle, node);
                     handle
                 },
@@ -191,15 +191,15 @@ fn index(state: &mut State) -> Fallible<NodeId> {
         let mut last = None;
         if !a.is_empty() {
             for (&(array, _), &(index, _)) in a.iter().zip(&a[1..]) {
-                let handle = NodeId::new();
                 let node = Node::new(Kind::Index, iter::once(Some(last.unwrap_or(array))).chain(iter::once(Some(index))));
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 last = Some(handle);
             }
         }
         last.map(|last| {
-            let handle = NodeId::new();
             let node = Node::new(Kind::Index, iter::once(Some(last)).chain(iter::once(Some(i))));
+            let handle = node.id();
             state.nodes.insert(handle, node);
             handle
         }).unwrap_or(i)
@@ -211,15 +211,15 @@ fn dotted(state: &mut State) -> Fallible<NodeId> {
         let mut last = None;
         if !left.is_empty() {
             for (&(left, _), &(field, _)) in left.iter().zip(&left[1..]) {
-                let handle = NodeId::new();
                 let node = Node::new(Kind::Dotted, iter::once(Some(last.unwrap_or(left))).chain(iter::once(Some(field))));
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 last = Some(handle);
             }
         }
         last.map(|last| {
-            let handle = NodeId::new();
             let node = Node::new(Kind::Dotted, iter::once(Some(last)).chain(iter::once(Some(field))));
+            let handle = node.id();
             state.nodes.insert(handle, node);
             handle
         }).unwrap_or(field)
@@ -238,13 +238,13 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
                     Kind::Tuple,
                     iter::once(Some(first)).chain(rest.into_iter().map(|(_, x)| Some(x))),
                 );
-                let handle = NodeId::new();
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle
             })
             .unwrap_or_else(|| {
                 let node = Node::new(Kind::Tuple, iter::empty());
-                let handle = NodeId::new();
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle
             }))
@@ -262,13 +262,13 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
                     Kind::Array,
                     iter::once(Some(first)).chain(rest.into_iter().map(|(_, x)| Some(x))),
                 );
-                let handle = NodeId::new();
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle
             })
             .unwrap_or_else(|| {
                 let node = Node::new(Kind::Array, iter::empty());
-                let handle = NodeId::new();
+                let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle
             }))

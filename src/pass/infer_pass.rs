@@ -42,7 +42,7 @@ pub fn infer_update(
                     }
                     Kind::Block => {
                         let typ = node.children.last().and_then(|last| {
-                            last.and_then(|last| nodes.get::<Node>(last).unwrap().type_of.clone())
+                            last.and_then(|last| nodes.get::<Node>(last).and_then(|last| last.type_of.clone()).or_else(|| Some(types[&last])))
                         });
                         if let Some(typ) = typ {
                             types.insert(node.id(), typ);
