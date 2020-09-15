@@ -86,7 +86,7 @@ fn expr(state: &mut State) -> Fallible<NodeId> {
 
 fn binding(state: &mut State) -> Fallible<NodeId> {
     let (name, _, typ, _, value) = and5(
-        atomic,
+        alternative,
         literal(TokenKind::Colon),
         optional(binary),
         literal(TokenKind::Equals),
@@ -106,7 +106,7 @@ fn binding(state: &mut State) -> Fallible<NodeId> {
 fn declaration(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
-            and3(atomic, literal(TokenKind::Colon), binary)(state).map(|(name, _, typ)| {
+            and3(alternative, literal(TokenKind::Colon), binary)(state).map(|(name, _, typ)| {
                 let node = Node::new(
                     Kind::Declaration,
                     iter::once(Some(name)).chain(iter::once(Some(typ))),
@@ -145,7 +145,7 @@ fn application(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
             and3(
-                atomic,
+                alternative,
                 function,
                 repeat(and(literal(TokenKind::Comma), function)),
             )(state)
@@ -207,7 +207,7 @@ fn index(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn dotted(state: &mut State) -> Fallible<NodeId> {
-    and(repeat(and(atomic, literal(TokenKind::Dot))), atomic)(state).map(|(left, field)| {
+    and(repeat(and(alternative, literal(TokenKind::Dot))), alternative)(state).map(|(left, field)| {
         let mut last = None;
         if !left.is_empty() {
             for (&(left, _), &(field, _)) in left.iter().zip(&left[1..]) {
@@ -226,12 +226,19 @@ fn dotted(state: &mut State) -> Fallible<NodeId> {
     })
 }
 
+fn alternative(state: &mut State) -> Fallible<NodeId> {
+    and(optional(literal(TokenKind::Dollar)), atomic)(state).map(|(alt, handle)| {
+        state.nodes.get_mut::<Node>(handle).unwrap().alternative = alt.is_some();
+        handle
+    })
+}
+
 fn atomic(state: &mut State) -> Fallible<NodeId> {
     or7(
         move |state| {
             Ok(grouped(
                 TokenKind::Paren,
-                optional(and(binary, repeat(and(literal(TokenKind::Comma), binary)))),
+                optional(and(binary, repeat(and(literal(TokenKind::Semicolon), binary)))),
             )(state)?
             .map(|(first, rest)| {
                 let node = Node::new(

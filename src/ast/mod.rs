@@ -21,7 +21,6 @@ pub enum Kind {
     Binding,
     Declaration,
     Tuple,
-    TupleType,
     Index,
     Dotted,
     Array,
@@ -37,6 +36,7 @@ pub enum Visit {
 pub struct Node {
     parent: Option<NodeId>,
     id: NodeId,
+    pub alternative: bool,
     pub kind: Kind,
     pub scope: Option<ScopeId>,
     pub thread: Option<ThreadId>,
@@ -52,6 +52,7 @@ impl Node {
         Node {
             parent: None,
             id: NodeId::new(),
+            alternative: false,
             kind,
             scope: None,
             thread: None,
@@ -71,6 +72,7 @@ impl Node {
         Node {
             parent: Some(parent),
             id: NodeId::new(),
+            alternative: false,
             kind,
             scope: None,
             thread: None,
@@ -210,11 +212,6 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             }
             Kind::Tuple => {
                 f.debug_struct("Tuple")
-                    .field("fields", &node.children.iter().map(|node| PrettyPrinterRef::new(self.config, self.res, node.unwrap())).collect::<Vec<_>>())
-                    .finish()
-            }
-            Kind::TupleType => {
-                f.debug_struct("TupleType")
                     .field("fields", &node.children.iter().map(|node| PrettyPrinterRef::new(self.config, self.res, node.unwrap())).collect::<Vec<_>>())
                     .finish()
             }

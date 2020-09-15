@@ -2,21 +2,22 @@ root = { stmt } , [ expr ] ;
 stmt = expr , ";" ;
 expr = binding
      | declaration ;
-binding = atomic , ":=" , binary
-        | atomic , ":" binary , "=" , binary ;
-declaration = atomic , ":" , binary
+binding = alternative , ":=" , binary
+        | alternative , ":" binary , "=" , binary ;
+declaration = alternative , ":" , binary
             | binary ;
 binary = index , index , application
        | application ;
-application = atomic , function , { "," , function }
+application = alternative , function , { "," , function }
             | function ;
 function = index , "=>" , binary | index ;
 index = index , "'" , dotted
       | dotted ;
-dotted = dotted , "." , atomic
-       | atomic ;
-atomic = "(" , [ binary , { "," , binary } ] , ")"
-       | "(" , binary , { ";" , binary } , ")"
+dotted = dotted , "." , alternative
+       | alternative ;
+alternative = "$" , atomic
+            | atomic ;
+atomic = "(" , [ binary , { ";" , binary } ] , ")"
        | "[" , [ binary , { ";" , binary } ] , "]"
        | "{" , root , "}"
        | ?integer?

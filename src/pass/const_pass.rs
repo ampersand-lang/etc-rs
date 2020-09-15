@@ -25,7 +25,6 @@ pub fn const_update(
                     | Kind::Binding
                     | Kind::Declaration
                     | Kind::Tuple
-                    | Kind::TupleType
                     | Kind::Index
                     | Kind::Dotted
                     | Kind::Array => {

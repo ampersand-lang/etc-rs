@@ -98,6 +98,7 @@ pub enum TokenKind {
     Equals,
     EqualsArrow,
     Dot,
+    Dollar,
     SingleQuote,
     Paren(Side),
     Bracket(Side),
@@ -114,6 +115,7 @@ impl TokenKind {
             "=>" => Self::EqualsArrow,
             "." => Self::Dot,
             "'" => Self::SingleQuote,
+            "$" => Self::Dollar,
             "(" => Self::Paren(Side::Left),
             ")" => Self::Paren(Side::Right),
             "[" => Self::Bracket(Side::Left),
@@ -139,6 +141,7 @@ impl Display for TokenKind {
             Self::EqualsArrow => "=>",
             Self::Dot => ".",
             Self::SingleQuote => "'",
+            Self::Dollar => "$",
             Self::Paren(Side::Left) => "(",
             Self::Paren(Side::Right) => ")",
             Self::Bracket(Side::Left) => "[",
@@ -263,6 +266,11 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
             '\'' => Some(Ok(Token {
                 location: handle,
                 kind: TokenKind::SingleQuote,
+                value: TokenValue::None,
+            })),
+            '$' => Some(Ok(Token {
+                location: handle,
+                kind: TokenKind::Dollar,
                 value: TokenValue::None,
             })),
             '(' => Some(Ok(Token {

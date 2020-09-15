@@ -142,7 +142,6 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             Kind::Tuple => todo!(),
             Kind::Declaration => todo!(),
             Kind::Array => todo!(),
-            Kind::TupleType => todo!(),
             Kind::Index => todo!(),
             Kind::Dotted => todo!(),
         };
