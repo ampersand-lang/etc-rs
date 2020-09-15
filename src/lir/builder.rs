@@ -20,7 +20,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn function(self) -> FunctionBuilder<'a> {
-        let mut f = FunctionBuilder {
+        let f = FunctionBuilder {
             builder: self,
             counter: Vec::new(),
             stack_ptr: 0,

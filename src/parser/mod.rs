@@ -5,7 +5,7 @@ use failure::{Fail, Fallible};
 use peekmore_asref::PeekMoreIterator;
 use smallvec::SmallVec;
 
-use crate::assets::{Handle, Resources};
+use crate::assets::Resources;
 use crate::ast::{Kind, Node, NodeId};
 use crate::lexer::{Lexer, Location, Side, TokenKind, TokenValue};
 use crate::values::Payload;
@@ -37,7 +37,7 @@ pub fn repeat<T>(
                 Ok(elem) => array.push(elem),
                 Err(_) => {
                     state.lexer.as_mut().data = lexer;
-                    return Ok(array)
+                    return Ok(array);
                 }
             }
         }
@@ -50,9 +50,11 @@ pub fn optional<T>(
 ) -> impl Fn(&mut State) -> Fallible<Option<T>> {
     move |state| {
         let lexer = state.lexer.as_ref().data.clone();
-        Ok(f(state).map_err(|_| {
-            state.lexer.as_mut().data = lexer;
-        }).ok())
+        Ok(f(state)
+            .map_err(|_| {
+                state.lexer.as_mut().data = lexer;
+            })
+            .ok())
     }
 }
 
@@ -116,12 +118,10 @@ pub fn or<T, U>(
 ) -> impl Fn(&mut State) -> Fallible<Either<T, U>> {
     move |state| {
         let lexer = state.lexer.as_ref().data.clone();
-        a(state)
-            .map(Either::Left)
-            .or_else(|_| {
-                state.lexer.as_mut().data = lexer;
-                b(state).map(Either::Right)
-            })
+        a(state).map(Either::Left).or_else(|_| {
+            state.lexer.as_mut().data = lexer;
+            b(state).map(Either::Right)
+        })
     }
 }
 
@@ -187,7 +187,17 @@ pub fn literal(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<()> {
                 if tok.kind == lit {
                     Ok(())
                 } else {
-                    Err(From::from(UnexpectedToken(tok.kind, state.lexer.as_ref().res.get::<Location>(tok.location).unwrap().as_ref().clone())))
+                    Err(From::from(UnexpectedToken(
+                        tok.kind,
+                        state
+                            .lexer
+                            .as_ref()
+                            .res
+                            .get::<Location>(tok.location)
+                            .unwrap()
+                            .as_ref()
+                            .clone(),
+                    )))
                 }
             })
     }
@@ -216,7 +226,17 @@ pub fn atom(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<NodeId> {
                     state.nodes.insert(handle, node);
                     Ok(handle)
                 } else {
-                    Err(From::from(UnexpectedToken(tok.kind, state.lexer.as_ref().res.get::<Location>(tok.location).unwrap().as_ref().clone())))
+                    Err(From::from(UnexpectedToken(
+                        tok.kind,
+                        state
+                            .lexer
+                            .as_ref()
+                            .res
+                            .get::<Location>(tok.location)
+                            .unwrap()
+                            .as_ref()
+                            .clone(),
+                    )))
                 }
             })
     }

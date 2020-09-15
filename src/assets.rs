@@ -742,7 +742,7 @@ impl<'a, T: Asset> Res for &'a T {
         None
     }
 
-    unsafe fn insert<U: Asset>(_world: &World, _handle: Handle<U>, u: U) {}
+    unsafe fn insert<U: Asset>(_world: &World, _handle: Handle<U>, _u: U) {}
 
     unsafe fn get<U: Asset>(world: &World, handle: Handle<U>) -> Option<StaticRef<'_, U>> {
         if TypeId::of::<U>() == TypeId::of::<T>() {

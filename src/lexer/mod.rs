@@ -357,10 +357,10 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::assets::*;
     use crate::ast::Node;
-    use super::*;
-    
+
     #[test]
     fn lex() {
         let world = World::new();
@@ -371,12 +371,20 @@ mod tests {
         for elem in Lexer::new("lex", "", world.resources::<(&mut String, &mut Location)>()) {
             assert!(elem.is_ok());
         }
-        
-        for elem in Lexer::new("lex", "5", world.resources::<(&mut String, &mut Location)>()) {
+
+        for elem in Lexer::new(
+            "lex",
+            "5",
+            world.resources::<(&mut String, &mut Location)>(),
+        ) {
             assert!(elem.is_ok());
         }
-        
-        for elem in Lexer::new("lex", "x := f 5, a, a => a + 1", world.resources::<(&mut String, &mut Location)>()) {
+
+        for elem in Lexer::new(
+            "lex",
+            "x := f 5, a, a => a + 1",
+            world.resources::<(&mut String, &mut Location)>(),
+        ) {
             assert!(elem.is_ok());
         }
     }

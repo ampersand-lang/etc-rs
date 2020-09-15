@@ -3,14 +3,16 @@ use peekmore_asref::PeekMore;
 use assets::*;
 use ast::{Node, RootNode};
 use dispatch::Dispatcher;
-use lir::{context::ExecutionContext, target::Target, Elems, Fields, Variants, Bytes, Binding, Value};
+use lexer::{Lexer, Location};
+use lir::{
+    context::ExecutionContext, target::Target, Binding, Bytes, Elems, Fields, Value, Variants,
+};
+use parser::{grammar, State};
 use pipeline::*;
 use scope::Scope;
 use system::*;
 use types::NamedType;
 use values::Payload;
-use lexer::{Lexer, Location};
-use parser::{grammar, State};
 
 pub mod utils;
 
@@ -50,9 +52,15 @@ fn main() {
     world.init_static::<Target>();
 
     let node = grammar::parse(&mut State {
-        lexer: Lexer::new("hello.amp", SRC, world.resources::<(&mut String, &mut Location)>()).peekmore(),
+        lexer: Lexer::new(
+            "hello.amp",
+            SRC,
+            world.resources::<(&mut String, &mut Location)>(),
+        )
+        .peekmore(),
         nodes: world.resources::<&mut Node>(),
-    }).unwrap();
+    })
+    .unwrap();
 
     let handle = Handle::new();
     let root = RootNode(node);

@@ -1,13 +1,11 @@
 use std::iter;
 
 use failure::{Error, Fallible};
-use peekmore_asref::PeekMore;
 
 use crate::error::MultiError;
-use crate::assets::{Handle, Resources};
+
 use crate::ast::{Kind, Node, NodeId};
-use crate::lexer::{Lexer, Location, Side, TokenKind, TokenValue};
-use crate::values::Payload;
+use crate::lexer::{Location, Side, TokenKind};
 
 use super::*;
 
@@ -19,7 +17,17 @@ pub fn parse(state: &mut State) -> Fallible<NodeId> {
             if let Ok(tok) = tok {
                 let kind = tok.kind;
                 let location = tok.location;
-                errors.push(From::from(UnexpectedToken(kind, state.lexer.as_ref().res.get::<Location>(location).unwrap().as_ref().clone())));
+                errors.push(From::from(UnexpectedToken(
+                    kind,
+                    state
+                        .lexer
+                        .as_ref()
+                        .res
+                        .get::<Location>(location)
+                        .unwrap()
+                        .as_ref()
+                        .clone(),
+                )));
             }
             let mut depth = 0_usize;
             let mut tok = match state.lexer.next().unwrap() {
@@ -56,7 +64,7 @@ pub fn parse(state: &mut State) -> Fallible<NodeId> {
             Some(result)
         }
     }
-    
+
     let mut errors = Vec::new();
     let result = inner(state, &mut errors);
     if errors.is_empty() {
@@ -169,17 +177,15 @@ fn application(state: &mut State) -> Fallible<NodeId> {
 fn function(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
-            and3(index, literal(TokenKind::EqualsArrow), binary)(state).map(
-                |(args, _, body)| {
-                    let node = Node::new(
-                        Kind::Function,
-                        iter::once(Some(args)).chain(iter::once(Some(body))),
-                    );
-                    let handle = node.id();
-                    state.nodes.insert(handle, node);
-                    handle
-                },
-            )
+            and3(index, literal(TokenKind::EqualsArrow), binary)(state).map(|(args, _, body)| {
+                let node = Node::new(
+                    Kind::Function,
+                    iter::once(Some(args)).chain(iter::once(Some(body))),
+                );
+                let handle = node.id();
+                state.nodes.insert(handle, node);
+                handle
+            })
         },
         index,
     )(state)?
@@ -191,38 +197,56 @@ fn index(state: &mut State) -> Fallible<NodeId> {
         let mut last = None;
         if !a.is_empty() {
             for (&(array, _), &(index, _)) in a.iter().zip(&a[1..]) {
-                let node = Node::new(Kind::Index, iter::once(Some(last.unwrap_or(array))).chain(iter::once(Some(index))));
+                let node = Node::new(
+                    Kind::Index,
+                    iter::once(Some(last.unwrap_or(array))).chain(iter::once(Some(index))),
+                );
                 let handle = node.id();
                 state.nodes.insert(handle, node);
                 last = Some(handle);
             }
         }
         last.map(|last| {
-            let node = Node::new(Kind::Index, iter::once(Some(last)).chain(iter::once(Some(i))));
+            let node = Node::new(
+                Kind::Index,
+                iter::once(Some(last)).chain(iter::once(Some(i))),
+            );
             let handle = node.id();
             state.nodes.insert(handle, node);
             handle
-        }).unwrap_or(i)
+        })
+        .unwrap_or(i)
     })
 }
 
 fn dotted(state: &mut State) -> Fallible<NodeId> {
-    and(repeat(and(alternative, literal(TokenKind::Dot))), alternative)(state).map(|(left, field)| {
+    and(
+        repeat(and(alternative, literal(TokenKind::Dot))),
+        alternative,
+    )(state)
+    .map(|(left, field)| {
         let mut last = None;
         if !left.is_empty() {
             for (&(left, _), &(field, _)) in left.iter().zip(&left[1..]) {
-                let node = Node::new(Kind::Dotted, iter::once(Some(last.unwrap_or(left))).chain(iter::once(Some(field))));
+                let node = Node::new(
+                    Kind::Dotted,
+                    iter::once(Some(last.unwrap_or(left))).chain(iter::once(Some(field))),
+                );
                 let handle = node.id();
                 state.nodes.insert(handle, node);
                 last = Some(handle);
             }
         }
         last.map(|last| {
-            let node = Node::new(Kind::Dotted, iter::once(Some(last)).chain(iter::once(Some(field))));
+            let node = Node::new(
+                Kind::Dotted,
+                iter::once(Some(last)).chain(iter::once(Some(field))),
+            );
             let handle = node.id();
             state.nodes.insert(handle, node);
             handle
-        }).unwrap_or(field)
+        })
+        .unwrap_or(field)
     })
 }
 
@@ -238,7 +262,10 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
         move |state| {
             Ok(grouped(
                 TokenKind::Paren,
-                optional(and(binary, repeat(and(literal(TokenKind::Semicolon), binary)))),
+                optional(and(
+                    binary,
+                    repeat(and(literal(TokenKind::Semicolon), binary)),
+                )),
             )(state)?
             .map(|(first, rest)| {
                 let node = Node::new(
@@ -291,14 +318,14 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
 #[cfg(test)]
 mod tests {
     use peekmore_asref::PeekMore;
-    
+
     use crate::assets::*;
-    use crate::ast::{PrettyPrinter, Node};
+    use crate::ast::Node;
     use crate::lexer::*;
     use crate::parser::State;
 
     use super::*;
-    
+
     #[test]
     fn parse_test() {
         let world = World::new();
@@ -307,18 +334,36 @@ mod tests {
         world.init_asset::<Location>();
 
         parse(&mut State {
-            lexer: Lexer::new("parse", "", world.resources::<(&mut String, &mut Location)>()).peekmore(),
+            lexer: Lexer::new(
+                "parse",
+                "",
+                world.resources::<(&mut String, &mut Location)>(),
+            )
+            .peekmore(),
             nodes: world.resources::<&mut Node>(),
-        }).unwrap();
+        })
+        .unwrap();
 
         parse(&mut State {
-            lexer: Lexer::new("parse", "5", world.resources::<(&mut String, &mut Location)>()).peekmore(),
+            lexer: Lexer::new(
+                "parse",
+                "5",
+                world.resources::<(&mut String, &mut Location)>(),
+            )
+            .peekmore(),
             nodes: world.resources::<&mut Node>(),
-        }).unwrap();
+        })
+        .unwrap();
 
         parse(&mut State {
-            lexer: Lexer::new("parse", "x := f 5, a, a => a + 1; x", world.resources::<(&mut String, &mut Location)>()).peekmore(),
+            lexer: Lexer::new(
+                "parse",
+                "x := f 5, a, a => a + 1; x",
+                world.resources::<(&mut String, &mut Location)>(),
+            )
+            .peekmore(),
             nodes: world.resources::<&mut Node>(),
-        }).unwrap();
+        })
+        .unwrap();
     }
 }

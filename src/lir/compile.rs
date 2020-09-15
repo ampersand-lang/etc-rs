@@ -15,7 +15,15 @@ pub trait Compile<B>: Asset + Sized {
 
     fn compile(
         handle: Handle<Self>,
-        res: &mut Resources<(&mut Self, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
+        res: &mut Resources<(
+            &mut Self,
+            &Payload,
+            &mut Value,
+            &mut Elems,
+            &mut Fields,
+            &mut Variants,
+            &mut Bytes,
+        )>,
         builder: B,
     ) -> Fallible<Self::Output>;
 }
@@ -25,7 +33,15 @@ impl<'a> Compile<Builder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
-        res: &mut Resources<(&mut Self, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
+        res: &mut Resources<(
+            &mut Self,
+            &Payload,
+            &mut Value,
+            &mut Elems,
+            &mut Fields,
+            &mut Variants,
+            &mut Bytes,
+        )>,
         builder: Builder<'a>,
     ) -> Fallible<Self::Output> {
         let root = res.get::<Node>(handle).unwrap();
@@ -40,7 +56,15 @@ impl<'a> Compile<FunctionBuilder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
-        res: &mut Resources<(&mut Self, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
+        res: &mut Resources<(
+            &mut Self,
+            &Payload,
+            &mut Value,
+            &mut Elems,
+            &mut Fields,
+            &mut Variants,
+            &mut Bytes,
+        )>,
         builder: FunctionBuilder<'a>,
     ) -> Fallible<Self::Output> {
         let (v, f) = Node::compile(handle, res, ValueBuilder(builder))?;
@@ -55,7 +79,15 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
-        res: &mut Resources<(&mut Self, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
+        res: &mut Resources<(
+            &mut Self,
+            &Payload,
+            &mut Value,
+            &mut Elems,
+            &mut Fields,
+            &mut Variants,
+            &mut Bytes,
+        )>,
         mut builder: ValueBuilder<'a>,
     ) -> Fallible<Self::Output> {
         // PERF: can we avoid this clone?
@@ -66,7 +98,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 Payload::Integer(i) => (Value::Uint(i), builder.0),
                 Payload::Float(f) => (Value::Float(f), builder.0),
                 Payload::Type(t) => (Value::Type(t), builder.0),
-                Payload::String(string) => todo!(),
+                Payload::String(_string) => todo!(),
                 Payload::Identifier(ident) => {
                     let handle =
                         Handle::from_name(this.scope.unwrap(), &ident.as_u128().to_le_bytes());
@@ -148,7 +180,10 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     let (v, f) = Node::compile(expr.unwrap(), res, builder)?;
                     builder = ValueBuilder(f);
                     let expr = res.get::<Node>(expr.unwrap()).unwrap();
-                    result.push(TypedValue { val: v, typ: expr.type_of.unwrap() });
+                    result.push(TypedValue {
+                        val: v,
+                        typ: expr.type_of.unwrap(),
+                    });
                 }
                 let handle = Handle::new();
                 res.insert::<Fields>(handle, result);

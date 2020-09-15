@@ -2,7 +2,10 @@ use failure::Fallible;
 
 use crate::assets::{LazyUpdate, Resources, Static};
 use crate::ast::{Node, RootNode};
-use crate::lir::{compile::Compile, context::ExecutionContext, target::Target, Elems, Fields, Variants, Bytes, ThreadId, Value};
+use crate::lir::{
+    compile::Compile, context::ExecutionContext, target::Target, Bytes, Elems, Fields, ThreadId,
+    Value, Variants,
+};
 use crate::types::NamedType;
 use crate::values::Payload;
 
@@ -10,9 +13,17 @@ pub fn compile_update(
     lazy: &mut LazyUpdate,
     target: &Static<Target>,
     roots: Resources<&RootNode>,
-    threads: Resources<&ExecutionContext>,
+    _threads: Resources<&ExecutionContext>,
     mut types: Resources<&NamedType>,
-    mut nodes: Resources<(&mut Node, &Payload, &mut Value, &mut Elems, &mut Fields, &mut Variants, &mut Bytes)>,
+    mut nodes: Resources<(
+        &mut Node,
+        &Payload,
+        &mut Value,
+        &mut Elems,
+        &mut Fields,
+        &mut Variants,
+        &mut Bytes,
+    )>,
 ) -> Fallible<()> {
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = root_node.0;

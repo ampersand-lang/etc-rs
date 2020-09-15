@@ -272,10 +272,6 @@ impl ExecutionContext {
         }
     }
 
-    fn get(&self, binding: Binding, type_info: TypeInfo) -> Fallible<&[u8]> {
-        self.read_physical(self.bindings.get(binding).unwrap(), 0..type_info.size)
-    }
-
     fn execute(
         &mut self,
         lazy: &mut LazyUpdate,
@@ -321,7 +317,7 @@ impl ExecutionContext {
                 let mut value = vec![0_u8; t.size];
                 match ir.args[2] {
                     Value::Unit => {}
-                    Value::Global(handle) => todo!(),
+                    Value::Global(_handle) => todo!(),
                     Value::Uint(int) => int.write_bytes(&mut value),
                     Value::Float(flt) => flt.write_bytes(&mut value),
                     Value::Unref(addr) => value.copy_from_slice(self.read(addr, 0..t.size)?),
@@ -452,7 +448,7 @@ impl ExecutionContext {
             let mut value = vec![0_u8; t.size];
             match val {
                 Value::Unit => {}
-                Value::Global(handle) => todo!(),
+                Value::Global(_handle) => todo!(),
                 Value::Uint(int) => int.write_bytes(&mut value),
                 Value::Float(flt) => flt.write_bytes(&mut value),
                 Value::Unref(addr) => value.copy_from_slice(self.read(*addr, 0..t.size)?),

@@ -10,11 +10,13 @@ pub fn exec_update(
     roots: Resources<&mut RootNode>,
     mut threads: Resources<&mut ExecutionContext>,
     types: Resources<&NamedType>,
-    mut nodes: Resources<&Node>,
+    nodes: Resources<&Node>,
 ) -> Fallible<()> {
     for (_, root_node) in roots.iter_mut::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
-        let mut ctx = threads.get_mut::<ExecutionContext>(root.thread.unwrap()).unwrap();
+        let mut ctx = threads
+            .get_mut::<ExecutionContext>(root.thread.unwrap())
+            .unwrap();
         let result = ctx.call(lazy, &types, ExecutionContext::MAIN, &[])?;
         println!("{:?}", result);
     }

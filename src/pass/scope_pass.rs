@@ -1,28 +1,27 @@
 use failure::Fallible;
 use hashbrown::HashMap;
-use smallvec::SmallVec;
 
 use crate::assets::{LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit};
-use crate::scope::{ScopeId, Scope};
+use crate::scope::{Scope, ScopeId};
 use crate::values::Payload;
 
 pub fn scope_update(
     lazy: &mut LazyUpdate,
     roots: Resources<&RootNode>,
-    payloads: Resources<&Payload>,
-    mut scopes: Resources<&mut Scope>,
+    _payloads: Resources<&Payload>,
+    _scopes: Resources<&mut Scope>,
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<()> {
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
-        let mut global = Scope::new();
-        let mut handle = ScopeId::new();
+        let global = Scope::new();
+        let handle = ScopeId::new();
         lazy.insert(handle, global);
         let global = handle;
         let mut scopes = HashMap::new();
-                
-        root.visit(Visit::Preorder, &nodes, |res, node| {
+
+        root.visit(Visit::Preorder, &nodes, |_res, node| {
             if let Some(node) = node {
                 match node.kind {
                     Kind::Block | Kind::Function => {

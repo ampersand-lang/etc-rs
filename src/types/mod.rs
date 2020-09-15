@@ -3,11 +3,11 @@ use std::convert::TryFrom;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use smallvec::SmallVec;
 
-use crate::utils::IntPtr;
 use crate::assets::{Handle, Resources};
 use crate::lir::repr::{Repr, ReprExt};
 use crate::lir::target::Target;
 use crate::scope::ScopeId;
+use crate::utils::IntPtr;
 
 pub mod primitive {
     use lazy_static::lazy_static;
@@ -200,9 +200,10 @@ impl TypeId {
                     Type::Float32 => Some(4),
                     Type::Float64 => Some(8),
                     Type::Float => Some(target.pointer_align / 8),
-                    Type::Struct { ref fields } => {
-                        fields.get(0).map(|t| t.align_of(res, target)).unwrap_or(Some(1))
-                    }
+                    Type::Struct { ref fields } => fields
+                        .get(0)
+                        .map(|t| t.align_of(res, target))
+                        .unwrap_or(Some(1)),
                     Type::Tagged { .. } => todo!(),
                     Type::Enum { width } => Some(width / 8),
                     Type::Union { ref fields } => Some(
@@ -316,7 +317,7 @@ impl Matches for SmallVec<[TypeId; 4]> {
         if self.len() != other.len() {
             return false;
         }
-        
+
         for (a, b) in self.iter().zip(other) {
             if !a.matches(b, res) {
                 return false;
@@ -344,21 +345,35 @@ impl Handle<NamedType> {
             (Type::Float32, Type::Float32) => true,
             (Type::Float64, Type::Float64) => true,
             (Type::Float, Type::Float) => true,
-            (Type::Struct { fields: ref a_fields }, Type::Struct { fields: ref b_fields }) => {
-                this.name == other.name && a_fields.matches(b_fields, res)
-            }
+            (
+                Type::Struct {
+                    fields: ref a_fields,
+                },
+                Type::Struct {
+                    fields: ref b_fields,
+                },
+            ) => this.name == other.name && a_fields.matches(b_fields, res),
             (Type::Enum { width: a_width }, Type::Enum { width: b_width }) => {
                 this.name == other.name && a_width == b_width
             }
-            (Type::Union { fields: ref a_fields }, Type::Union { fields: ref b_fields }) => {
-                this.name == other.name && a_fields.matches(b_fields, res)
-            }
             (
-                Type::Function { result_type: ref a_result, param_types: ref a_fields },
-                Type::Function { result_type: ref b_result, param_types: ref b_fields },
-            ) => {
-                a_result.matches(b_result, res) && a_fields.matches(b_fields, res)
-            }
+                Type::Union {
+                    fields: ref a_fields,
+                },
+                Type::Union {
+                    fields: ref b_fields,
+                },
+            ) => this.name == other.name && a_fields.matches(b_fields, res),
+            (
+                Type::Function {
+                    result_type: ref a_result,
+                    param_types: ref a_fields,
+                },
+                Type::Function {
+                    result_type: ref b_result,
+                    param_types: ref b_fields,
+                },
+            ) => a_result.matches(b_result, res) && a_fields.matches(b_fields, res),
             (Type::Pointer(a), Type::Pointer(b)) => a.matches(&b, res),
             (Type::Array(a, al), Type::Array(b, bl)) => al == bl && a.matches(&b, res),
             (Type::Slice(a), Type::Slice(b)) => a.matches(&b, res),

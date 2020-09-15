@@ -7,7 +7,7 @@ pub trait IntPtr: Integer + BitAnd<Self, Output = Self> + Not<Output = Self> + C
     fn align_down(self, align: Self) -> Self {
         self & !(align - Self::one())
     }
-    
+
     #[inline]
     fn align_up(self, align: Self) -> Self {
         // PERF: cloning here is inefficient for BigInts
@@ -21,7 +21,7 @@ impl<T: Integer + BitAnd<T, Output = T> + Not<Output = T> + Clone> IntPtr for T 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn sanity() {
         assert_eq!(15.align_down(8), 8);
