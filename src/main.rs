@@ -64,17 +64,21 @@ fn main() {
         .peekmore(),
         nodes: world.resources::<&mut Node>(),
     })
-    .unwrap();
+        .unwrap();
+    
+    println!("{:?}", ast::PrettyPrinter::with_default(world.resources(), node));
 
     let handle = Handle::new();
     let root = RootNode(node);
     world.insert(handle, root);
 
     let mut pipeline = Pipeline::new();
+    pipeline.add_stage(pass::VALIDATE_PASS);
     pipeline.add_stage(pass::SCOPE_PASS);
     pipeline.add_stage(pass::INFER_PASS);
     pipeline.add_stage(pass::COMPILE_PASS);
     pipeline.add_stage(pass::EXEC_PASS);
+    pipeline.add_system_to_stage(pass::VALIDATE_PASS, pass::validate_update.system());
     pipeline.add_system_to_stage(pass::SCOPE_PASS, pass::scope_update.system());
     pipeline.add_system_to_stage(pass::INFER_PASS, pass::infer_update.system());
     pipeline.add_system_to_stage(pass::COMPILE_PASS, pass::compile_update.system());

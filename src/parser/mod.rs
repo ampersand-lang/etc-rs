@@ -6,7 +6,7 @@ use failure::{Fail, Fallible};
 use peekmore_asref::PeekMoreIterator;
 use smallvec::SmallVec;
 
-use crate::assets::Resources;
+use crate::assets::{Handle, Resources};
 use crate::ast::{Kind, Node, NodeId};
 use crate::lexer::{Lexer, Location, Side, TokenKind, TokenValue};
 use crate::values::Payload;
@@ -29,6 +29,12 @@ pub struct State<'a, 'res> {
     pub(crate) lexer: PeekMoreIterator<Lexer<'a, 'res>>,
     /// Some resources.
     pub(crate) nodes: Resources<&'res mut Node>,
+}
+
+impl<'a, 'res> State<'a, 'res> {
+    pub fn location(&mut self) -> Option<Handle<Location>> {
+        self.lexer.peek().and_then(|tok| tok.as_ref().ok().map(|tok| tok.location))
+    }
 }
 
 /// Repeat a parser for as long as it returns a valid result.
@@ -255,7 +261,7 @@ pub fn atom(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<NodeId> {
                         TokenValue::Identifier(ident) => Payload::Identifier(ident),
                         TokenValue::String(string) => Payload::String(string),
                     };
-                    let mut node = Node::new(Kind::Nil, iter::empty());
+                    let mut node = Node::new(Kind::Nil, tok.location, iter::empty());
                     node.payload = Some(payload);
                     let handle = node.id();
                     state.nodes.insert(handle, node);

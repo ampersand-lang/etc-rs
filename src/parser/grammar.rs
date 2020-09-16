@@ -5,6 +5,7 @@ use failure::{Error, Fallible};
 
 use crate::error::MultiError;
 
+use crate::assets::Handle;
 use crate::ast::{Kind, Node, NodeId};
 use crate::lexer::{Location, Side, TokenKind};
 
@@ -77,9 +78,10 @@ pub fn parse(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn root(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
     let (body, rest) = and(repeat(stmt), optional(expr))(state)?;
     let body = body.into_iter().map(Some).chain(iter::once(rest));
-    let node = Node::new(Kind::Block, body);
+    let node = Node::new(Kind::Block, location, body);
     let handle = node.id();
     state.nodes.insert(handle, node);
     Ok(handle)
@@ -95,6 +97,7 @@ fn expr(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn binding(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
     let (name, _, typ, _, value) = and5(
         alternative,
         literal(TokenKind::Colon),
@@ -104,6 +107,7 @@ fn binding(state: &mut State) -> Fallible<NodeId> {
     )(state)?;
     let node = Node::new(
         Kind::Binding,
+        location,
         iter::once(Some(name))
             .chain(iter::once(typ))
             .chain(iter::once(Some(value))),
@@ -116,9 +120,11 @@ fn binding(state: &mut State) -> Fallible<NodeId> {
 fn declaration(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
+            let location = state.location().unwrap_or_else(Handle::nil);
             and3(alternative, literal(TokenKind::Colon), binary)(state).map(|(name, _, typ)| {
                 let node = Node::new(
                     Kind::Declaration,
+                    location,
                     iter::once(Some(name)).chain(iter::once(Some(typ))),
                 );
                 let handle = node.id();
@@ -134,9 +140,11 @@ fn declaration(state: &mut State) -> Fallible<NodeId> {
 fn binary(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
+            let location = state.location().unwrap_or_else(Handle::nil);
             and3(index, index, application)(state).map(|(a, op, b)| {
                 let node = Node::new(
                     Kind::Application,
+                    location,
                     iter::once(Some(op))
                         .chain(iter::once(Some(a)))
                         .chain(iter::once(Some(b))),
@@ -154,6 +162,7 @@ fn binary(state: &mut State) -> Fallible<NodeId> {
 fn application(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
+            let location = state.location().unwrap_or_else(Handle::nil);
             and3(
                 alternative,
                 function,
@@ -162,6 +171,7 @@ fn application(state: &mut State) -> Fallible<NodeId> {
             .map(|(func, first, rest)| {
                 let node = Node::new(
                     Kind::Application,
+                    location,
                     iter::once(Some(func))
                         .chain(iter::once(Some(first)))
                         .chain(rest.into_iter().map(|(_, arg)| Some(arg))),
@@ -179,9 +189,11 @@ fn application(state: &mut State) -> Fallible<NodeId> {
 fn function(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
+            let location = state.location().unwrap_or_else(Handle::nil);
             and3(index, literal(TokenKind::EqualsArrow), binary)(state).map(|(args, _, body)| {
                 let node = Node::new(
                     Kind::Function,
+                    location,
                     iter::once(Some(args)).chain(iter::once(Some(body))),
                 );
                 let handle = node.id();
@@ -195,12 +207,14 @@ fn function(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn index(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
     and(repeat(and(dotted, literal(TokenKind::SingleQuote))), dotted)(state).map(|(a, i)| {
         let mut last = None;
         if !a.is_empty() {
             for (&(array, _), &(index, _)) in a.iter().zip(&a[1..]) {
                 let node = Node::new(
                     Kind::Index,
+                    location,
                     iter::once(Some(last.unwrap_or(array))).chain(iter::once(Some(index))),
                 );
                 let handle = node.id();
@@ -211,6 +225,7 @@ fn index(state: &mut State) -> Fallible<NodeId> {
         last.map(|last| {
             let node = Node::new(
                 Kind::Index,
+                location,
                 iter::once(Some(last)).chain(iter::once(Some(i))),
             );
             let handle = node.id();
@@ -222,6 +237,7 @@ fn index(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn dotted(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
     and(
         repeat(and(alternative, literal(TokenKind::Dot))),
         alternative,
@@ -232,6 +248,7 @@ fn dotted(state: &mut State) -> Fallible<NodeId> {
             for (&(left, _), &(field, _)) in left.iter().zip(&left[1..]) {
                 let node = Node::new(
                     Kind::Dotted,
+                    location,
                     iter::once(Some(last.unwrap_or(left))).chain(iter::once(Some(field))),
                 );
                 let handle = node.id();
@@ -242,6 +259,7 @@ fn dotted(state: &mut State) -> Fallible<NodeId> {
         last.map(|last| {
             let node = Node::new(
                 Kind::Dotted,
+                location,
                 iter::once(Some(last)).chain(iter::once(Some(field))),
             );
             let handle = node.id();
@@ -262,6 +280,7 @@ fn alternative(state: &mut State) -> Fallible<NodeId> {
 fn atomic(state: &mut State) -> Fallible<NodeId> {
     or7(
         move |state| {
+            let location = state.location().unwrap_or_else(Handle::nil);
             Ok(grouped(
                 TokenKind::Paren,
                 optional(and(
@@ -272,6 +291,7 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
             .map(|(first, rest)| {
                 let node = Node::new(
                     Kind::Tuple,
+                    location,
                     iter::once(Some(first)).chain(rest.into_iter().map(|(_, x)| Some(x))),
                 );
                 let handle = node.id();
@@ -279,13 +299,14 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
                 handle
             })
             .unwrap_or_else(|| {
-                let node = Node::new(Kind::Tuple, iter::empty());
+                let node = Node::new(Kind::Tuple, location, iter::empty());
                 let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle
             }))
         },
         move |state| {
+            let location = state.location().unwrap_or_else(Handle::nil);
             Ok(grouped(
                 TokenKind::Bracket,
                 optional(and(
@@ -296,6 +317,7 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
             .map(|(first, rest)| {
                 let node = Node::new(
                     Kind::Array,
+                    location,
                     iter::once(Some(first)).chain(rest.into_iter().map(|(_, x)| Some(x))),
                 );
                 let handle = node.id();
@@ -303,7 +325,7 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
                 handle
             })
             .unwrap_or_else(|| {
-                let node = Node::new(Kind::Array, iter::empty());
+                let node = Node::new(Kind::Array, location, iter::empty());
                 let handle = node.id();
                 state.nodes.insert(handle, node);
                 handle

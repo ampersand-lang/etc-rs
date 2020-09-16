@@ -9,6 +9,7 @@ use crate::lir::{ThreadId, Value};
 use crate::scope::ScopeId;
 use crate::types::TypeId;
 use crate::values::Payload;
+use crate::lexer::Location;
 
 /// A handle to a `Node`.
 pub type NodeId = Handle<Node>;
@@ -173,6 +174,8 @@ pub struct Node {
     parent: Option<NodeId>,
     /// This node's handle.
     id: NodeId,
+    /// The source code mapping.
+    pub location: Handle<Location>,
     /// A flag for alternative nodes.
     ///
     /// See the documentation of `Kind` for more details.
@@ -197,10 +200,11 @@ pub struct Node {
 
 impl Node {
     /// Creates a new node with a `Kind` and some children.
-    pub fn new<I: IntoIterator<Item = Option<NodeId>>>(kind: Kind, children: I) -> Self {
+    pub fn new<I: IntoIterator<Item = Option<NodeId>>>(kind: Kind, location: Handle<Location>, children: I) -> Self {
         Node {
             parent: None,
             id: NodeId::new(),
+            location,
             alternative: false,
             kind,
             scope: None,
@@ -216,12 +220,14 @@ impl Node {
     pub fn with_parent<I: IntoIterator<Item = Option<NodeId>>>(
         parent: NodeId,
         kind: Kind,
+        location: Handle<Location>,
         children: I,
     ) -> Self {
         Node {
             parent: Some(parent),
             id: NodeId::new(),
             alternative: false,
+            location,
             kind,
             scope: None,
             thread: None,

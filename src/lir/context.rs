@@ -382,7 +382,7 @@ impl ExecutionContext {
                         _ => return Err(From::from(TypeError)),
                     }
                 }
-                let node = Node::new(kind, children);
+                let node = Node::new(kind, Handle::nil(), children);
                 let mut bytes = vec![0_u8; type_info::NODE.size];
                 node.id().write_bytes(&mut bytes);
                 lazy.insert(node.id(), node);

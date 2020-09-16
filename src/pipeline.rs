@@ -36,7 +36,7 @@ impl Pipeline {
                     Err(err) => tx.send(err).expect("could not send error"),
                 }
             });
-            let errors = rx.try_iter().collect::<Vec<_>>();
+            let errors = rx.iter().collect::<Vec<_>>();
             if !errors.is_empty() {
                 return Err(From::from(MultiError::from(errors)));
             }
