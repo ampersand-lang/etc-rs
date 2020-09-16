@@ -18,3 +18,7 @@ lazy_static = "1.4"
 peekmore_asref = { path = "../peekmore_asref", version = "0.5", features = ["smallvec"] }
 either = "1.6"
 num = "0.3"
+
+[features]
+default = []
+docs = []
