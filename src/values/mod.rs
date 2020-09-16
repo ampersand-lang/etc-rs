@@ -1,10 +1,7 @@
 //! Contains the definition of a high-level value.
 use crate::assets::Handle;
-use crate::lir::GlobId;
+use crate::lir::FuncId;
 use crate::types::TypeId;
-
-/// Alias for lir function identifiers.
-pub type FuncId = GlobId;
 
 /// High-level value of an ast node.
 #[derive(Debug, Clone, Copy)]

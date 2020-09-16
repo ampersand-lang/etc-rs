@@ -2,6 +2,7 @@ use hashbrown::HashMap;
 use smallvec::{smallvec, SmallVec};
 
 use crate::assets::Resources;
+use crate::lir::repr::*;
 use crate::lir::context::*;
 use crate::types::NamedType;
 
@@ -30,6 +31,13 @@ impl<'a> Builder<'a> {
         };
         f.begin()
     }
+
+    pub fn add_global<T: Repr + ?Sized>(mut self, out: &mut VirtualAddress, bytes: &T) -> Self {
+        let addr = PhysicalAddress(Section::Data, self.ctx.data.len() as _);
+        *out = self.ctx.to_virtual(addr);
+        self.ctx.data.extend(bytes.to_bytes());
+        self
+    }
 }
 
 pub struct FunctionBuilder<'a> {
@@ -42,14 +50,14 @@ pub struct FunctionBuilder<'a> {
 }
 
 impl<'a> FunctionBuilder<'a> {
-    pub fn build(self, idx: &mut GlobId) -> Builder<'a> {
+    pub fn build(self, idx: &mut FuncId) -> Builder<'a> {
         let mut builder = self.builder;
         *idx = builder.ctx.data.len();
-        builder.ctx.data.push(Global::Function(Function {
+        builder.ctx.text.push(Function {
             param_types: self.param_types,
             result_type: self.result_type.expect("no result type given"),
             body: self.body,
-        }));
+        });
         builder
     }
 

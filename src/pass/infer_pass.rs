@@ -57,7 +57,19 @@ pub fn infer_update(
                             Payload::Unit => primitive::UNIT.clone(),
                             Payload::Integer(_) => primitive::SINT.clone(),
                             Payload::Float(_) => primitive::FLOAT.clone(),
-                            Payload::String(_) => todo!(),
+                            Payload::String(_) => {
+                                let pointee = primitive::S8.clone();
+                                let handle = Handle::new();
+                                let t = NamedType {
+                                    name: None,
+                                    t: Type::Pointer(pointee),
+                                };
+                                lazy.insert(handle, t);
+                                TypeId {
+                                    group: TypeGroup::Pointer,
+                                    concrete: TypeOrPlaceholder::Type(handle),
+                                }
+                            }
                             Payload::Identifier(string) => TypeId {
                                 group: TypeGroup::None,
                                 concrete: TypeOrPlaceholder::Dispatch(node.scope.unwrap(), string),

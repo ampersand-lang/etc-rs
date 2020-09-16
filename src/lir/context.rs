@@ -32,6 +32,7 @@ pub mod type_info {
 
 pub const DEFAULT_STACK_SPACE: usize = 64 * 1024;
 pub const DEFAULT_HEAP_SPACE: usize = 1024 * 1024;
+pub const DEFAULT_DATA_SPACE: usize = 1024 * 1024;
 
 #[derive(Debug, Fail)]
 #[fail(display = "invalid NULL access")]
@@ -149,7 +150,8 @@ pub struct ExecutionContext {
     pub(crate) bindings: Scopes,
     pub(crate) call_stack: Vec<ExecAddress>,
     pub(crate) instr_ptr: ExecAddress,
-    pub(crate) data: Vec<Global>,
+    pub(crate) text: Vec<Function>,
+    pub(crate) data: Vec<u8>,
     pub(crate) heap: Vec<u8>,
     pub(crate) stack: Vec<u8>,
     pub(crate) stack_ptr: usize,
@@ -159,7 +161,7 @@ pub struct ExecutionContext {
 }
 
 impl ExecutionContext {
-    pub const MAIN: GlobId = 0;
+    pub const MAIN: FuncId = 0;
 
     pub fn new(target: Target) -> Self {
         Self {
@@ -167,7 +169,8 @@ impl ExecutionContext {
             bindings: Scopes::new(),
             call_stack: Vec::new(),
             instr_ptr: ExecAddress(0, 0),
-            data: Vec::new(),
+            text: Vec::new(),
+            data: Vec::with_capacity(DEFAULT_DATA_SPACE),
             stack: vec![0; DEFAULT_STACK_SPACE],
             heap: vec![0; DEFAULT_HEAP_SPACE],
             stack_ptr: 0,
@@ -235,8 +238,11 @@ impl ExecutionContext {
         let src = range.start + src.1 as usize..range.end + src.1 as usize;
         let dst = range.start + dst.1 as usize..range.end + dst.1 as usize;
         match (src_section, dst_section) {
-            (Section::Data, _) => Err(From::from(InvalidSectionAccess)),
-            (_, Section::Data) => Err(From::from(InvalidSectionAccess)),
+            (Section::Data, Section::Data) => Ok(self.data.copy_within(src, dst.start)),
+            (Section::Data, Section::Stack) => Ok(self.stack[dst].copy_from_slice(&self.data[src])),
+            (Section::Stack, Section::Data) => Ok(self.data[dst].copy_from_slice(&self.stack[src])),
+            (Section::Heap, Section::Data) => Ok(self.data[dst].copy_from_slice(&self.heap[src])),
+            (Section::Data, Section::Heap) => Ok(self.heap[dst].copy_from_slice(&self.data[src])),
             (Section::Heap, Section::Heap) => Ok(self.heap.copy_within(src, dst.start)),
             (Section::Heap, Section::Stack) => Ok(self.stack[dst].copy_from_slice(&self.heap[src])),
             (Section::Stack, Section::Heap) => Ok(self.heap[dst].copy_from_slice(&self.stack[src])),
@@ -252,7 +258,7 @@ impl ExecutionContext {
     pub fn read_physical(&self, addr: PhysicalAddress, range: Range<usize>) -> Fallible<&[u8]> {
         let range = range.start + addr.1 as usize..range.end + addr.1 as usize;
         match addr.0 {
-            Section::Data => Err(From::from(InvalidSectionAccess)),
+            Section::Data => Ok(&self.data[range]),
             Section::Heap => Ok(&self.heap[range]),
             Section::Stack => Ok(&self.stack[range]),
         }
@@ -266,7 +272,7 @@ impl ExecutionContext {
     pub fn write_physical(&mut self, addr: PhysicalAddress, bytes: &[u8]) -> Fallible<()> {
         let range = addr.1 as usize..bytes.len() + addr.1 as usize;
         match addr.0 {
-            Section::Data => Err(From::from(InvalidSectionAccess)),
+            Section::Data => Ok(self.data[range].copy_from_slice(bytes)),
             Section::Heap => Ok(self.heap[range].copy_from_slice(bytes)),
             Section::Stack => Ok(self.stack[range].copy_from_slice(bytes)),
         }
@@ -281,10 +287,6 @@ impl ExecutionContext {
         match ir.instr {
             Instruction::Alloca => {
                 let t = match ir.args[0] {
-                    Value::Global(handle) => match self.data[handle] {
-                        Global::Constant(Value::Type(t)) => t,
-                        _ => return Err(From::from(TypeError)),
-                    },
                     Value::Type(t) => t,
                     _ => return Err(From::from(TypeError)),
                 };
@@ -298,26 +300,18 @@ impl ExecutionContext {
             }
             Instruction::Store => {
                 let t = match ir.args[0] {
-                    Value::Global(handle) => match self.data[handle] {
-                        Global::Constant(Value::Type(t)) => t,
-                        _ => return Err(From::from(TypeError)),
-                    },
                     Value::Type(t) => t,
                     _ => return Err(From::from(TypeError)),
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
-                    Value::Global(handle) => match self.data[handle] {
-                        Global::Constant(Value::Address(ptr)) => ptr,
-                        _ => return Err(From::from(TypeError)),
-                    },
                     Value::Address(ptr) => ptr,
                     _ => return Err(From::from(TypeError)),
                 };
                 let mut value = vec![0_u8; t.size];
                 match ir.args[2] {
                     Value::Unit => {}
-                    Value::Global(_handle) => todo!(),
+                    Value::Function(_id) => todo!(),
                     Value::Uint(int) => int.write_bytes(&mut value),
                     Value::Float(flt) => flt.write_bytes(&mut value),
                     Value::Unref(addr) => value.copy_from_slice(self.read(addr, 0..t.size)?),
@@ -334,19 +328,11 @@ impl ExecutionContext {
             }
             Instruction::Load => {
                 let t = match ir.args[0] {
-                    Value::Global(handle) => match self.data[handle] {
-                        Global::Constant(Value::Type(t)) => t,
-                        _ => return Err(From::from(TypeError)),
-                    },
                     Value::Type(t) => t,
                     _ => return Err(From::from(TypeError)),
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
-                    Value::Global(handle) => match self.data[handle] {
-                        Global::Constant(Value::Address(ptr)) => ptr,
-                        _ => return Err(From::from(TypeError)),
-                    },
                     Value::Address(ptr) => ptr,
                     _ => return Err(From::from(TypeError)),
                 };
@@ -357,7 +343,7 @@ impl ExecutionContext {
             }
             Instruction::Call => {
                 let func = match ir.args[0] {
-                    Value::Global(handle) => handle,
+                    Value::Function(handle) => handle,
                     _ => return Err(From::from(TypeError)),
                 };
 
@@ -374,10 +360,6 @@ impl ExecutionContext {
                 let mut children: SmallVec<[Option<NodeId>; 4]> = SmallVec::new();
                 for child in &ir.args[1..] {
                     match child {
-                        Value::Global(handle) => match self.data[*handle] {
-                            Global::Constant(Value::Node(n)) => children.push(Some(n)),
-                            _ => return Err(From::from(TypeError)),
-                        },
                         Value::Node(n) => children.push(Some(*n)),
                         _ => return Err(From::from(TypeError)),
                     }
@@ -420,10 +402,7 @@ impl ExecutionContext {
 
     fn run(&mut self, lazy: &mut LazyUpdate, res: &Resources<&NamedType>) -> Fallible<Value> {
         loop {
-            let func = match &self.data[self.instr_ptr.0 as usize] {
-                Global::Function(func) => func,
-                _ => panic!("global is not a function"),
-            };
+            let func = &self.text[self.instr_ptr.0 as usize];
             let ir: Ir = func.body[self.instr_ptr.1 as usize].clone();
             self.instr_ptr.1 += 1;
             match self.execute(lazy, res, ir)? {
@@ -437,7 +416,7 @@ impl ExecutionContext {
         &mut self,
         lazy: &mut LazyUpdate,
         res: &Resources<&NamedType>,
-        f: GlobId,
+        f: FuncId,
         args: &[TypedValue],
     ) -> Fallible<Value> {
         self.call_stack.push(self.instr_ptr);
@@ -448,7 +427,7 @@ impl ExecutionContext {
             let mut value = vec![0_u8; t.size];
             match val {
                 Value::Unit => {}
-                Value::Global(_handle) => todo!(),
+                Value::Function(_id) => todo!(),
                 Value::Uint(int) => int.write_bytes(&mut value),
                 Value::Float(flt) => flt.write_bytes(&mut value),
                 Value::Unref(addr) => value.copy_from_slice(self.read(*addr, 0..t.size)?),

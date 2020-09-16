@@ -18,6 +18,7 @@ pub fn compile_update(
     mut nodes: Resources<(
         &mut Node,
         &Payload,
+        &String,
         &mut Value,
         &mut Elems,
         &mut Fields,

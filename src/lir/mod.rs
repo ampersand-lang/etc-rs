@@ -14,7 +14,11 @@ pub type ThreadId = Handle<context::ExecutionContext>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Binding(pub(crate) usize, pub(crate) i32);
+
+#[deprecated]
 pub type GlobId = usize;
+
+pub type FuncId = usize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedValue {
@@ -30,7 +34,6 @@ pub type Bytes = SmallVec<[u8; 32]>;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
     Unit,
-    Global(GlobId),
     Unref(context::VirtualAddress),
     Address(context::VirtualAddress),
     Uint(u64),
@@ -41,6 +44,7 @@ pub enum Value {
     Struct(Handle<Fields>),
     Tagged(Handle<Value>, Handle<Fields>, Handle<Variants>),
     Union(Handle<Bytes>),
+    Function(FuncId),
 }
 
 #[derive(Debug, Clone)]
@@ -74,12 +78,6 @@ pub struct Function {
     pub(crate) param_types: SmallVec<[TypeId; 4]>,
     pub(crate) result_type: TypeId,
     pub(crate) body: Vec<Ir>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Global {
-    Function(Function),
-    Constant(Value),
 }
 
 #[cfg(test)]

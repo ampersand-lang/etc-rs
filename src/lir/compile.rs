@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use crate::assets::{Asset, Handle, Resources};
 use crate::ast::{Kind, Node};
 use crate::lir::builder::*;
-use crate::lir::context::ExecutionContext;
+use crate::lir::context::{ExecutionContext, VirtualAddress};
 use crate::types::NamedType;
 use crate::values::Payload;
 
@@ -18,6 +18,7 @@ pub trait Compile<B>: Asset + Sized {
         res: &mut Resources<(
             &mut Self,
             &Payload,
+            &String,
             &mut Value,
             &mut Elems,
             &mut Fields,
@@ -36,6 +37,7 @@ impl<'a> Compile<Builder<'a>> for Node {
         res: &mut Resources<(
             &mut Self,
             &Payload,
+            &String,
             &mut Value,
             &mut Elems,
             &mut Fields,
@@ -46,19 +48,20 @@ impl<'a> Compile<Builder<'a>> for Node {
     ) -> Fallible<Self::Output> {
         let root = res.get::<Node>(handle).unwrap();
         let f = builder.function().result(root.type_of.unwrap());
-        let (_, b): (GlobId, Builder<'a>) = Node::compile(handle, res, f)?;
+        let (_, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
         Ok(b.build())
     }
 }
 
 impl<'a> Compile<FunctionBuilder<'a>> for Node {
-    type Output = (GlobId, Builder<'a>);
+    type Output = (FuncId, Builder<'a>);
 
     fn compile(
         handle: Handle<Self>,
         res: &mut Resources<(
             &mut Self,
             &Payload,
+            &String,
             &mut Value,
             &mut Elems,
             &mut Fields,
@@ -82,6 +85,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
         res: &mut Resources<(
             &mut Self,
             &Payload,
+            &String,
             &mut Value,
             &mut Elems,
             &mut Fields,
@@ -98,7 +102,12 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 Payload::Integer(i) => (Value::Uint(i), builder.0),
                 Payload::Float(f) => (Value::Float(f), builder.0),
                 Payload::Type(t) => (Value::Type(t), builder.0),
-                Payload::String(_string) => todo!(),
+                Payload::String(string) => {
+                    let string = res.get::<String>(string).unwrap();
+                    let mut addr = VirtualAddress(0);
+                    builder.0.builder = builder.0.builder.add_global(&mut addr, string.as_str());
+                    (Value::Address(addr), builder.0)
+                }
                 Payload::Identifier(ident) => {
                     let handle =
                         Handle::from_name(this.scope.unwrap(), &ident.as_u128().to_le_bytes());
@@ -108,7 +117,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     };
                     (value, builder.0)
                 }
-                Payload::Function(id) => (Value::Global(id), builder.0),
+                Payload::Function(id) => (Value::Function(id), builder.0),
             },
             Kind::Block => {
                 let mut result = Value::Unit;
@@ -127,9 +136,9 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 let handle = this.children[1].unwrap();
                 let body = res.get::<Node>(this.children[1].unwrap()).unwrap();
                 let f = builder.0.builder.function().result(body.type_of.unwrap());
-                let (id, b): (GlobId, Builder<'a>) = Node::compile(handle, res, f)?;
+                let (id, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
                 builder.0.builder = b;
-                let result = Value::Global(id);
+                let result = Value::Function(id);
                 (result, builder.0)
             }
             Kind::Application => {

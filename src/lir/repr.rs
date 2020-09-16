@@ -1,5 +1,6 @@
 use std::convert::TryInto;
 use std::mem;
+use std::str;
 
 use crate::types::TypeInfo;
 
@@ -127,3 +128,22 @@ impl_repr_num!(i64);
 impl_repr_num!(i128);
 impl_repr_num!(f32);
 impl_repr_num!(f64);
+
+impl Repr for str {
+    fn type_info(&self) -> TypeInfo {
+        TypeInfo::new(self.len(), 1)
+    }
+
+    fn write_bytes(&self, out: &mut [u8]) {
+        out.copy_from_slice(&self.as_bytes())
+    }
+
+    fn copy_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() != self.len() {
+            panic!("attempt to copy from slice of invalid length");
+        }
+        unsafe {
+            self.as_bytes_mut().copy_from_slice(str::from_utf8(bytes).expect("invalid utf-8").as_bytes())
+        }
+    }
+}

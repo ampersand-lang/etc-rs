@@ -287,7 +287,7 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if !self.errors.is_empty() {
-            return Some(Err(self.errors.remove(1)));
+            return Some(Err(self.errors.remove(0)));
         }
         
         self.data.next.take().map(Ok).or_else(|| {
@@ -390,6 +390,73 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                     kind: TokenKind::Curly(Side::Right),
                     value: TokenValue::None,
                 })),
+                '"' => {
+                    enum State {
+                        Normal,
+                        Backslash,
+                    }
+                    
+                    let mut string = String::new();
+                    let mut state = State::Normal;
+                    while let Some(ch) = self.data.src.next() {
+                        match state {
+                            State::Normal => {
+                                match ch {
+                                    '"' => break,
+                                    '\\' => {
+                                        self.data.column += 1;
+                                        state = State::Backslash;
+                                    }
+                                    '\n' => {
+                                        self.data.line += 1;
+                                        self.data.column = 0;
+                                    }
+                                    next => {
+                                        self.data.column += 1;
+                                        string.push(next);
+                                    }
+                                }
+                            }
+                            State::Backslash => {
+                                match ch {
+                                    '\\' => {
+                                        self.data.column += 1;
+                                        state = State::Normal;
+                                        string.push('\\');
+                                    }
+                                    'e' => {
+                                        self.data.column += 1;
+                                        state = State::Normal;
+                                        string.push('\x1b');
+                                    }
+                                    'n' => {
+                                        self.data.column += 1;
+                                        state = State::Normal;
+                                        string.push('\n');
+                                    }
+                                    't' => {
+                                        self.data.column += 1;
+                                        state = State::Normal;
+                                        string.push('\t');
+                                    }
+                                    'r' => {
+                                        self.data.column += 1;
+                                        state = State::Normal;
+                                        string.push('\r');
+                                    }
+                                    _ => return Some(Err(From::from(LexerError { location }))),
+                                }
+                            }
+                        }
+                    }
+                    let str_handle = Handle::from_hash(&string);
+                    self.res.insert(str_handle, string);
+                    Some(Ok(Token {
+                        location: handle,
+                        kind: TokenKind::String,
+                        value: TokenValue::String(str_handle),
+                    }))
+                }
                 // TODO: real numbers
                 first @ '0'..='9' => {
                     let mut int = first.to_digit(10).unwrap() as u64;
