@@ -17,21 +17,19 @@ pub fn parse(state: &mut State) -> Fallible<NodeId> {
         // root never returns an error
         let result = root(state).unwrap();
         if let Some(tok) = state.lexer.peek() {
-            if let Ok(tok) = tok {
-                let kind = tok.kind;
-                let location = tok.location;
-                errors.push(From::from(UnexpectedToken(
-                    kind,
-                    state
-                        .lexer
-                        .as_ref()
-                        .res
-                        .get::<Location>(location)
-                        .unwrap()
-                        .as_ref()
-                        .clone(),
-                )));
-            }
+            let kind = tok.kind;
+            let location = tok.location;
+            errors.push(From::from(UnexpectedToken(
+                kind,
+                state
+                    .lexer
+                    .res
+                    .get::<Location>(location)
+                    .unwrap()
+                    .as_ref()
+                    .clone(),
+            )));
+            
             let mut depth = 0_usize;
             let mut tok = match state.lexer.next().unwrap() {
                 Ok(tok) => tok,
@@ -63,6 +61,9 @@ pub fn parse(state: &mut State) -> Fallible<NodeId> {
                 }
             }
             inner(state, errors)
+        } else if let Some(err) = state.lexer.next_err() {
+            errors.push(err);
+            None
         } else {
             Some(result)
         }
@@ -341,8 +342,6 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
 
 #[cfg(test)]
 mod tests {
-    use peekmore_asref::PeekMore;
-
     use crate::assets::*;
     use crate::ast::Node;
     use crate::lexer::*;
@@ -362,8 +361,7 @@ mod tests {
                 "parse",
                 "",
                 world.resources::<(&mut String, &mut Location)>(),
-            )
-            .peekmore(),
+            ),
             nodes: world.resources::<&mut Node>(),
         })
         .unwrap();
@@ -373,8 +371,7 @@ mod tests {
                 "parse",
                 "5",
                 world.resources::<(&mut String, &mut Location)>(),
-            )
-            .peekmore(),
+            ),
             nodes: world.resources::<&mut Node>(),
         })
         .unwrap();
@@ -384,8 +381,7 @@ mod tests {
                 "parse",
                 "x := f 5, a, a => a + 1; x",
                 world.resources::<(&mut String, &mut Location)>(),
-            )
-            .peekmore(),
+            ),
             nodes: world.resources::<&mut Node>(),
         })
         .unwrap();

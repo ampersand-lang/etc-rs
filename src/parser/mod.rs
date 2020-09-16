@@ -3,7 +3,6 @@ use std::iter;
 
 use either::Either;
 use failure::{Fail, Fallible};
-use peekmore_asref::PeekMoreIterator;
 use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
@@ -26,14 +25,14 @@ pub struct UnexpectedToken(TokenKind, Location);
 /// The current parsing state.
 pub struct State<'a, 'res> {
     /// A n-peekable lexer wrapper.
-    pub(crate) lexer: PeekMoreIterator<Lexer<'a, 'res>>,
+    pub(crate) lexer: Lexer<'a, 'res>,
     /// Some resources.
     pub(crate) nodes: Resources<&'res mut Node>,
 }
 
 impl<'a, 'res> State<'a, 'res> {
     pub fn location(&mut self) -> Option<Handle<Location>> {
-        self.lexer.peek().and_then(|tok| tok.as_ref().ok().map(|tok| tok.location))
+        self.lexer.peek().map(|tok| tok.location)
     }
 }
 
@@ -47,11 +46,11 @@ pub fn repeat<T>(
     move |state| {
         let mut array = SmallVec::new();
         loop {
-            let lexer = state.lexer.as_ref().data.clone();
+            let lexer = state.lexer.data.clone();
             match f(state) {
                 Ok(elem) => array.push(elem),
                 Err(_) => {
-                    state.lexer.as_mut().data = lexer;
+                    state.lexer.data = lexer;
                     return Ok(array);
                 }
             }
@@ -67,10 +66,10 @@ pub fn optional<T>(
     f: impl Fn(&mut State) -> Fallible<T>,
 ) -> impl Fn(&mut State) -> Fallible<Option<T>> {
     move |state| {
-        let lexer = state.lexer.as_ref().data.clone();
+        let lexer = state.lexer.data.clone();
         Ok(f(state)
             .map_err(|_| {
-                state.lexer.as_mut().data = lexer;
+                state.lexer.data = lexer;
             })
             .ok())
     }
@@ -150,9 +149,9 @@ pub fn or<T, U>(
     b: impl Fn(&mut State) -> Fallible<U>,
 ) -> impl Fn(&mut State) -> Fallible<Either<T, U>> {
     move |state| {
-        let lexer = state.lexer.as_ref().data.clone();
+        let lexer = state.lexer.data.clone();
         a(state).map(Either::Left).or_else(|_| {
-            state.lexer.as_mut().data = lexer;
+            state.lexer.data = lexer;
             b(state).map(Either::Right)
         })
     }
@@ -172,30 +171,30 @@ pub fn or7<T: Clone>(
     g: impl Fn(&mut State) -> Fallible<T>,
 ) -> impl Fn(&mut State) -> Fallible<T> {
     move |state| {
-        let lexer = state.lexer.as_ref().data.clone();
+        let lexer = state.lexer.data.clone();
         a(state)
             .or_else(|_| {
-                state.lexer.as_mut().data = lexer.clone();
+                state.lexer.data = lexer.clone();
                 b(state)
             })
             .or_else(|_| {
-                state.lexer.as_mut().data = lexer.clone();
+                state.lexer.data = lexer.clone();
                 c(state)
             })
             .or_else(|_| {
-                state.lexer.as_mut().data = lexer.clone();
+                state.lexer.data = lexer.clone();
                 d(state)
             })
             .or_else(|_| {
-                state.lexer.as_mut().data = lexer.clone();
+                state.lexer.data = lexer.clone();
                 e(state)
             })
             .or_else(|_| {
-                state.lexer.as_mut().data = lexer.clone();
+                state.lexer.data = lexer.clone();
                 f(state)
             })
             .or_else(|_| {
-                state.lexer.as_mut().data = lexer.clone();
+                state.lexer.data = lexer.clone();
                 g(state)
             })
     }
@@ -231,7 +230,7 @@ pub fn literal(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<()> {
                         tok.kind,
                         state
                             .lexer
-                            .as_ref()
+                            
                             .res
                             .get::<Location>(tok.location)
                             .unwrap()
@@ -271,7 +270,7 @@ pub fn atom(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<NodeId> {
                         tok.kind,
                         state
                             .lexer
-                            .as_ref()
+                            
                             .res
                             .get::<Location>(tok.location)
                             .unwrap()

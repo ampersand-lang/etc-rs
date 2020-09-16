@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::str;
 
-use failure::{Fail, Fallible};
+use failure::{Error, Fail, Fallible};
 
 use crate::assets::{Handle, Resources};
 
@@ -222,6 +222,7 @@ pub struct Token {
 /// Cloneable lexer data. Specifies at which point in the source file the lexer is currently at.
 #[derive(Clone)]
 pub struct LexerData<'a> {
+    next: Option<Token>,
     src: Peekable<str::Chars<'a>>,
     filename: &'a str,
     line: usize,
@@ -232,6 +233,7 @@ pub struct LexerData<'a> {
 pub struct Lexer<'a, 'res> {
     pub(crate) res: Resources<(&'res mut String, &'res mut Location)>,
     pub(crate) data: LexerData<'a>,
+    pub(crate) errors: Vec<Error>,
 }
 
 impl<'a, 'res> Lexer<'a, 'res> {
@@ -244,11 +246,38 @@ impl<'a, 'res> Lexer<'a, 'res> {
         Self {
             res,
             data: LexerData {
+                next: None,
                 src: src.chars().peekable(),
                 filename,
                 line: 0,
                 column: 0,
             },
+            errors: Vec::new(),
+        }
+    }
+
+    pub fn next_err(&mut self) -> Option<Error> {
+        if self.errors.is_empty() {
+            None
+        } else {
+            Some(self.errors.remove(0))
+        }
+    }
+
+    pub fn peek(&mut self) -> Option<Token> {
+        match self.data.next {
+            None => {
+                self.data.next = match self.next() {
+                    Some(Ok(next)) => Some(next),
+                    Some(Err(err)) => {
+                        self.errors.push(err);
+                        None
+                    }
+                    None => None,
+                };
+                self.data.next
+            }
+            next @ Some(_) => next,
         }
     }
 }
@@ -257,154 +286,160 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
     type Item = Fallible<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let location = Location {
-            line: self.data.line,
-            column: self.data.column,
-            filename: self.data.filename.to_string(),
-        };
-        let handle = Handle::from_hash(&format!("{}", location));
-        self.res.insert(handle, location.clone());
-        while let Some(&ch) = self.data.src.peek() {
-            if ch.is_whitespace() {
-                match ch {
-                    '\n' => {
-                        self.data.line += 1;
-                        self.data.column = 0;
-                    }
-                    _ => self.data.column += 1,
-                }
-                self.data.src.next();
-            } else {
-                break;
-            }
+        if !self.errors.is_empty() {
+            return Some(Err(self.errors.remove(1)));
         }
-        self.data.column += 1;
-        match self.data.src.next()? {
-            ';' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Semicolon,
-                value: TokenValue::None,
-            })),
-            ',' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Comma,
-                value: TokenValue::None,
-            })),
-            ':' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Colon,
-                value: TokenValue::None,
-            })),
-            '=' => match self.data.src.peek() {
-                Some(&'>') => {
-                    self.data.column += 1;
+        
+        self.data.next.take().map(Ok).or_else(|| {
+            let location = Location {
+                line: self.data.line,
+                column: self.data.column,
+                filename: self.data.filename.to_string(),
+            };
+            let handle = Handle::from_hash(&format!("{}", location));
+            self.res.insert(handle, location.clone());
+            while let Some(&ch) = self.data.src.peek() {
+                if ch.is_whitespace() {
+                    match ch {
+                        '\n' => {
+                            self.data.line += 1;
+                            self.data.column = 0;
+                        }
+                        _ => self.data.column += 1,
+                    }
                     self.data.src.next();
-                    Some(Ok(Token {
-                        location: handle,
-                        kind: TokenKind::EqualsArrow,
-                        value: TokenValue::None,
-                    }))
+                } else {
+                    break;
                 }
-                _ => Some(Ok(Token {
+            }
+            self.data.column += 1;
+            match self.data.src.next()? {
+                ';' => Some(Ok(Token {
                     location: handle,
-                    kind: TokenKind::Equals,
+                    kind: TokenKind::Semicolon,
                     value: TokenValue::None,
                 })),
-            },
-            '.' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Dot,
-                value: TokenValue::None,
-            })),
-            '\'' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::SingleQuote,
-                value: TokenValue::None,
-            })),
-            '$' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Dollar,
-                value: TokenValue::None,
-            })),
-            '(' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Paren(Side::Left),
-                value: TokenValue::None,
-            })),
-            ')' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Paren(Side::Right),
-                value: TokenValue::None,
-            })),
-            '[' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Bracket(Side::Left),
-                value: TokenValue::None,
-            })),
-            ']' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Bracket(Side::Right),
-                value: TokenValue::None,
-            })),
-            '{' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Curly(Side::Left),
-                value: TokenValue::None,
-            })),
-            '}' => Some(Ok(Token {
-                location: handle,
-                kind: TokenKind::Curly(Side::Right),
-                value: TokenValue::None,
-            })),
-            // TODO: real numbers
-            first @ '0'..='9' => {
-                let mut int = first.to_digit(10).unwrap() as u64;
-                while let Some(&ch) = self.data.src.peek() {
-                    match ch {
-                        next @ '0'..='9' => {
-                            self.data.column += 1;
-                            self.data.src.next();
-                            int *= 10;
-                            int += next.to_digit(10).unwrap() as u64;
-                        }
-                        x if x.is_whitespace() => break,
-                        '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '[' | ']'
-                        | '{' | '}' => break,
-                        _ => return Some(Err(From::from(LexerError { location }))),
-                    }
-                }
-                Some(Ok(Token {
+                ',' => Some(Ok(Token {
                     location: handle,
-                    kind: TokenKind::Integer,
-                    value: TokenValue::Integer(int),
-                }))
-            }
-            first if first.is_ident_begin() => {
-                let mut ident = String::new();
-                ident.push(first);
-                while let Some(&ch) = self.data.src.peek() {
-                    match ch {
-                        next if next.is_ident_cont() => {
-                            self.data.column += 1;
-                            self.data.src.next();
-                            ident.push(next);
-                        }
-                        x if x.is_whitespace() => break,
-                        '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '[' | ']'
-                        | '{' | '}' => break,
-                        _ => return Some(Err(From::from(LexerError { location }))),
-                    }
-                }
-                let id_handle = Handle::from_hash(&ident);
-                self.res.insert(id_handle, ident);
-                Some(Ok(Token {
+                    kind: TokenKind::Comma,
+                    value: TokenValue::None,
+                })),
+                ':' => Some(Ok(Token {
                     location: handle,
-                    kind: TokenKind::Identifier,
-                    value: TokenValue::Identifier(id_handle),
-                }))
+                    kind: TokenKind::Colon,
+                    value: TokenValue::None,
+                })),
+                '=' => match self.data.src.peek() {
+                    Some(&'>') => {
+                        self.data.column += 1;
+                        self.data.src.next();
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::EqualsArrow,
+                            value: TokenValue::None,
+                        }))
+                    }
+                    _ => Some(Ok(Token {
+                        location: handle,
+                        kind: TokenKind::Equals,
+                        value: TokenValue::None,
+                    })),
+                },
+                '.' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Dot,
+                    value: TokenValue::None,
+                })),
+                '\'' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::SingleQuote,
+                    value: TokenValue::None,
+                })),
+                '$' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Dollar,
+                    value: TokenValue::None,
+                })),
+                '(' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Paren(Side::Left),
+                    value: TokenValue::None,
+                })),
+                ')' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Paren(Side::Right),
+                    value: TokenValue::None,
+                })),
+                '[' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Bracket(Side::Left),
+                    value: TokenValue::None,
+                })),
+                ']' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Bracket(Side::Right),
+                    value: TokenValue::None,
+                })),
+                '{' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Curly(Side::Left),
+                    value: TokenValue::None,
+                })),
+                '}' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Curly(Side::Right),
+                    value: TokenValue::None,
+                })),
+                // TODO: real numbers
+                first @ '0'..='9' => {
+                    let mut int = first.to_digit(10).unwrap() as u64;
+                    while let Some(&ch) = self.data.src.peek() {
+                        match ch {
+                            next @ '0'..='9' => {
+                                self.data.column += 1;
+                                self.data.src.next();
+                                int *= 10;
+                                int += next.to_digit(10).unwrap() as u64;
+                            }
+                            x if x.is_whitespace() => break,
+                            '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '[' | ']'
+                                | '{' | '}' => break,
+                            _ => return Some(Err(From::from(LexerError { location }))),
+                        }
+                    }
+                    Some(Ok(Token {
+                        location: handle,
+                        kind: TokenKind::Integer,
+                        value: TokenValue::Integer(int),
+                    }))
+                }
+                first if first.is_ident_begin() => {
+                    let mut ident = String::new();
+                    ident.push(first);
+                    while let Some(&ch) = self.data.src.peek() {
+                        match ch {
+                            next if next.is_ident_cont() => {
+                                self.data.column += 1;
+                                self.data.src.next();
+                                ident.push(next);
+                            }
+                            x if x.is_whitespace() => break,
+                            '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '[' | ']'
+                                | '{' | '}' => break,
+                            _ => return Some(Err(From::from(LexerError { location }))),
+                        }
+                    }
+                    let id_handle = Handle::from_hash(&ident);
+                    self.res.insert(id_handle, ident);
+                    Some(Ok(Token {
+                        location: handle,
+                        kind: TokenKind::Identifier,
+                        value: TokenValue::Identifier(id_handle),
+                    }))
+                }
+                _ => Some(Err(From::from(LexerError { location }))),
             }
-            _ => Some(Err(From::from(LexerError { location }))),
-        }
+        })
     }
 }
 

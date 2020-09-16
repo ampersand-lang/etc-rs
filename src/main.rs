@@ -2,8 +2,6 @@
 
 //! The reference compiler for ampersand.
 
-use peekmore_asref::PeekMore;
-
 use assets::*;
 use ast::{Node, RootNode};
 use dispatch::Dispatcher;
@@ -60,8 +58,7 @@ fn main() {
             "hello.amp",
             SRC,
             world.resources::<(&mut String, &mut Location)>(),
-        )
-        .peekmore(),
+        ),
         nodes: world.resources::<&mut Node>(),
     })
         .unwrap();

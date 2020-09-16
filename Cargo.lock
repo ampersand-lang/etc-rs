@@ -137,7 +137,6 @@ dependencies = [
  "num",
  "num_enum",
  "parking_lot",
- "peekmore_asref",
  "rayon",
  "smallvec",
  "uuid",
@@ -389,13 +388,6 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "winapi",
-]
-
-[[package]]
-name = "peekmore_asref"
-version = "0.5.6"
-dependencies = [
- "smallvec",
 ]
 
 [[package]]
