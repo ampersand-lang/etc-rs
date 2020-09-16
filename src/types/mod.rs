@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::fmt::{self, Display};
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use smallvec::SmallVec;
@@ -423,4 +424,103 @@ pub enum Type {
     Pointer(TypeId),
     Array(TypeId, usize),
     Slice(TypeId),
+}
+
+/// The configuration for pretty-printing a type.
+#[derive(Default, Debug, Clone)]
+pub struct PrettyConfig {}
+
+/// Wraps a type in a `Debug`- and `Display`-implementing structure, that can also query `TypeId`s
+pub struct PrettyPrinter<'res> {
+    /// The global configuration for this type.
+    config: PrettyConfig,
+    /// Immutable access to types.
+    res: Resources<&'res NamedType>,
+    /// Root type id.
+    id: TypeId,
+}
+
+impl<'res> PrettyPrinter<'res> {
+    /// Initializes a pretty-printer with all the fields.
+    pub fn new(config: PrettyConfig, res: Resources<&'res NamedType>, id: TypeId) -> Self {
+        Self { config, res, id }
+    }
+
+    /// Initializes a pretty-printer with a default config.
+    pub fn with_default(res: Resources<&'res NamedType>, id: TypeId) -> Self {
+        Self {
+            config: Default::default(),
+            res,
+            id,
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub(self) fn as_ref(&self) -> PrettyPrinterRef<'_, 'res> {
+        PrettyPrinterRef {
+            config: &self.config,
+            res: &self.res,
+            id: self.id,
+        }
+    }
+}
+
+impl<'res> Display for PrettyPrinter<'res> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+#[doc(hidden)]
+#[allow(missing_docs)]
+struct PrettyPrinterRef<'a, 'res> {
+    config: &'a PrettyConfig,
+    res: &'a Resources<&'res NamedType>,
+    id: TypeId,
+}
+
+#[doc(hidden)]
+#[allow(missing_docs)]
+impl<'a, 'res> PrettyPrinterRef<'a, 'res> {
+    pub fn new(config: &'a PrettyConfig, res: &'a Resources<&'res NamedType>, id: TypeId) -> Self {
+        Self { config, res, id }
+    }
+}
+
+impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.id.concrete {
+            TypeOrPlaceholder::Type(t) => {
+                let ty = self.res.get::<NamedType>(t).unwrap();
+                if let Some(name) = &ty.name {
+                    write!(f, "{}", name)
+                } else {
+                    match &ty.t {
+    			Type::S8 => write!(f, "s8"),
+    			Type::S16 => write!(f, "s16"),
+    			Type::S32 => write!(f, "s32"),
+    			Type::S64 => write!(f, "s64"),
+    			Type::Sint => write!(f, "sint"),
+    			Type::U8 => write!(f, "u8"),
+    			Type::U16 => write!(f, "u16"),
+    			Type::U32 => write!(f, "u32"),
+    			Type::U64 => write!(f, "u64"),
+    			Type::Uint => write!(f, "uint"),
+    			Type::Float32 => write!(f, "float32"),
+    			Type::Float64 => write!(f, "float64"),
+    			Type::Float => write!(f, "float"),
+    			Type::Struct { ..} => todo!(),
+                        Type::Tagged { .. } => todo!(),
+                        Type::Enum { .. } => todo!(),
+                        Type::Union { .. } => todo!(),
+                        Type::Function { .. } => todo!(),
+                        Type::Pointer(pointee) => write!(f, "^{}", PrettyPrinterRef::new(self.config, self.res, *pointee)),
+                        Type::Array(elem, size) => write!(f, "$[{}; {}]", PrettyPrinterRef::new(self.config, self.res, *elem), size),
+                        Type::Slice(elem) => write!(f, "$[{}]", PrettyPrinterRef::new(self.config, self.res, *elem)),
+                    }
+                }
+            }
+            _ => Err(fmt::Error),
+        }
+    }
 }

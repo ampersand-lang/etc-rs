@@ -1,15 +1,40 @@
 use std::iter;
 
-use failure::Fallible;
+use failure::{Fail, Fallible};
 use hashbrown::HashMap;
 use smallvec::smallvec;
 
+use crate::error::MultiError;
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit};
 use crate::dispatch::*;
 use crate::scope::Scope;
 use crate::types::{primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
+use crate::lexer::Location;
+
+#[derive(Debug, Fail)]
+pub enum InferError {
+    #[fail(display = "type error at {}: expected {:?}, but got {:?}", location, expected, got)]
+    TypeError {
+        location: Location,
+        expected: TypeId,
+        got: TypeId,
+    },
+    #[fail(display = "type at {} is not a function: {:?}", location, typ)]
+    NotAFunction {
+        location: Location,
+        typ: TypeId,
+    },
+    #[fail(display = "no matching definition found at {}", location)]
+    NoDefinitions {
+        location: Location,
+    },
+    #[fail(display = "multiple matching definition found at {}", location)]
+    MultipleDefinitions {
+        location: Location,
+    },
+}
 
 pub fn infer_update(
     lazy: &mut LazyUpdate,
@@ -17,8 +42,10 @@ pub fn infer_update(
     _scopes: Resources<&Scope>,
     mut dispatch: Resources<&mut Dispatcher>,
     named_types: Resources<&NamedType>,
+    locations: Resources<&Location>,
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<()> {
+    let mut errors = Vec::new();
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
         let mut types = HashMap::new();
@@ -85,8 +112,7 @@ pub fn infer_update(
                                     })
                                     .collect()
                             }
-                            // TODO: error
-                            _ => todo!(),
+                            _ => panic!("did the validation stage run?"),
                         };
                         let result_type = node.children.get(1).and_then(|last| {
                             last.and_then(|last| nodes.get::<Node>(last).unwrap().type_of.clone())
@@ -119,8 +145,13 @@ pub fn infer_update(
                                         Type::Function { result_type, .. } => {
                                             Some(result_type.clone())
                                         }
-                                        // TODO: error
-                                        _ => todo!(),
+                                        _ => {
+                                            errors.push(From::from(InferError::NotAFunction {
+                                                location: locations.get::<Location>(func.location).unwrap().as_ref().clone(),
+                                                typ,
+                                            }));
+                                            return;
+                                        }
                                     }
                                 }
                                 TypeOrPlaceholder::Dispatch(scope, handle) => {
@@ -139,20 +170,20 @@ pub fn infer_update(
                                         dispatch.get::<Dispatcher>(DispatchId::from_name(
                                             name.0,
                                             &name.1.as_u128().to_le_bytes(),
-                                        ));
-                                    if let Some(dispatch) = dispatch {
-                                        let query =
-                                            Query::new(name, IsFunction::Yes, Some(args), None);
-                                        let results = dispatch.query(&query, &named_types);
-                                        match results.len() {
-                                            // TODO: traverse parents
-                                            0 => todo!(),
-                                            1 => Some(results[0].result_type()),
-                                            // TODO: error
-                                            _ => todo!(),
+                                        )).unwrap();
+                                    let query =
+                                        Query::new(name, IsFunction::Yes, Some(args), None);
+                                    let results = dispatch.query(&query, &named_types);
+                                    match results.len() {
+                                        // TODO: traverse parents
+                                        0 => todo!(),
+                                        1 => Some(results[0].result_type()),
+                                        _ => {
+                                            errors.push(From::from(InferError::MultipleDefinitions {
+                                                location: locations.get::<Location>(func.location).unwrap().as_ref().clone(),
+                                            }));
+                                            return;
                                         }
-                                    } else {
-                                        panic!("error");
                                     }
                                 }
                                 _ => todo!(),
@@ -250,5 +281,9 @@ pub fn infer_update(
             nodes.get_mut::<Node>(handle).unwrap().type_of = Some(typ);
         }
     }
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(From::from(MultiError::from(errors)))
+    }
 }

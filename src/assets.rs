@@ -784,6 +784,7 @@ impl World {
 }
 
 unsafe impl Sync for World {}
+unsafe impl Send for World {}
 
 pub trait Res {
     fn borrow(world: &World);
