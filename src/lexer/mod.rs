@@ -1,3 +1,4 @@
+//! Lexical analysis for ampersand.
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::str;
@@ -12,8 +13,18 @@ mod private {
     impl Seal for char {}
 }
 
+/// An extension trait for characters.
 pub trait CharExt: private::Seal {
+    /// A predicate for checking if the character may be the beginning of an identifier.
+    ///
+    /// Returns true if the character contains the Alphabetic Unicode property, or is an ASCII punctuation mark, but not one of the following characters:
+    /// '$', '"', '#', '\'', '(', ')', ',', '.', ':', ';', '=', '[', ']', '{', '}'
     fn is_ident_begin(self) -> bool;
+    
+    /// A predicate for checking if the character may be a character of an identifier, but not the first.
+    ///
+    /// Returns true if the character contains the Alphabetic Unicode property, Numeric Unicode property, or is an ASCII punctuation mark, but not one of the following characters:
+    /// '$', '"', '#', '\'', '(', ')', ',', '.', ':', ';', '=', '[', ']', '{', '}'
     fn is_ident_cont(self) -> bool;
 }
 
@@ -23,7 +34,8 @@ impl CharExt for char {
             || self.is_ascii_punctuation()
                 && !matches!(
                     self,
-                    '"' | '#'
+                    '$' | '"'
+                        | '#'
                         | '\''
                         | '('
                         | ')'
@@ -44,7 +56,8 @@ impl CharExt for char {
             || self.is_ascii_punctuation()
                 && !matches!(
                     self,
-                    '"' | '#'
+                    '$' | '"'
+                        | '#'
                         | '\''
                         | '('
                         | ')'
@@ -61,16 +74,27 @@ impl CharExt for char {
     }
 }
 
+/// An error type for signaling an invalid character, or an invalid sequence of characters.
+///
+/// Valid characters are ASCII punctuation marks, all whitespaces, characters containing the Alphabetic or Numeric Unicode property.
 #[derive(Debug, Fail)]
 #[fail(display = "lexer error at: {}", location)]
 pub struct LexerError {
     location: Location,
 }
 
+/// The source code location mapping.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Location {
+    /// The displayable name of the file in which this location is.
     pub filename: String,
+    /// The line number at which this location is located.
+    ///
+    /// Starts from 0.
     pub line: usize,
+    /// The column number at which this location is located.
+    ///
+    /// Starts from 0.
     pub column: usize,
 }
 
@@ -80,12 +104,19 @@ impl Display for Location {
     }
 }
 
+/// The side of a grouping token.
+///
+/// Grouping tokens are: '(', ')', '[', ']', '{', '}'.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Left,
     Right,
 }
 
+/// The kind of this token.
+///
+/// Specifies what this token is.
+#[allow(missing_docs)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Integer,
@@ -106,6 +137,7 @@ pub enum TokenKind {
 }
 
 impl TokenKind {
+    /// Constructs a token kind from a string. Valid only for punctuation marks.
     pub fn from_str(lit: &str) -> Self {
         match lit {
             ";" => Self::Semicolon,
@@ -153,22 +185,41 @@ impl Display for TokenKind {
     }
 }
 
+/// The value of a token.
+///
+/// Represents what this token will equate to during parsing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenValue {
+    /// No value.
+    ///
+    /// This is chosen for all punctuation marks.
     None,
+    /// An unsigned integer.
+    ///
+    /// Negative numbers are not single tokens, they are expressions.
     Integer(u64),
+    /// A non-negative real number.
+    ///
+    /// Negative numbers are not single tokens, they are expressions.
     Real(f64),
+    /// Any unicode identifier.
     Identifier(Handle<String>),
+    /// Any unicode "-delimited string.
     String(Handle<String>),
 }
 
+/// The actual token structure.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Token {
+    /// Handle to a source code location.
     pub location: Handle<Location>,
+    /// Kind of this token.
     pub kind: TokenKind,
+    /// The payload of this token, if any.
     pub value: TokenValue,
 }
 
+/// Cloneable lexer data. Specifies at which point in the source file the lexer is currently at.
 #[derive(Clone)]
 pub struct LexerData<'a> {
     src: Peekable<str::Chars<'a>>,
@@ -177,12 +228,14 @@ pub struct LexerData<'a> {
     column: usize,
 }
 
+/// Non-cloneable lexer.
 pub struct Lexer<'a, 'res> {
     pub(crate) res: Resources<(&'res mut String, &'res mut Location)>,
     pub(crate) data: LexerData<'a>,
 }
 
 impl<'a, 'res> Lexer<'a, 'res> {
+    /// Creates a new lexer with a filename, source code and some resources.
     pub fn new(
         filename: &'a str,
         src: &'a str,

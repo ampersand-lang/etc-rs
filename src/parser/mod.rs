@@ -1,3 +1,4 @@
+//! Includes helper primitives for defining recursive-descent parsers easily.
 use std::iter;
 
 use either::Either;
@@ -12,19 +13,27 @@ use crate::values::Payload;
 
 pub mod grammar;
 
+/// Returned from parsers if a token was expected, but the lexer returned `None`.
 #[derive(Debug, Fail)]
 #[fail(display = "unexpected end of file")]
 pub struct UnexpectedEof;
 
+/// Returned from parsers if a token was expected, but a different token was returned from the lexer.
 #[derive(Debug, Fail)]
 #[fail(display = "unexpected token: `{}` at {}", _0, _1)]
 pub struct UnexpectedToken(TokenKind, Location);
 
+/// The current parsing state.
 pub struct State<'a, 'res> {
+    /// A n-peekable lexer wrapper.
     pub(crate) lexer: PeekMoreIterator<Lexer<'a, 'res>>,
+    /// Some resources.
     pub(crate) nodes: Resources<&'res mut Node>,
 }
 
+/// Repeat a parser for as long as it returns a valid result.
+///
+/// `{}` in EBNF.
 #[inline]
 pub fn repeat<T>(
     f: impl Fn(&mut State) -> Fallible<T>,
@@ -44,6 +53,9 @@ pub fn repeat<T>(
     }
 }
 
+/// Returns the `Some` variant for a parser if it returned a positive value, or `None` if it didn't parse.
+///
+/// `[]` in EBNF.
 #[inline]
 pub fn optional<T>(
     f: impl Fn(&mut State) -> Fallible<T>,
@@ -58,6 +70,9 @@ pub fn optional<T>(
     }
 }
 
+/// A conjunction of two parsers.
+///
+/// `,` in EBNF.
 #[inline]
 pub fn and<T, U>(
     a: impl Fn(&mut State) -> Fallible<T>,
@@ -66,6 +81,9 @@ pub fn and<T, U>(
     move |state| a(state).and_then(|a| b(state).map(|b| (a, b)))
 }
 
+/// A conjunction of three parsers.
+///
+/// `,` in EBNF.
 #[inline]
 pub fn and3<T, U, V>(
     a: impl Fn(&mut State) -> Fallible<T>,
@@ -79,6 +97,9 @@ pub fn and3<T, U, V>(
     }
 }
 
+/// A conjunction of four parsers.
+///
+/// `,` in EBNF.
 #[inline]
 pub fn and4<T, U, V, W>(
     a: impl Fn(&mut State) -> Fallible<T>,
@@ -94,6 +115,9 @@ pub fn and4<T, U, V, W>(
     }
 }
 
+/// A conjunction of five parsers.
+///
+/// `,` in EBNF.
 #[inline]
 pub fn and5<T, U, V, W, X>(
     a: impl Fn(&mut State) -> Fallible<T>,
@@ -111,6 +135,9 @@ pub fn and5<T, U, V, W, X>(
     }
 }
 
+/// A disjunction of two parsers, that may return different results.
+///
+/// `|` in EBNF.
 #[inline]
 pub fn or<T, U>(
     a: impl Fn(&mut State) -> Fallible<T>,
@@ -125,6 +152,9 @@ pub fn or<T, U>(
     }
 }
 
+/// A disjunction of seven parsers.
+///
+/// `|` in EBNF.
 #[inline]
 pub fn or7<T: Clone>(
     a: impl Fn(&mut State) -> Fallible<T>,
@@ -165,6 +195,9 @@ pub fn or7<T: Clone>(
     }
 }
 
+/// A grouped tree.
+///
+/// Helper for `sep(Left) , ?any parser? , sep(Right)`.
 #[inline]
 pub fn grouped<T>(
     sep: impl Fn(Side) -> TokenKind,
@@ -175,6 +208,7 @@ pub fn grouped<T>(
     }
 }
 
+/// A literal, like a punctuation mark.
 #[inline]
 pub fn literal(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<()> {
     move |state| {
@@ -203,6 +237,7 @@ pub fn literal(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<()> {
     }
 }
 
+/// A literal with a value.
 #[inline]
 pub fn atom(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<NodeId> {
     move |state| {

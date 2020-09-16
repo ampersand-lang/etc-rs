@@ -1,13 +1,21 @@
+//! Includes various utilities for the compiler.
 use std::ops::{BitAnd, Not};
 
 use num::Integer;
 
+/// Treats integers as pointers.
 pub trait IntPtr: Integer + BitAnd<Self, Output = Self> + Not<Output = Self> + Clone {
+    /// Aligns a pointer (integer) downwards according to some align.
+    ///
+    /// The align is given in bytes.
     #[inline]
     fn align_down(self, align: Self) -> Self {
         self & !(align - Self::one())
     }
 
+    /// Aligns a pointer (integer) upwards according to some align.
+    ///
+    /// The align is given in bytes.
     #[inline]
     fn align_up(self, align: Self) -> Self {
         // PERF: cloning here is inefficient for BigInts

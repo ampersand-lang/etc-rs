@@ -1,3 +1,7 @@
+#![cfg_attr(feature = "docs", warn(missing_docs))]
+
+//! The reference compiler for ampersand.
+
 use peekmore_asref::PeekMore;
 
 use assets::*;

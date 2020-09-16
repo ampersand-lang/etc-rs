@@ -1,3 +1,4 @@
+//! Contains the ampersand recursive-descent parser.
 use std::iter;
 
 use failure::{Error, Fallible};
@@ -9,6 +10,7 @@ use crate::lexer::{Location, Side, TokenKind};
 
 use super::*;
 
+/// Parses a program from a `State`, or returns an error, possibly a multi-error.
 pub fn parse(state: &mut State) -> Fallible<NodeId> {
     fn inner(state: &mut State, errors: &mut Vec<Error>) -> Option<NodeId> {
         // root never returns an error

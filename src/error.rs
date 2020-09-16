@@ -1,7 +1,9 @@
+//! Contains error-signaling primitives.
 use std::fmt::{self, Display};
 
 use failure::{Error, Fail};
 
+/// An error type containing multiple other errors.
 #[derive(Debug)]
 pub struct MultiError {
     errors: Vec<Error>,

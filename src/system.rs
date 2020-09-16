@@ -1,3 +1,4 @@
+//! Contains trait definitions and implementations for running code in pipelines.
 use std::any::type_name;
 use std::borrow::Cow;
 
@@ -6,28 +7,39 @@ use uuid::Uuid;
 
 use crate::assets::{Asset, AssetBundle, LazyUpdate, Resources, Static, World};
 
+/// A unique handle to a system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SystemId(Uuid);
 
 impl SystemId {
+    /// Creates a new random handle.
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
 }
 
+/// A runnable piece of code.
 pub trait System: Send + Sync + 'static {
+    /// Run the system.
     fn run(&mut self, world: &World) -> Fallible<()>;
+    /// Get the identifier of this system.
     fn id(&self) -> SystemId;
 
+    /// Get a human-readable name of this system.
+    ///
+    /// Defaults to the typename of `Self`
     fn name(&self) -> Cow<'static, str> {
         Cow::Borrowed(type_name::<Self>())
     }
 }
 
+/// Turns an owned value into `ForAllSystem`.
 pub trait IntoForAllSystem<Statics, Args> {
+    /// Do the conversion.
     fn system(self) -> Box<dyn System>;
 }
 
+/// A system that will run with access to the storage types defined in `assets`.
 pub struct ForAllSystem<F>
 where
     F: FnMut(&World) -> Fallible<()> + Send + Sync + 'static,

@@ -1,3 +1,4 @@
+//! Storage types for runtime-generic mapped and static values.
 use std::any::{Any, TypeId};
 use std::cell::UnsafeCell;
 use std::convert::{AsMut, AsRef, TryInto};
@@ -17,20 +18,31 @@ use uuid::Uuid;
 use crate::lir::repr::{Repr, ReprExt};
 use crate::types::TypeInfo;
 
+/// The default namespace for SHA-1 hashed `Handle`s (Uuids)
 const NAMESPACE_ETC: Uuid = Uuid::from_bytes([
     0x6b, 0xa7, 0xb8, 0x1f, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
 ]);
 
+/// A `Sync`hronized version of `parking_lot::RawRwLock`.
 pub type SyncLock = Arc<RawRwLock>;
 
+/// A marker struct for type-level recognition of reference mutability.
+///
+/// Mutable version.
 pub struct Mut;
+
+/// A marker struct for type-level recognition of reference mutability.
+///
+/// Immutable version.
 pub struct Unmut;
 
+/// A trait for type-level derefences.
 pub trait Unref {
     type Type: 'static;
     type Kind: 'static;
 }
 
+/// A trait for type-level mutable dereferences.
 pub unsafe trait UnrefMut: Unref {}
 
 impl<'a, T: 'static> Unref for &'a T {
@@ -45,15 +57,21 @@ impl<'a, T: 'static> Unref for &'a mut T {
 
 unsafe impl<'a, T: 'static> UnrefMut for &'a mut T {}
 
+/// A specialized `Any`-like trait with a `Send` requirement.
+///
+/// Introduces `Extend::extend`-like functionality to arbitrary storages.
 pub trait Storage: Any + Send {
+    /// Extend this storage with an owned trait object of the same type.
     fn extend(&mut self, other: Box<dyn Storage>);
 }
 
 impl dyn Storage {
+    /// Dynamically checks if a `Storage` is of type `T`.
     pub fn is<T: Storage>(&self) -> bool {
         self.type_id() == TypeId::of::<T>()
     }
 
+    /// Dynamically casts a `Storage` reference to any reference `&T` if and only if the underlying `Self == T`.
     pub fn downcast_ref<T: Storage>(&self) -> Option<&T> {
         if self.is::<T>() {
             unsafe { Some(&*(self as *const _ as *const T)) }
@@ -62,6 +80,7 @@ impl dyn Storage {
         }
     }
 
+    /// Dynamically casts a mutable `Storage` reference to any mutable reference `T` if and only if the underlying `Self == T`.
     pub fn downcast_mut<T: Storage>(&mut self) -> Option<&mut T> {
         if self.is::<T>() {
             unsafe { Some(&mut *(self as *mut _ as *mut T)) }
@@ -71,18 +90,24 @@ impl dyn Storage {
     }
 }
 
+/// A helper trait for things which can be stored in `Assets`.
 pub trait Asset: Send + 'static {}
 
 impl<T: Send + 'static> Asset for T {}
 
+/// A map from a `Handle<T>` to `T` with flags for notifying on change or insertion.
 #[derive(Default, Debug)]
 pub struct Assets<T: Asset> {
+    /// The main storage
     assets: HashMap<Handle<T>, T>,
+    /// Flags notifying on every mutable dereference of an asset obtained from this storage unit
     changed: HashMap<Handle<T>, bool>,
+    /// Flags notifying on every insertion of an asset into this storage unit
     added: HashSet<Handle<T>>,
 }
 
 impl<T: Asset> Assets<T> {
+    /// Creates a new, empty storage unit.
     pub fn new() -> Self {
         Self {
             assets: HashMap::new(),
@@ -91,12 +116,20 @@ impl<T: Asset> Assets<T> {
         }
     }
 
+    /// Inserts an existing value with a pre-set key into this storage unit.
+    ///
+    /// # Notes
+    /// - Sets the `added` flag to true.
     pub fn insert(&mut self, handle: Handle<T>, t: T) {
         self.added.insert(handle);
         self.changed.insert(handle, false);
         self.assets.insert(handle, t);
     }
 
+    /// Obtains an immutable reference to an asset with the key `handle`.
+    ///
+    /// # Notes
+    /// - Assumes ownership over an already locked `SyncLock`.
     pub fn get(&self, lock: SyncLock, handle: Handle<T>) -> Option<Ref<'_, T>> {
         let ptr = self
             .assets
@@ -109,6 +142,10 @@ impl<T: Asset> Assets<T> {
         })
     }
 
+    /// Obtains a mutable reference to an asset with the key `handle`.
+    ///
+    /// # Notes
+    /// -Assumes ownership over an already locked `SyncLock`.
     pub fn get_mut(&mut self, lock: SyncLock, handle: Handle<T>) -> Option<RefMut<'_, T>> {
         let ptr = self
             .assets
@@ -126,6 +163,17 @@ impl<T: Asset> Assets<T> {
         })
     }
 
+    /// Removes a value with the key `handle` from collection.
+    pub fn remove(&mut self, handle: Handle<T>) -> Option<T> {
+        self.changed.remove(&handle);
+        self.assets.remove(&handle)
+    }
+
+    /// Obtains a mutable reference to an asset with the key `handle`.
+    ///
+    /// # Notes
+    /// - Assumes that the resource is already locked.
+    /// - Assumes the lock will be released manually.
     pub fn static_get(&self, handle: Handle<T>) -> Option<StaticRef<'_, T>> {
         let ptr = self
             .assets
@@ -137,11 +185,11 @@ impl<T: Asset> Assets<T> {
         })
     }
 
-    pub fn remove(&mut self, handle: Handle<T>) -> Option<T> {
-        self.changed.remove(&handle);
-        self.assets.remove(&handle)
-    }
-
+    /// Obtains a mutable reference to an asset with the key `handle`.
+    ///
+    /// # Notes
+    /// - Assumes that the resource is already uniquely locked.
+    /// - Assumes the lock will be released manually.
     pub fn static_get_mut(&mut self, handle: Handle<T>) -> Option<StaticRefMut<'_, T>> {
         let ptr = self
             .assets
@@ -158,12 +206,14 @@ impl<T: Asset> Assets<T> {
         })
     }
 
+    /// Returns an immutable iterator over elements.
     pub fn iter(&self) -> AssetsIter<'_, T> {
         AssetsIter {
             assets: self.assets.iter(),
         }
     }
 
+    /// Returns a mutable iterator over elements.
     pub fn iter_mut(&mut self) -> AssetsIterMut<'_, T> {
         AssetsIterMut {
             assets: self.assets.iter_mut(),
@@ -186,6 +236,7 @@ impl<T: Asset> Storage for Assets<T> {
     }
 }
 
+/// An immutable iterator over elements of an `Assets`.
 pub struct AssetsIter<'a, T: Asset> {
     assets: hashbrown::hash_map::Iter<'a, Handle<T>, T>,
 }
@@ -205,6 +256,7 @@ impl<'a, T: Asset> Iterator for AssetsIter<'a, T> {
     }
 }
 
+/// A mutable iterator over elements of an `Assets`.
 pub struct AssetsIterMut<'a, T: Asset> {
     assets: hashbrown::hash_map::IterMut<'a, Handle<T>, T>,
     changed: &'a mut HashMap<Handle<T>, bool>,
@@ -228,6 +280,7 @@ impl<'a, T: Asset> Iterator for AssetsIterMut<'a, T> {
     }
 }
 
+/// An automatically unlocking smart pointer to an `Asset`.
 #[derive(Clone)]
 pub struct Ref<'a, T: Asset> {
     ptr: NonNull<T>,
@@ -257,6 +310,7 @@ impl<'a, T: Asset> AsRef<T> for Ref<'a, T> {
     }
 }
 
+/// An automatically unlocking mutable smart pointer to an `Asset`.
 pub struct RefMut<'a, T: Asset> {
     ptr: NonNull<T>,
     changed: NonNull<bool>,
@@ -301,6 +355,7 @@ impl<'a, T: Asset> AsMut<T> for RefMut<'a, T> {
     }
 }
 
+/// A reference to an `Asset`.
 #[derive(Clone, Copy)]
 pub struct StaticRef<'a, T: Asset> {
     ptr: NonNull<T>,
@@ -321,6 +376,7 @@ impl<'a, T: Asset> AsRef<T> for StaticRef<'a, T> {
     }
 }
 
+/// A mutable reference to an `Asset`.
 pub struct StaticRefMut<'a, T: Asset> {
     ptr: NonNull<T>,
     changed: NonNull<bool>,
@@ -356,6 +412,7 @@ impl<'a, T: Asset> AsMut<T> for StaticRefMut<'a, T> {
     }
 }
 
+/// A collection of multiple storages, mapped with their `TypeId`s, `Static` resources and `RwLock`s to storages and static resources.
 #[derive(Default)]
 struct WorldInner {
     resources: HashMap<TypeId, Box<dyn Storage>>,
@@ -364,13 +421,17 @@ struct WorldInner {
     locks: HashMap<TypeId, SyncLock>,
 }
 
+/// A thread-safe, cloneable collection of multiple storages, mapped with their `TypeId`s, `Static` resources and `RwLock`s to storages and static resources.
 #[derive(Clone)]
 pub struct World {
+    /// A thread-safe, cloneable smart pointer to the world.
     world: Arc<UnsafeCell<WorldInner>>,
+    /// The lock for reading from or writing to the world.
     lock: SyncLock,
 }
 
 impl World {
+    /// Creates a new empty world.
     pub fn new() -> Self {
         Self {
             world: Default::default(),
@@ -378,6 +439,7 @@ impl World {
         }
     }
 
+    /// Initializes an empty storage.
     pub fn init_asset<T: Asset>(&self) {
         self.lock.lock_exclusive();
 
@@ -391,6 +453,7 @@ impl World {
         }
     }
 
+    /// Initializes a static value with its default value.
     pub fn init_static<T: Asset + Default>(&self) {
         self.lock.lock_exclusive();
 
@@ -405,6 +468,7 @@ impl World {
         }
     }
 
+    /// Adds a pre-existing static value.
     pub fn add_static<T: Asset>(&self, value: T) {
         self.lock.lock_exclusive();
 
@@ -419,6 +483,7 @@ impl World {
         }
     }
 
+    /// Inserts a value with a handle.
     pub fn insert<T: Asset>(&self, handle: Handle<T>, t: T) {
         self.lock.lock_shared();
 
