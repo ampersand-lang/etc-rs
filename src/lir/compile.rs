@@ -5,7 +5,7 @@ use crate::assets::{Asset, Handle, Resources};
 use crate::ast::{Kind, Node};
 use crate::lir::builder::*;
 use crate::lir::context::{ExecutionContext, VirtualAddress};
-use crate::lir::Instruction;
+
 use crate::types::{primitive, NamedType};
 use crate::values::Payload;
 
@@ -47,7 +47,7 @@ impl<'a> Compile<Builder<'a>> for Node {
         )>,
         builder: Builder<'a>,
     ) -> Fallible<Self::Output> {
-        let root = res.get::<Node>(handle).unwrap();
+        let _root = res.get::<Node>(handle).unwrap();
         // TODO: remove this primitive
         let f = builder.function("main").result(*primitive::S32);
         let (_, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;

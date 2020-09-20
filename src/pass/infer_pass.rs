@@ -77,7 +77,7 @@ pub fn infer_update(
             }
             _ => VisitResult::Recurse,
         });
-        root.visit(Visit::Postorder, &nodes, |res, node| {
+        root.visit(Visit::Postorder, &nodes, |_res, node| {
             if skip.contains(&node.id()) {
                 return VisitResult::Recurse;
             }

@@ -4,7 +4,7 @@ use failure::Fallible;
 
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
-use crate::pass;
+
 use crate::types::{TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
 

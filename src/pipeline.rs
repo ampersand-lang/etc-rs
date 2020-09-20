@@ -1,7 +1,7 @@
 //! Contains a runnable, normalized pipeline for the compiler.
-use std::sync::mpsc;
 
 use failure::Fallible;
+#[allow(unused_imports)]
 use rayon::prelude::*;
 
 use crate::assets::World;

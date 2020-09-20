@@ -1,31 +1,27 @@
-use std::iter;
-
-use failure::{Fail, Fallible};
-use hashbrown::{HashMap, HashSet};
-use smallvec::smallvec;
+use failure::Fallible;
+use hashbrown::HashMap;
 
 use crate::assets::{Handle, LazyUpdate, Resources};
-use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
+use crate::ast::{Node, RootNode, Visit, VisitResult};
 use crate::dispatch::*;
 use crate::error::MultiError;
-use crate::lexer::Location;
-use crate::scope::Scope;
-use crate::types::{builtin, primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
+
+use crate::types::{NamedType, TypeOrPlaceholder};
 use crate::values::Payload;
 
 pub fn collapse_update(
-    lazy: &mut LazyUpdate,
+    _lazy: &mut LazyUpdate,
     roots: Resources<&RootNode>,
     dispatch: Resources<&Dispatcher>,
     named_types: Resources<&NamedType>,
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<Option<&'static str>> {
-    let mut errors = Vec::new();
+    let errors = Vec::new();
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
         let mut payloads = HashMap::new();
         let mut types = HashMap::new();
-        root.visit(Visit::Postorder, &nodes, |res, node| {
+        root.visit(Visit::Postorder, &nodes, |_res, node| {
             if let Some(payload) = node.payload {
                 match payload {
                     Payload::Type(typ) => {

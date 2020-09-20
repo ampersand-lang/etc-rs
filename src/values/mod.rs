@@ -69,7 +69,7 @@ impl<'res> PrettyPrinter<'res> {
     #[allow(missing_docs)]
     pub(self) fn as_ref(&self) -> PrettyPrinterRef<'_, 'res> {
         PrettyPrinterRef {
-            config: &self.config,
+            config: self.config.clone(),
             types: &self.types,
             strings: &self.strings,
             payload: self.payload,
@@ -85,8 +85,9 @@ impl<'res> Display for PrettyPrinter<'res> {
 
 #[doc(hidden)]
 #[allow(missing_docs)]
+#[allow(dead_code)]
 pub(crate) struct PrettyPrinterRef<'a, 'res> {
-    config: &'a PrettyConfig,
+    config: PrettyConfig,
     types: &'a Resources<&'res NamedType>,
     strings: &'a Resources<&'res String>,
     payload: Payload,
@@ -96,7 +97,7 @@ pub(crate) struct PrettyPrinterRef<'a, 'res> {
 #[allow(missing_docs)]
 impl<'a, 'res> PrettyPrinterRef<'a, 'res> {
     pub fn new(
-        config: &'a PrettyConfig,
+        config: PrettyConfig,
         types: &'a Resources<&'res NamedType>,
         strings: &'a Resources<&'res String>,
         payload: Payload,

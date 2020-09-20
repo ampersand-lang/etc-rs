@@ -1,5 +1,3 @@
-use hashbrown::HashMap;
-
 use crate::lir::BindingPrototype;
 
 use super::*;
@@ -103,7 +101,7 @@ impl Allocator {
             }
 
             if self.pool.is_empty() {
-                if let Some((jdx, reg)) = self.active.last() {
+                if let Some((jdx, _reg)) = self.active.last() {
                     let j = self.active.len() - 1;
                     let spill = &self.live[*jdx];
                     if spill.end > i.end {

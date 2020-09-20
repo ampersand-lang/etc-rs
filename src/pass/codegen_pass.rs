@@ -3,10 +3,10 @@ use failure::Fallible;
 use crate::assets::{LazyUpdate, Resources};
 use crate::ast::{Node, RootNode};
 use crate::lir::{codegen::*, context::ExecutionContext, Instruction, Value};
-use crate::types::{NamedType, TypeInfo};
+use crate::types::TypeInfo;
 
 pub fn codegen_update(
-    lazy: &mut LazyUpdate,
+    _lazy: &mut LazyUpdate,
     roots: Resources<&mut RootNode>,
     mut threads: Resources<&mut ExecutionContext>,
     nodes: Resources<&Node>,

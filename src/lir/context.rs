@@ -260,7 +260,7 @@ impl ExecutionContext {
 
     fn execute(
         &mut self,
-        lazy: &mut LazyUpdate,
+        _lazy: &mut LazyUpdate,
         foreign: &Resources<&Foreign>,
         res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
         ir: Ir,

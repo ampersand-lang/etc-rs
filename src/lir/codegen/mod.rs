@@ -643,6 +643,7 @@ impl FunctionBuilder {
     }
 }
 
+#[allow(dead_code)]
 pub struct Extern {
     name: String,
     result_type: TypeInfo,

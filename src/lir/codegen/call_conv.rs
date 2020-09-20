@@ -73,7 +73,7 @@ impl CallConv for AmpCall64 {
 
     fn begin(&self, builder: &mut FunctionBuilder) -> Fallible<()> {
         if !builder.is_naked() {
-            let mut size = builder.local_size();
+            let size = builder.local_size();
             let bb = builder.add_basic_block_at_start();
             let bb = builder.basic_block_mut(bb);
             bb.instruction()

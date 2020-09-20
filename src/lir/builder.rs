@@ -1,8 +1,7 @@
-use hashbrown::HashMap;
 use smallvec::{smallvec, SmallVec};
 
 use crate::assets::Resources;
-use crate::ast::Kind;
+
 use crate::lir::context::*;
 use crate::lir::repr::*;
 use crate::types::NamedType;
@@ -25,7 +24,6 @@ impl<'a> Builder<'a> {
         FunctionBuilder {
             builder: self,
             counter: BindingPrototype::new(0, 0),
-            stack_ptr: 0,
             name: name.into(),
             param_types: SmallVec::new(),
             result_type: None,
@@ -44,7 +42,6 @@ impl<'a> Builder<'a> {
 pub struct FunctionBuilder<'a> {
     pub(crate) builder: Builder<'a>,
     counter: BindingPrototype,
-    stack_ptr: u64,
     name: String,
     param_types: SmallVec<[TypeId; 4]>,
     result_type: Option<TypeId>,

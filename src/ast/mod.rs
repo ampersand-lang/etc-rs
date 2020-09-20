@@ -373,7 +373,7 @@ impl Node {
     }
 
     /// Clones self with a closure.
-    fn private_clone_with<A: AssetBundle, F>(&self, mut res: &mut Resources<A>, f: &F) -> Self
+    fn private_clone_with<A: AssetBundle, F>(&self, res: &mut Resources<A>, f: &F) -> Self
     where
         F: Fn(&mut Resources<A>, &Self, SmallVec<[Option<NodeId>; 4]>) -> Self,
     {
@@ -851,7 +851,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                 f,
                 "{}",
                 values::PrettyPrinterRef::new(
-                    &Default::default(),
+                    Default::default(),
                     self.types,
                     self.strings,
                     node.payload.unwrap(),

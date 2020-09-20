@@ -1,5 +1,4 @@
 use std::fmt::{self, Display};
-use std::iter;
 
 use failure::Fallible;
 use lazy_static::lazy_static;
@@ -347,11 +346,12 @@ mod tests {
             ExecutionContext::builder(world.resources::<&NamedType>(), Target::default())
                 .function("main")
                 .result(*primitive::SINT)
-                .build_return(Value::Uint(5))
+                .build_return(*primitive::SINT, Value::Uint(5))
                 .build(&mut main)
                 .build();
         assert_eq!(
-            ctx.call(&mut lazy, &res, main, &[]).unwrap(),
+            ctx.call(&mut lazy, &world.resources(), &res, main, &[])
+                .unwrap(),
             Value::Uint(5)
         );
     }
