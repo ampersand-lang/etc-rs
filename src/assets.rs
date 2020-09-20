@@ -2,7 +2,7 @@
 use std::any::{Any, TypeId};
 use std::cell::UnsafeCell;
 use std::convert::{AsMut, AsRef, TryInto};
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::mem;
@@ -223,11 +223,10 @@ impl<T: Asset> Assets<T> {
 }
 
 impl<T: Asset> Storage for Assets<T> {
-    fn extend(&mut self, other: Box<dyn Storage>) {
+    fn extend(&mut self, mut other: Box<dyn Storage>) {
         if other.is::<Assets<T>>() {
-            let ptr = Box::into_raw(other) as *mut Assets<T>;
-            let other = unsafe { Box::from_raw(ptr) };
-            for (handle, t) in other.assets {
+            let other = other.downcast_mut::<Assets<T>>().unwrap();
+            for (handle, t) in other.assets.drain() {
                 self.insert(handle, t);
             }
         } else {
@@ -1144,7 +1143,7 @@ impl<T> Handle<T> {
         Self(Uuid::new_v5(&u.0, v.as_ref()), PhantomData)
     }
 
-    pub fn from_hash<U: AsRef<[u8]>>(u: &U) -> Self {
+    pub fn from_hash<U: AsRef<[u8]> + ?Sized>(u: &U) -> Self {
         Self(Uuid::new_v5(&NAMESPACE_ETC, u.as_ref()), PhantomData)
     }
 
@@ -1162,6 +1161,10 @@ impl<T> Handle<T> {
 
     pub unsafe fn from_untyped(untyped: UntypedHandle) -> Self {
         Self(untyped.0, PhantomData)
+    }
+
+    pub fn display(&self) -> impl Display + '_ {
+        self.0.to_hyphenated_ref()
     }
 }
 
@@ -1241,11 +1244,11 @@ impl LazyUpdate {
 
     pub fn insert<T: Asset>(&mut self, handle: Handle<T>, t: T) {
         let id = TypeId::of::<T>();
-        self.resources.entry(id).or_insert_with(|| {
-            let mut assets = Assets::new();
-            assets.insert(handle, t);
+        let assets = self.resources.entry(id).or_insert_with(|| {
+            let assets = Assets::<T>::new();
             Box::new(assets)
         });
+        assets.downcast_mut::<Assets<T>>().unwrap().insert(handle, t);
     }
 
     pub fn commit(self, w: &World) {

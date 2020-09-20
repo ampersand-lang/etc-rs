@@ -2,6 +2,7 @@ use std::convert::{TryFrom, TryInto};
 use std::mem;
 use std::ops::Range;
 
+use smallvec::smallvec;
 use failure::{Fail, Fallible};
 use hashbrown::HashMap;
 
@@ -90,70 +91,40 @@ impl ReprExt for VirtualAddress {
 pub struct PhysicalAddress(pub(crate) Section, pub(crate) u32);
 
 #[derive(Debug, Clone, Copy)]
-pub struct ExecAddress(pub(crate) u32, pub(crate) u32);
-
-pub type ScopeId = usize;
-
-#[derive(Debug, Clone)]
-pub struct Scope {
-    pub(crate) parent: Option<ScopeId>,
-    pub(crate) base_ptr: u64,
-    pub(crate) bindings: HashMap<i32, PhysicalAddress>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Scopes {
-    pub(crate) curr: Vec<ScopeId>,
-    pub(crate) list: Vec<Scope>,
-}
-
-impl Scopes {
-    pub fn new() -> Self {
-        Self {
-            curr: Vec::new(),
-            list: Vec::new(),
-        }
-    }
-
-    pub fn get(&self, key: Binding) -> Option<PhysicalAddress> {
-        self.list[key.0].bindings.get(&key.1).copied()
-    }
-
-    pub fn begin(&mut self, id: ScopeId) {
-        self.curr.push(id);
-    }
-
-    pub fn end(&mut self) -> u64 {
-        let base_ptr = self.current().base_ptr;
-        self.curr.pop();
-        base_ptr
-    }
-
-    pub fn current(&self) -> &Scope {
-        &self.list[self.curr.last().copied().unwrap()]
-    }
-
-    pub(crate) fn current_mut(&mut self) -> &mut Scope {
-        &mut self.list[self.curr.last().copied().unwrap()]
-    }
-}
+pub struct ExecAddress(pub(crate) u32, pub(crate) u32, pub(crate) BindingPrototype);
 
 #[derive(Debug, Clone)]
 pub enum Result {
     Continue,
-    Return(Value),
+    Return(TypedValue),
+}
+
+pub type Reg = SmallVec<[u8; 32]>;
+
+pub struct ContextDisplay<'a> {
+    ctx: &'a ExecutionContext,
+}
+
+impl<'a> Display for ContextDisplay<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for func in &self.ctx.text {
+            writeln!(f, "{}", func)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
     pub(crate) target: Target,
-    pub(crate) bindings: Scopes,
-    pub(crate) call_stack: Vec<ExecAddress>,
+    pub(crate) call_stack: Vec<(usize, u64, ExecAddress)>,
     pub(crate) instr_ptr: ExecAddress,
+    pub(crate) invocation: u64,
     pub(crate) text: Vec<Function>,
     pub(crate) data: Vec<u8>,
     pub(crate) heap: Vec<u8>,
     pub(crate) stack: Vec<u8>,
+    pub(crate) registers: HashMap<Binding, Reg>,
     pub(crate) stack_ptr: usize,
     pub(crate) data_addr: u64,
     pub(crate) heap_addr: u64,
@@ -166,13 +137,14 @@ impl ExecutionContext {
     pub fn new(target: Target) -> Self {
         Self {
             target,
-            bindings: Scopes::new(),
             call_stack: Vec::new(),
-            instr_ptr: ExecAddress(0, 0),
+            instr_ptr: ExecAddress(0, 0, BindingPrototype::new(0, 0)),
+            invocation: 0,
             text: Vec::new(),
             data: Vec::with_capacity(DEFAULT_DATA_SPACE),
             stack: vec![0; DEFAULT_STACK_SPACE],
             heap: vec![0; DEFAULT_HEAP_SPACE],
+            registers: HashMap::new(),
             stack_ptr: 0,
             data_addr: 0x100000,
             heap_addr: 0x4000000,
@@ -185,6 +157,14 @@ impl ExecutionContext {
             res,
             ctx: Self::new(target),
         }
+    }
+
+    pub fn display(&self) -> ContextDisplay<'_> {
+        ContextDisplay { ctx: self }
+    }
+
+    pub fn functions(self) -> impl Iterator<Item = Function> {
+        self.text.into_iter()
     }
 
     pub fn to_physical(&self, addr: VirtualAddress) -> Option<PhysicalAddress> {
@@ -281,40 +261,48 @@ impl ExecutionContext {
     fn execute(
         &mut self,
         lazy: &mut LazyUpdate,
-        res: &Resources<&NamedType>,
+        foreign: &Resources<&Foreign>,
+        res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
         ir: Ir,
     ) -> Fallible<Result> {
-        match ir.instr {
+        let mut value = SmallVec::new();
+        let result = match ir.instr {
             Instruction::Alloca => {
                 let t = match ir.args[0] {
+                    Value::Register(r) => TypeId::from_bytes(&self.registers[&r.build(self.invocation)]),
                     Value::Type(t) => t,
                     _ => return Err(From::from(TypeError)),
                 };
                 let t = t.type_info(res, &self.target);
                 let n = match ir.args[1] {
+                    Value::Register(r) => u64::from_bytes(&self.registers[&r.build(self.invocation)]),
                     Value::Uint(n) => n,
                     _ => return Err(From::from(TypeError)),
                 };
+                let bytes = From::from(self.to_virtual(PhysicalAddress(Section::Stack, self.stack_ptr as _)).to_bytes());
+                value = bytes;
                 self.stack_ptr += t.size * n as usize;
                 Ok(Result::Continue)
             }
             Instruction::Store => {
                 let t = match ir.args[0] {
+                    Value::Register(r) => TypeId::from_bytes(&self.registers[&r.build(self.invocation)]),
                     Value::Type(t) => t,
                     _ => return Err(From::from(TypeError)),
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
+                    Value::Register(r) => VirtualAddress::from_bytes(&self.registers[&r.build(self.invocation)]),
                     Value::Address(ptr) => ptr,
                     _ => return Err(From::from(TypeError)),
                 };
                 let mut value = vec![0_u8; t.size];
                 match ir.args[2] {
                     Value::Unit => {}
+                    Value::Register(r) => value.copy_from_slice(&self.registers[&r.build(self.invocation)]),
                     Value::Function(_id) => todo!(),
                     Value::Uint(int) => int.write_bytes(&mut value),
                     Value::Float(flt) => flt.write_bytes(&mut value),
-                    Value::Unref(addr) => value.copy_from_slice(self.read(addr, 0..t.size)?),
                     Value::Address(addr) => addr.write_bytes(&mut value),
                     Value::Type(typ) => typ.write_bytes(&mut value),
                     Value::Node(node) => node.write_bytes(&mut value),
@@ -322,90 +310,202 @@ impl ExecutionContext {
                     Value::Struct(_) => todo!(),
                     Value::Union(_) => todo!(),
                     Value::Tagged(..) => todo!(),
+                    Value::Ffi(foreign) => foreign.write_bytes(&mut value),
                 }
                 self.write(ptr, &value)?;
                 Ok(Result::Continue)
             }
             Instruction::Load => {
                 let t = match ir.args[0] {
+                    Value::Register(r) => TypeId::from_bytes(&self.registers[&r.build(self.invocation)]),
                     Value::Type(t) => t,
                     _ => return Err(From::from(TypeError)),
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
+                    Value::Register(r) => VirtualAddress::from_bytes(&self.registers[&r.build(self.invocation)]),
                     Value::Address(ptr) => ptr,
                     _ => return Err(From::from(TypeError)),
                 };
-                let addr = self.to_virtual(PhysicalAddress(Section::Stack, self.stack_ptr as _));
-                self.copy_from_virtual_to_virtual(ptr, addr, 0..t.size)?;
-                self.stack_ptr += t.size;
+                let bytes = self.read(ptr, 0..t.size)?.iter().copied().collect::<SmallVec<_>>();
+                value = bytes;
                 Ok(Result::Continue)
             }
             Instruction::Call => {
-                let func = match ir.args[0] {
-                    Value::Function(handle) => handle,
+                let t = match ir.args[0] {
+                    Value::Register(r) => TypeId::from_bytes(&self.registers[&r.build(self.invocation)]),
+                    Value::Type(t) => t,
+                    _ => return Err(From::from(TypeError)),
+                };
+                let t = t.type_info(res, &self.target);
+                let func = match ir.args[1] {
+                    Value::Register(r) => Some(u64::from_bytes(&self.registers[&r.build(self.invocation)]) as usize),
+                    Value::Function(handle) => Some(handle),
+                    Value::Ffi(handle) => {
+                        let ffi = foreign.get(handle).unwrap();
+                        let result = (ffi.as_ref())(self, res, &ir.args[2..])?;
+                        let mut bytes = smallvec![0_u8; t.size];
+                        match result {
+                            Value::Unit => {}
+                            Value::Register(r) => bytes.copy_from_slice(&self.registers[&r.build(self.invocation)]),
+                            Value::Function(_id) => todo!(),
+                            Value::Uint(int) => int.write_bytes(&mut bytes),
+                            Value::Float(flt) => flt.write_bytes(&mut bytes),
+                            Value::Address(addr) => addr.write_bytes(&mut bytes),
+                            Value::Type(typ) => typ.write_bytes(&mut bytes),
+                            Value::Node(node) => node.write_bytes(&mut bytes),
+                            Value::Array(_) => todo!(),
+                            Value::Struct(_) => todo!(),
+                            Value::Union(_) => todo!(),
+                            Value::Tagged(..) => todo!(),
+                            Value::Ffi(foreign) => foreign.write_bytes(&mut bytes),
+                        }
+                        value = bytes;
+                        None
+                    }
                     _ => return Err(From::from(TypeError)),
                 };
 
-                self.call_stack.push(self.instr_ptr);
-                self.instr_ptr = ExecAddress(func as _, 0);
+                if let Some(func) = func {
+                    self.call_stack.push((self.stack_ptr, self.invocation, self.instr_ptr));
+                    self.instr_ptr = ExecAddress(func as _, 0, ir.binding.unwrap());
+                    self.invocation = rand::random();
+                }
 
                 Ok(Result::Continue)
             }
             Instruction::NewNode => {
-                let kind = match ir.args[0] {
-                    Value::Uint(n) => ast::Kind::try_from(n as u8).expect("invalid node kind"),
+                let n = match ir.args[0] {
+                    Value::Register(r) => u8::from_bytes(&self.registers[&r.build(self.invocation)]),
+                    Value::Uint(n) => n as u8,
                     _ => return Err(From::from(TypeError)),
                 };
+                let typ = match ir.args[1] {
+                    Value::Register(r) => TypeId::from_bytes(&self.registers[&r.build(self.invocation)]),
+                    Value::Type(t) => t,
+                    _ => return Err(From::from(TypeError)),
+                };
+                let payload = match ir.args[2] {
+                    Value::Register(r) => {
+                        let value = &self.registers[&r.build(self.invocation)];
+                        let payload = match typ.group {
+                            TypeGroup::None => Payload::Unit,
+                            TypeGroup::Type => Payload::Type(TypeId::from_bytes(value)),
+                            TypeGroup::Node => todo!(),
+                            TypeGroup::Int => {
+                                match value.len() {
+                                    1 => Payload::Integer(u8::from_bytes(value) as u64),
+                                    2 => Payload::Integer(u16::from_bytes(value) as u64),
+                                    4 => Payload::Integer(u32::from_bytes(value) as u64),
+                                    8 => Payload::Integer(u64::from_bytes(value)),
+                                    _ => panic!("invalid byte length"),
+                                }
+                            }
+                            TypeGroup::Float => {
+                                match value.len() {
+                                    4 => Payload::Float(f32::from_bytes(value) as f64),
+                                    8 => Payload::Float(f64::from_bytes(value)),
+                                    _ => panic!("invalid byte length"),
+                                }
+                            }
+                            TypeGroup::Struct => todo!(),
+                            TypeGroup::Tagged => todo!(),
+                            TypeGroup::Enum => todo!(),
+                            TypeGroup::Union => todo!(),
+                            TypeGroup::Function => todo!(),
+                            TypeGroup::Pointer => todo!(),
+                            TypeGroup::Array => todo!(),
+                            TypeGroup::Slice => todo!(),
+                        };
+                        Some(payload)
+                    }
+                    Value::Uint(i) => Some(Payload::Integer(i)),
+                    Value::Float(x) => Some(Payload::Float(x)),
+                    Value::Type(t) => Some(Payload::Type(t)),
+                    Value::Unit => None,
+                    _ => return Err(From::from(TypeError)),
+                };
+                let kind = ast::Kind::try_from(n).expect("invalid node kind");
                 let mut children: SmallVec<[Option<NodeId>; 4]> = SmallVec::new();
-                for child in &ir.args[1..] {
+                for child in &ir.args[3..] {
                     match child {
+                        Value::Register(r) => children.push(Some(NodeId::from_bytes(&self.registers[&r.build(self.invocation)]))),
                         Value::Node(n) => children.push(Some(*n)),
                         _ => return Err(From::from(TypeError)),
                     }
                 }
-                let node = Node::new(kind, Handle::nil(), children);
-                let mut bytes = vec![0_u8; type_info::NODE.size];
+                let mut node = Node::new(kind, Handle::nil(), children);
+                node.payload = payload;
+                let mut bytes = smallvec![0_u8; type_info::NODE.size];
                 node.id().write_bytes(&mut bytes);
-                lazy.insert(node.id(), node);
-                let addr = PhysicalAddress(Section::Stack, self.stack_ptr as _);
-                self.write_physical(addr, &bytes)?;
-                self.stack_ptr += type_info::NODE.size;
-                Ok(Result::Continue)
-            }
-            Instruction::Begin => {
-                let n = match ir.args[0] {
-                    Value::Uint(n) => n,
-                    _ => return Err(From::from(TypeError)),
-                };
-                self.bindings.begin(n as _);
-                debug_assert_eq!(self.stack_ptr as u64, self.bindings.current().base_ptr);
-                Ok(Result::Continue)
-            }
-            Instruction::End => {
-                self.stack_ptr = self.bindings.end() as _;
+                res.insert(node.id(), node);
+                value = bytes;
                 Ok(Result::Continue)
             }
             Instruction::Return => {
                 if self.call_stack.len() == 1 {
-                    let result = Result::Return(ir.args[0].clone());
-                    self.stack_ptr = self.bindings.end() as _;
+                    let t = match ir.args[0] {
+                        Value::Register(r) => TypeId::from_bytes(&self.registers[&r.build(self.invocation)]),
+                        Value::Type(t) => t,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    
+                    let result = Result::Return(TypedValue { typ: t, val: ir.args[1].clone() });
                     Ok(result)
                 } else {
-                    self.stack_ptr = self.bindings.end() as _;
-                    self.instr_ptr = self.call_stack.pop().unwrap();
+                    let (sp, inv, ip) = self.call_stack.pop().unwrap();
+                    self.stack_ptr = sp;
+                    self.instr_ptr = ip;
+                    self.invocation = inv;
+
+                    let t = match ir.args[0] {
+                        Value::Register(r) => TypeId::from_bytes(&self.registers[&r.build(self.invocation)]),
+                        Value::Type(t) => t,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let t = t.type_info(res, &self.target);
+                    
+                    let r = self.instr_ptr.2;
+                    let binding = r.build(self.invocation);
+                    let mut value = smallvec![0_u8; t.size];
+                    match ir.args[1] {
+                        Value::Unit => {}
+                        Value::Register(r) => value.copy_from_slice(&self.registers[&r.build(self.invocation)]),
+                        Value::Function(_id) => todo!(),
+                        Value::Uint(int) => int.write_bytes(&mut value),
+                        Value::Float(flt) => flt.write_bytes(&mut value),
+                        Value::Address(addr) => addr.write_bytes(&mut value),
+                        Value::Type(typ) => typ.write_bytes(&mut value),
+                        Value::Node(node) => node.write_bytes(&mut value),
+                        Value::Array(_) => todo!(),
+                        Value::Struct(_) => todo!(),
+                        Value::Union(_) => todo!(),
+                        Value::Tagged(..) => todo!(),
+                        Value::Ffi(foreign) => foreign.write_bytes(&mut value),
+                    }
+                    self.registers.insert(binding, value);
                     Ok(Result::Continue)
                 }
             }
+        };
+        if let Some(r) = ir.binding {
+            let binding = r.build(self.invocation);
+            self.registers.insert(binding, value);
         }
+        result
     }
 
-    fn run(&mut self, lazy: &mut LazyUpdate, res: &Resources<&NamedType>) -> Fallible<Value> {
+    fn run(
+        &mut self,
+        lazy: &mut LazyUpdate,
+        foreign: &Resources<&Foreign>,
+        res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
+    ) -> Fallible<TypedValue> {
         loop {
             let func = &self.text[self.instr_ptr.0 as usize];
             let ir: Ir = func.body[self.instr_ptr.1 as usize].clone();
             self.instr_ptr.1 += 1;
-            match self.execute(lazy, res, ir)? {
+            match self.execute(lazy, foreign, res, ir)? {
                 Result::Continue => {}
                 Result::Return(value) => return Ok(value),
             }
@@ -415,22 +515,24 @@ impl ExecutionContext {
     pub fn call(
         &mut self,
         lazy: &mut LazyUpdate,
-        res: &Resources<&NamedType>,
+        foreign: &Resources<&Foreign>,
+        res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
         f: FuncId,
         args: &[TypedValue],
     ) -> Fallible<Value> {
-        self.call_stack.push(self.instr_ptr);
-        self.instr_ptr = ExecAddress(f as _, 0);
+        self.call_stack.push((self.stack_ptr, self.invocation, self.instr_ptr));
+        self.invocation = rand::random();
+        self.instr_ptr = ExecAddress(f as _, 0, BindingPrototype::new(0, 0));
         for TypedValue { typ, val } in args {
             let t = typ.type_info(res, &self.target);
 
             let mut value = vec![0_u8; t.size];
             match val {
                 Value::Unit => {}
+                Value::Register(r) => value.copy_from_slice(&self.registers[&r.build(self.invocation)]),
                 Value::Function(_id) => todo!(),
                 Value::Uint(int) => int.write_bytes(&mut value),
                 Value::Float(flt) => flt.write_bytes(&mut value),
-                Value::Unref(addr) => value.copy_from_slice(self.read(*addr, 0..t.size)?),
                 Value::Address(addr) => addr.write_bytes(&mut value),
                 Value::Type(typ) => typ.write_bytes(&mut value),
                 Value::Node(node) => node.write_bytes(&mut value),
@@ -438,13 +540,52 @@ impl ExecutionContext {
                 Value::Struct(_) => todo!(),
                 Value::Union(_) => todo!(),
                 Value::Tagged(..) => todo!(),
+                Value::Ffi(foreign) => foreign.write_bytes(&mut value),
             }
             self.write_physical(PhysicalAddress(Section::Stack, self.stack_ptr as _), &value)?;
 
             self.stack_ptr += t.size;
         }
-        let result = self.run(lazy, res);
-        self.instr_ptr = self.call_stack.pop().unwrap();
-        result
+        let result = self.run(lazy, foreign, res)?;
+        let result = match result {
+            TypedValue { typ, val: Value::Register(r) } => {
+                let value = &self.registers[&r.build(self.invocation)];
+                match typ.group {
+                    TypeGroup::None => Value::Unit,
+                    TypeGroup::Type => Value::Type(TypeId::from_bytes(value)),
+                    TypeGroup::Node => Value::Node(NodeId::from_bytes(value)),
+                    TypeGroup::Int => {
+                        match value.len() {
+                            1 => Value::Uint(u8::from_bytes(value) as u64),
+                            2 => Value::Uint(u16::from_bytes(value) as u64),
+                            4 => Value::Uint(u32::from_bytes(value) as u64),
+                            8 => Value::Uint(u64::from_bytes(value)),
+                            _ => panic!("invalid byte length"),
+                        }
+                    }
+                    TypeGroup::Float => {
+                        match value.len() {
+                            4 => Value::Float(f32::from_bytes(value) as f64),
+                            8 => Value::Float(f64::from_bytes(value)),
+                            _ => panic!("invalid byte length"),
+                        }
+                    }
+                    TypeGroup::Struct => todo!(),
+                    TypeGroup::Tagged => todo!(),
+                    TypeGroup::Enum => todo!(),
+                    TypeGroup::Union => todo!(),
+                    TypeGroup::Function => todo!(),
+                    TypeGroup::Pointer => todo!(),
+                    TypeGroup::Array => todo!(),
+                    TypeGroup::Slice => todo!(),
+                }
+            }
+            TypedValue { val: x, .. } => x,
+        };
+        let (sp, inv, ip) = self.call_stack.pop().unwrap();
+        self.stack_ptr = sp;
+        self.instr_ptr = ip;
+        self.invocation = inv;
+        Ok(result)
     }
 }

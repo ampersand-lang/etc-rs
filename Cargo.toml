@@ -17,6 +17,9 @@ num_enum = "0.5"
 lazy_static = "1.4"
 either = "1.6"
 num = "0.3"
+better-panic = "0.2"
+bitflags = "1.2"
+rand = "0.7"
 
 [features]
 default = []

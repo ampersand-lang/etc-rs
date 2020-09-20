@@ -2,18 +2,202 @@ use std::convert::TryFrom;
 use std::fmt::{self, Display};
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
-use crate::assets::{Handle, Resources};
+use crate::assets::{AssetBundle, Handle, Resources};
+use crate::ast::NodeId;
 use crate::lir::repr::{Repr, ReprExt};
 use crate::lir::target::Target;
 use crate::scope::ScopeId;
 use crate::utils::IntPtr;
 
+pub mod builtin {
+    use lazy_static::lazy_static;
+
+    use super::*;
+
+    pub fn init(mut res: Resources<&mut NamedType>) {
+        res.insert(DECLARE.concrete.to_type(), NamedType {
+            name: Some("declare".to_string()),
+            t: Type::Function {
+                result_type: *primitive::UNIT,
+                param_types: smallvec![*primitive::NODE],
+            },
+        });
+
+        res.insert(PTR.concrete.to_type(), NamedType {
+            name: Some("ptr".to_string()),
+            t: Type::Function {
+                result_type: *primitive::TYPE,
+                param_types: smallvec![*primitive::TYPE],
+            },
+        });
+
+        res.insert(FN.concrete.to_type(), NamedType {
+            name: Some("fn".to_string()),
+            t: Type::Function {
+                result_type: *primitive::TYPE,
+                param_types: smallvec![*primitive::TYPE, *primitive::TYPE],
+            },
+        });
+
+        res.insert(FORMAT_AST.concrete.to_type(), NamedType {
+            name: Some("format-ast".to_string()),
+            t: Type::Function {
+                result_type: *primitive::NODE,
+                param_types: smallvec![*primitive::NODE],
+            },
+        });
+
+        res.insert(NEW_NODE.concrete.to_type(), NamedType {
+            name: Some("new-node".to_string()),
+            t: Type::Function {
+                result_type: *primitive::NODE,
+                param_types: smallvec![*primitive::U8, *primitive::TYPE, /* ANY, VARIADIC */],
+            },
+        });
+
+        res.insert(QUASIQUOTE.concrete.to_type(), NamedType {
+            name: Some("quasiquote".to_string()),
+            t: Type::Function {
+                result_type: *primitive::NODE,
+                param_types: smallvec![/* ANY */],
+            },
+        });
+    }
+
+    lazy_static! {
+        pub static ref DECLARE: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: TypeOrPlaceholder::Type(Handle::new()),
+            }
+        };
+        pub static ref PTR: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: TypeOrPlaceholder::Type(Handle::new()),
+            }
+        };
+        pub static ref FN: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: TypeOrPlaceholder::Type(Handle::new()),
+            }
+        };
+        pub static ref FORMAT_AST: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: TypeOrPlaceholder::Type(Handle::new()),
+            }
+        };
+        pub static ref NEW_NODE: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: TypeOrPlaceholder::Type(Handle::new()),
+            }
+        };
+        pub static ref QUASIQUOTE: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: TypeOrPlaceholder::Type(Handle::new()),
+            }
+        };
+    }
+}
+
 pub mod primitive {
     use lazy_static::lazy_static;
 
     use super::*;
+
+    pub fn init(mut res: Resources<&mut NamedType>) {
+        res.insert(UNIT.concrete.to_type(), NamedType {
+            name: Some("unit".to_string()),
+            t: Type::Struct {
+                fields: SmallVec::new(),
+            },
+        });
+
+        res.insert(TYPE.concrete.to_type(), NamedType {
+            name: Some("type".to_string()),
+            t: Type::Struct {
+                fields: smallvec![*U64, *U64],
+            },
+        });
+
+        res.insert(NODE.concrete.to_type(), NamedType {
+            name: Some("node".to_string()),
+            t: Type::Struct {
+                fields: smallvec![*U64, *U64],
+            },
+        });
+
+        res.insert(S8.concrete.to_type(), NamedType {
+            name: Some("s8".to_string()),
+            t: Type::S8,
+        });
+
+        res.insert(S16.concrete.to_type(), NamedType {
+            name: Some("s16".to_string()),
+            t: Type::S16,
+        });
+
+        res.insert(S32.concrete.to_type(), NamedType {
+            name: Some("s32".to_string()),
+            t: Type::S32,
+        });
+
+        res.insert(S64.concrete.to_type(), NamedType {
+            name: Some("s64".to_string()),
+            t: Type::S64,
+        });
+
+        res.insert(SINT.concrete.to_type(), NamedType {
+            name: Some("sint".to_string()),
+            t: Type::Sint,
+        });
+
+        res.insert(U8.concrete.to_type(), NamedType {
+            name: Some("u8".to_string()),
+            t: Type::U8,
+        });
+
+        res.insert(U16.concrete.to_type(), NamedType {
+            name: Some("u16".to_string()),
+            t: Type::U16,
+        });
+
+        res.insert(U32.concrete.to_type(), NamedType {
+            name: Some("u32".to_string()),
+            t: Type::U32,
+        });
+
+        res.insert(U64.concrete.to_type(), NamedType {
+            name: Some("u64".to_string()),
+            t: Type::U64,
+        });
+
+        res.insert(UINT.concrete.to_type(), NamedType {
+            name: Some("uint".to_string()),
+            t: Type::Uint,
+        });
+
+        res.insert(FLOAT32.concrete.to_type(), NamedType {
+            name: Some("float32".to_string()),
+            t: Type::Float32,
+        });
+
+        res.insert(FLOAT64.concrete.to_type(), NamedType {
+            name: Some("float64".to_string()),
+            t: Type::Float64,
+        });
+
+        res.insert(FLOAT.concrete.to_type(), NamedType {
+            name: Some("float".to_string()),
+            t: Type::Float,
+        });
+    }
 
     lazy_static! {
         pub static ref UNIT: TypeId = {
@@ -25,6 +209,12 @@ pub mod primitive {
         pub static ref TYPE: TypeId = {
             TypeId {
                 group: TypeGroup::Type,
+                concrete: TypeOrPlaceholder::Type(Handle::new()),
+            }
+        };
+        pub static ref NODE: TypeId = {
+            TypeId {
+                group: TypeGroup::Node,
                 concrete: TypeOrPlaceholder::Type(Handle::new()),
             }
         };
@@ -109,7 +299,7 @@ pub mod primitive {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeInfo {
     pub size: usize,
     pub align: usize,
@@ -136,7 +326,7 @@ impl TypeId {
         }
     }
 
-    fn size_of(&self, res: &Resources<&NamedType>, target: &Target) -> Option<usize> {
+    fn size_of<A: AssetBundle>(&self, res: &Resources<A>, target: &Target) -> Option<usize> {
         match self.concrete {
             TypeOrPlaceholder::Type(handle) => {
                 let t = res.get::<NamedType>(handle).unwrap();
@@ -183,7 +373,7 @@ impl TypeId {
         }
     }
 
-    fn align_of(&self, res: &Resources<&NamedType>, target: &Target) -> Option<usize> {
+    fn align_of<A: AssetBundle>(&self, res: &Resources<A>, target: &Target) -> Option<usize> {
         match self.concrete {
             TypeOrPlaceholder::Type(handle) => {
                 let t = res.get::<NamedType>(handle).unwrap();
@@ -224,7 +414,7 @@ impl TypeId {
         }
     }
 
-    pub fn type_info(&self, res: &Resources<&NamedType>, target: &Target) -> TypeInfo {
+    pub fn type_info<A: AssetBundle>(&self, res: &Resources<A>, target: &Target) -> TypeInfo {
         TypeInfo {
             size: self.size_of(res, target).unwrap_or(0),
             align: self.align_of(res, target).unwrap_or(1),
@@ -290,6 +480,16 @@ pub enum TypeOrPlaceholder {
     Type(Handle<NamedType>),
     Placeholder(Handle<String>),
     Dispatch(ScopeId, Handle<String>),
+    Typeof(NodeId),
+}
+
+impl TypeOrPlaceholder {
+    pub(self) fn to_type(&self) -> Handle<NamedType> {
+        match self {
+            Self::Type(t) => *t,
+            _ => panic!("called to_type on something not a type"),
+        }
+    }
 }
 
 #[repr(u8)]
@@ -297,6 +497,7 @@ pub enum TypeOrPlaceholder {
 pub enum TypeGroup {
     None,
     Type,
+    Node,
     Int,
     Float,
     Struct,
@@ -473,7 +674,7 @@ impl<'res> Display for PrettyPrinter<'res> {
 
 #[doc(hidden)]
 #[allow(missing_docs)]
-struct PrettyPrinterRef<'a, 'res> {
+pub(crate) struct PrettyPrinterRef<'a, 'res> {
     config: &'a PrettyConfig,
     res: &'a Resources<&'res NamedType>,
     id: TypeId,

@@ -110,6 +110,7 @@ impl Dispatcher {
 /// A single function, variable or constant implementation.
 #[derive(Debug, Clone)]
 pub struct Definition {
+    universe: i32,
     is_func: bool,
     arg_types: Option<SmallVec<[TypeId; 4]>>,
     result_type: TypeId,
@@ -117,8 +118,9 @@ pub struct Definition {
 
 impl Definition {
     /// Creates a new function definition.
-    pub fn new_function(arg_types: SmallVec<[TypeId; 4]>, result_type: TypeId) -> Self {
+    pub fn new_function(universe: i32, arg_types: SmallVec<[TypeId; 4]>, result_type: TypeId) -> Self {
         Self {
+            universe,
             is_func: true,
             arg_types: Some(arg_types),
             result_type,
@@ -126,8 +128,9 @@ impl Definition {
     }
 
     /// Creates a new variable or constant definition.
-    pub fn new_variable(result_type: TypeId) -> Self {
+    pub fn new_variable(universe: i32, result_type: TypeId) -> Self {
         Self {
+            universe,
             is_func: false,
             arg_types: None,
             result_type,

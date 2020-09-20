@@ -8,8 +8,8 @@ pub struct Target {
 impl Default for Target {
     fn default() -> Self {
         Self {
-            pointer_width: 8,
-            pointer_align: 8,
+            pointer_width: 64,
+            pointer_align: 64,
         }
     }
 }

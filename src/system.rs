@@ -21,7 +21,7 @@ impl SystemId {
 /// A runnable piece of code.
 pub trait System: Send + Sync + 'static {
     /// Run the system.
-    fn run(&mut self, world: &World) -> Fallible<()>;
+    fn run(&mut self, world: &World) -> Fallible<Option<&'static str>>;
     /// Get the identifier of this system.
     fn id(&self) -> SystemId;
 
@@ -42,7 +42,7 @@ pub trait IntoForAllSystem<Statics, Args> {
 /// A system that will run with access to the storage types defined in `assets`.
 pub struct ForAllSystem<F>
 where
-    F: FnMut(&World) -> Fallible<()> + Send + Sync + 'static,
+    F: FnMut(&World) -> Fallible<Option<&'static str>> + Send + Sync + 'static,
 {
     f: F,
     id: SystemId,
@@ -50,9 +50,9 @@ where
 
 impl<F> System for ForAllSystem<F>
 where
-    F: FnMut(&World) -> Fallible<()> + Send + Sync + 'static,
+    F: FnMut(&World) -> Fallible<Option<&'static str>> + Send + Sync + 'static,
 {
-    fn run(&mut self, world: &World) -> Fallible<()> {
+    fn run(&mut self, world: &World) -> Fallible<Option<&'static str>> {
         (&mut self.f)(world)
     }
 
@@ -65,7 +65,7 @@ macro_rules! impl_into_for_all_static {
     ( $( $s:ident ),* ; $( $t:ident ),+ ) => {
         impl<$( $s : Asset ),* , $( $t : AssetBundle ),*, F> IntoForAllSystem<( $( $s, )* ) , ( $( $t, )* )> for F
         where
-            F: FnMut(&mut LazyUpdate, $( &Static<$s> ),* , $( Resources<$t> ),*) -> Fallible<()> + Send + Sync + 'static,
+            F: FnMut(&mut LazyUpdate, $( &Static<$s> ),* , $( Resources<$t> ),*) -> Fallible<Option<&'static str>> + Send + Sync + 'static,
         {
             fn system(mut self) -> Box<dyn System> {
                 Box::new(ForAllSystem {
@@ -104,7 +104,7 @@ macro_rules! impl_into_for_all {
     ( $( $t:ident ),+ ) => {
         impl<$( $t : AssetBundle ),*, F> IntoForAllSystem<(), ( $( $t, )* )> for F
         where
-            F: FnMut(&mut LazyUpdate, $( Resources<$t> ),*) -> Fallible<()> + Send + Sync + 'static,
+            F: FnMut(&mut LazyUpdate, $( Resources<$t> ),*) -> Fallible<Option<&'static str>> + Send + Sync + 'static,
         {
             fn system(mut self) -> Box<dyn System> {
                 Box::new(ForAllSystem {

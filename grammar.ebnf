@@ -8,8 +8,10 @@ declaration = alternative , ":" , binary
             | binary ;
 binary = index , index , application
        | application ;
-application = alternative , function , { "," , function }
-            | function ;
+application = alternative , argument , { "," , argument }
+            | argument ;
+argument = alternative , ":" , function
+         | function ;
 function = index , "=>" , binary | index ;
 index = index , "'" , dotted
       | dotted ;
@@ -17,8 +19,8 @@ dotted = dotted , "." , alternative
        | alternative ;
 alternative = "$" , atomic
             | atomic ;
-atomic = "(" , [ binary , { ";" , binary } ] , ")"
-       | "[" , [ binary , { ";" , binary } ] , "]"
+atomic = "(" , [ declaration , { ";" , declaration } ] , ")"
+       | "[" , [ declaration , { ";" , declaration } ] , "]"
        | "{" , root , "}"
        | ?integer?
        | ?real?

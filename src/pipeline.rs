@@ -17,26 +17,59 @@ pub struct Stage {
 /// A conjuction of stages that run in series.
 pub struct Pipeline {
     stages: Vec<Stage>,
+    repeat: Option<Box<dyn FnMut(&World) -> Option<&'static str> + Send + Sync + 'static>>,
 }
 
 impl Pipeline {
     /// Constructs a new empty pipeline.
     pub fn new() -> Self {
-        Self { stages: Vec::new() }
+        Self {
+            stages: Vec::new(),
+            repeat: None,
+        }
+    }
+
+    /// Sets the `repeat` predicate.
+    pub fn repeat<F: FnMut(&World) -> Option<&'static str> + Send + Sync + 'static>(&mut self, f: F) {
+        self.repeat = Some(Box::new(f));
     }
 
     /// Runs this pipeline in the given world.
     pub fn run(&mut self, world: &World) -> Fallible<()> {
-        for stage in &mut self.stages {
-            let (tx, rx) = mpsc::channel();
-            stage.systems.par_iter_mut().for_each_with(tx, |tx, sys| {
+        let mut idx = 0;
+        let mut brk = false;
+        let mut repeat = self.repeat.as_mut();
+        let stages = self.stages.iter().map(|stage| stage.name.clone()).collect::<Vec<_>>();
+        while let Some(stage) = self.stages.get_mut(idx) {
+            if brk {
+                break;
+            }
+            let mut errors = Vec::new();
+            // let (tx, rx) = mpsc::channel();
+            // stage.systems.par_iter_mut().for_each_with(tx, |tx, sys| {
+            stage.systems.iter_mut().for_each(|sys| {
                 let world = world.clone();
                 match sys.run(&world) {
-                    Ok(_) => {}
-                    Err(err) => tx.send(err).expect("could not send error"),
+                    Ok(Some("repeat")) => {
+                        let name = (repeat.as_mut().unwrap())(&world);
+                        if let Some(name) = name {
+                            let position = stages.iter().position(|stage| *stage == name);
+                            idx = position.unwrap();
+                        }
+                    },
+                    Ok(Some("finish")) => {
+                        brk = true;
+                    }
+                    Ok(Some(name)) => {
+                        let position = stages.iter().position(|stage| *stage == name);
+                        idx = position.unwrap();
+                    }
+                    Ok(None) => idx += 1,
+                    // Err(err) => tx.send(err).expect("could not send error"),
+                    Err(err) => errors.push(err),
                 }
             });
-            let errors = rx.iter().collect::<Vec<_>>();
+            // let errors = rx.iter().collect::<Vec<_>>();
             if !errors.is_empty() {
                 return Err(From::from(MultiError::from(errors)));
             }

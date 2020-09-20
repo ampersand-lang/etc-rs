@@ -3,17 +3,17 @@
 //! The reference compiler for ampersand.
 
 use assets::*;
-use ast::{Node, RootNode};
+use ast::{Node, RootNode, Visit, VisitResult};
 use dispatch::Dispatcher;
 use lexer::{Lexer, Location};
 use lir::{
-    context::ExecutionContext, target::Target, Binding, Bytes, Elems, Fields, Value, Variants,
+    context::ExecutionContext, foreign, target::Target, Binding, Bytes, Elems, Fields, Foreign, Value, Variants,
 };
 use parser::{grammar, State};
 use pipeline::*;
 use scope::Scope;
 use system::*;
-use types::NamedType;
+use types::{builtin, primitive, NamedType};
 use values::Payload;
 
 pub mod utils;
@@ -35,6 +35,8 @@ pub mod values;
 const SRC: &str = include_str!("../examples/hello.amp");
 
 fn main() {
+    better_panic::install();
+    
     let world = World::new();
     world.init_asset::<RootNode>();
     world.init_asset::<Node>();
@@ -51,7 +53,12 @@ fn main() {
     world.init_asset::<Fields>();
     world.init_asset::<Variants>();
     world.init_asset::<Bytes>();
+    world.init_asset::<Foreign>();
     world.init_static::<Target>();
+
+    primitive::init(world.resources());
+    builtin::init(world.resources());
+    foreign::init(world.resources());
 
     let node = grammar::parse(&mut State {
         lexer: Lexer::new(
@@ -63,25 +70,55 @@ fn main() {
     })
         .unwrap();
     
-    println!("{:?}", ast::PrettyPrinter::with_default(world.resources(), node));
+    println!("{}", ast::PrettyPrinter::with_default(world.resources(), world.resources(), world.resources(), node));
 
     let handle = Handle::new();
-    let root = RootNode(node);
+    let root = RootNode(node, false);
     world.insert(handle, root);
 
     let mut pipeline = Pipeline::new();
     pipeline.add_stage(pass::VALIDATE_PASS);
+    pipeline.add_stage(pass::UNIVERSE_PASS);
+    pipeline.add_stage(pass::MIR_PASS);
     pipeline.add_stage(pass::SCOPE_PASS);
     pipeline.add_stage(pass::INFER_PASS);
+    pipeline.add_stage(pass::COLLAPSE_PASS);
     pipeline.add_stage(pass::COMPILE_PASS);
     pipeline.add_stage(pass::EXEC_PASS);
+    pipeline.add_stage(pass::CODEGEN_PASS);
+    pipeline.repeat(|world| {
+        let roots = world.resources::<&mut RootNode>();
+        let nodes = world.resources::<&Node>();
+        for (_, mut root_node) in roots.iter_mut::<RootNode>() {
+            let root = nodes.get::<Node>(root_node.0).unwrap();
+
+            let mut min_universe = i32::MAX;
+            let mut max_universe = i32::MIN;
+            root.visit(Visit::Postorder, &nodes, |_, node| {
+                min_universe = min_universe.min(node.universe);
+                max_universe = max_universe.max(node.universe);
+                VisitResult::Recurse
+            });
+
+            if min_universe == max_universe {
+                root_node.1 = true;
+            }
+        }
+
+        Some(pass::MIR_PASS)
+    });
     pipeline.add_system_to_stage(pass::VALIDATE_PASS, pass::validate_update.system());
+    pipeline.add_system_to_stage(pass::UNIVERSE_PASS, pass::universe_update.system());
+    pipeline.add_system_to_stage(pass::MIR_PASS, pass::mir_update.system());
     pipeline.add_system_to_stage(pass::SCOPE_PASS, pass::scope_update.system());
     pipeline.add_system_to_stage(pass::INFER_PASS, pass::infer_update.system());
+    pipeline.add_system_to_stage(pass::COLLAPSE_PASS, pass::collapse_update.system());
     pipeline.add_system_to_stage(pass::COMPILE_PASS, pass::compile_update.system());
     pipeline.add_system_to_stage(pass::EXEC_PASS, pass::exec_update.system());
+    pipeline.add_system_to_stage(pass::CODEGEN_PASS, pass::codegen_update.system());
 
     if let Err(err) = pipeline.run(&world) {
+        eprintln!("errors:");
         eprintln!("{}", err);
     }
 }

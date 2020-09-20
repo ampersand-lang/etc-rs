@@ -25,7 +25,7 @@ pub fn compile_update(
         &mut Variants,
         &mut Bytes,
     )>,
-) -> Fallible<()> {
+) -> Fallible<Option<&'static str>> {
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = root_node.0;
         let thread_id = ThreadId::new();
@@ -35,5 +35,5 @@ pub fn compile_update(
         nodes.get_mut::<Node>(root).unwrap().thread = Some(thread_id);
         lazy.insert(thread_id, ctx);
     }
-    Ok(())
+    Ok(None)
 }

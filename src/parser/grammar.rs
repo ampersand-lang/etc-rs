@@ -166,8 +166,8 @@ fn application(state: &mut State) -> Fallible<NodeId> {
             let location = state.location().unwrap_or_else(Handle::nil);
             and3(
                 alternative,
-                function,
-                repeat(and(literal(TokenKind::Comma), function)),
+                argument,
+                repeat(and(literal(TokenKind::Comma), argument)),
             )(state)
             .map(|(func, first, rest)| {
                 let node = Node::new(
@@ -176,6 +176,26 @@ fn application(state: &mut State) -> Fallible<NodeId> {
                     iter::once(Some(func))
                         .chain(iter::once(Some(first)))
                         .chain(rest.into_iter().map(|(_, arg)| Some(arg))),
+                );
+                let handle = node.id();
+                state.nodes.insert(handle, node);
+                handle
+            })
+        },
+        argument,
+    )(state)?
+    .into_inner())
+}
+
+fn argument(state: &mut State) -> Fallible<NodeId> {
+    Ok(or(
+        |state| {
+            let location = state.location().unwrap_or_else(Handle::nil);
+            and3(alternative, literal(TokenKind::Colon), function)(state).map(|(name, _, value)| {
+                let node = Node::new(
+                    Kind::Argument,
+                    location,
+                    iter::once(Some(name)).chain(iter::once(Some(value))),
                 );
                 let handle = node.id();
                 state.nodes.insert(handle, node);
@@ -285,8 +305,8 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
             Ok(grouped(
                 TokenKind::Paren,
                 optional(and(
-                    binary,
-                    repeat(and(literal(TokenKind::Semicolon), binary)),
+                    declaration,
+                    repeat(and(literal(TokenKind::Semicolon), declaration)),
                 )),
             )(state)?
             .map(|(first, rest)| {
@@ -311,8 +331,8 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
             Ok(grouped(
                 TokenKind::Bracket,
                 optional(and(
-                    application,
-                    repeat(and(literal(TokenKind::Semicolon), application)),
+                    declaration,
+                    repeat(and(literal(TokenKind::Semicolon), declaration)),
                 )),
             )(state)?
             .map(|(first, rest)| {

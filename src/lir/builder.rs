@@ -2,6 +2,7 @@ use hashbrown::HashMap;
 use smallvec::{smallvec, SmallVec};
 
 use crate::assets::Resources;
+use crate::ast::Kind;
 use crate::lir::repr::*;
 use crate::lir::context::*;
 use crate::types::NamedType;
@@ -20,16 +21,16 @@ impl<'a> Builder<'a> {
         (self.res, self.ctx)
     }
 
-    pub fn function(self) -> FunctionBuilder<'a> {
-        let f = FunctionBuilder {
+    pub fn function<S: Into<String>>(self, name: S) -> FunctionBuilder<'a> {
+        FunctionBuilder {
             builder: self,
-            counter: Vec::new(),
+            counter: BindingPrototype::new(0, 0),
             stack_ptr: 0,
+            name: name.into(),
             param_types: SmallVec::new(),
             result_type: None,
             body: Vec::new(),
-        };
-        f.begin()
+        }
     }
 
     pub fn add_global<T: Repr + ?Sized>(mut self, out: &mut VirtualAddress, bytes: &T) -> Self {
@@ -42,8 +43,9 @@ impl<'a> Builder<'a> {
 
 pub struct FunctionBuilder<'a> {
     pub(crate) builder: Builder<'a>,
-    counter: Vec<Binding>,
+    counter: BindingPrototype,
     stack_ptr: u64,
+    name: String,
     param_types: SmallVec<[TypeId; 4]>,
     result_type: Option<TypeId>,
     body: Vec<Ir>,
@@ -54,6 +56,7 @@ impl<'a> FunctionBuilder<'a> {
         let mut builder = self.builder;
         *idx = builder.ctx.data.len();
         builder.ctx.text.push(Function {
+            name: self.name,
             param_types: self.param_types,
             result_type: self.result_type.expect("no result type given"),
             body: self.body,
@@ -71,105 +74,73 @@ impl<'a> FunctionBuilder<'a> {
         self
     }
 
-    pub fn begin(mut self) -> Self {
-        let parent = self.builder.ctx.bindings.curr.last().copied();
-        let next = self.builder.ctx.bindings.list.len();
-        self.builder.ctx.bindings.curr.push(next);
-        self.builder.ctx.bindings.list.push(Scope {
-            parent,
-            base_ptr: self.stack_ptr,
-            bindings: HashMap::new(),
-        });
-        self.counter.push(Binding(next, 0));
-
-        self.body.push(Ir {
-            binding: None,
-            instr: Instruction::Begin,
-            args: smallvec![Value::Uint(next as _)],
-        });
-
-        self
-    }
-
-    pub fn end(mut self) -> Self {
-        let scope = self.builder.ctx.bindings.current();
-        self.stack_ptr = scope.base_ptr;
-        self.builder.ctx.bindings.curr.pop();
-        self.counter.pop();
-
-        self.body.push(Ir {
-            binding: None,
-            instr: Instruction::End,
-            args: SmallVec::new(),
-        });
-
-        self
-    }
-
     pub fn build_alloca(mut self, out: &mut Value, t: TypeId, n: u64) -> Self {
-        let counter = self.counter.last_mut().unwrap();
+        let counter = &mut self.counter;
         let binding = *counter;
-        counter.1 += 1;
+        counter.inc();
         self.body.push(Ir {
             binding: Some(binding),
             instr: Instruction::Alloca,
             args: smallvec![Value::Type(t), Value::Uint(n)],
         });
-        let addr = self.stack_ptr;
-        let addr = PhysicalAddress(Section::Stack, addr as u32);
-        self.builder
-            .ctx
-            .bindings
-            .current_mut()
-            .bindings
-            .insert(binding.1, addr);
-        *out = Value::Address(self.builder.ctx.to_virtual(addr));
-        self.stack_ptr += t
-            .type_info(&self.builder.res, &self.builder.ctx.target)
-            .size as u64
-            * n;
+        *out = Value::Register(binding);
         self
     }
 
     pub fn build_store(mut self, t: TypeId, addr: Value, v: Value) -> Self {
         self.body.push(Ir {
             binding: None,
-            instr: Instruction::Return,
+            instr: Instruction::Store,
             args: smallvec![Value::Type(t), addr, v],
         });
         self
     }
 
-    pub fn build_call(mut self, out: &mut Value, t: TypeId, args: SmallVec<[Value; 4]>) -> Self {
-        let counter = self.counter.last_mut().unwrap();
+    pub fn build_load(mut self, out: &mut Value, t: TypeId, v: Value) -> Self {
+        let counter = &mut self.counter;
         let binding = *counter;
-        counter.1 += 1;
+        counter.inc();
+        self.body.push(Ir {
+            binding: Some(binding),
+            instr: Instruction::Load,
+            args: smallvec![Value::Type(t), v],
+        });
+        *out = Value::Register(binding);
+        self
+    }
+
+    pub fn build_newnode(mut self, out: &mut Value, args: SmallVec<[Value; 4]>) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+        self.body.push(Ir {
+            binding: Some(binding),
+            instr: Instruction::NewNode,
+            args,
+        });
+        *out = Value::Register(binding);
+        self
+    }
+
+    pub fn build_call(mut self, out: &mut Value, t: TypeId, mut args: SmallVec<[Value; 4]>) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+        args.insert(0, Value::Type(t));
         self.body.push(Ir {
             binding: Some(binding),
             instr: Instruction::Call,
             args,
         });
-        let addr = self.stack_ptr;
-        let addr = PhysicalAddress(Section::Stack, addr as u32);
-        self.builder
-            .ctx
-            .bindings
-            .current_mut()
-            .bindings
-            .insert(binding.1, addr);
-        let addr = self.builder.ctx.to_virtual(addr);
-        *out = Value::Unref(addr);
-        self.stack_ptr += t
-            .type_info(&self.builder.res, &self.builder.ctx.target)
-            .size as u64;
+        *out = Value::Register(binding);
         self
     }
 
-    pub fn build_return(mut self, v: Value) -> Self {
+    pub fn build_return(mut self, t: TypeId, v: Value) -> Self {
         self.body.push(Ir {
             binding: None,
             instr: Instruction::Return,
-            args: smallvec![v],
+            args: smallvec![Value::Type(t), v],
         });
         self
     }
