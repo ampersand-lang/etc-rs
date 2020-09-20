@@ -17,7 +17,7 @@ pub fn universe_update(
         // Either::Left represents a fixed universe,
         // Either::Right represents a universe that may be changed to a higher value
         let mut universes = HashMap::new();
-        
+
         root.visit(Visit::Postorder, &nodes, |res, node| {
             match node.kind {
                 Kind::Application
@@ -30,13 +30,16 @@ pub fn universe_update(
                 | Kind::Nil
                 | Kind::Tuple => {
                     universes.insert(node.id(), Either::Right(universe));
-                    
+
                     for &child in &node.children {
                         if let Some(handle) = child {
                             let child = res.get(handle).unwrap();
                             child.visit(Visit::Postorder, res, |_res, node| {
                                 let handle = node.id();
-                                let u = universes.get(&handle).copied().unwrap_or_else(|| Either::Right(universe));
+                                let u = universes
+                                    .get(&handle)
+                                    .copied()
+                                    .unwrap_or_else(|| Either::Right(universe));
                                 match u {
                                     Either::Left(_) => {}
                                     Either::Right(_) => {
@@ -47,14 +50,17 @@ pub fn universe_update(
                             });
                         }
                     }
-                    
+
                     VisitResult::Recurse
                 }
                 // both of those have the type in position 1, so this is fine
                 Kind::Binding | Kind::Declaration => {
                     // TODO: rule 2
                     if let Some(handle) = node.children[1] {
-                        let u = universes.get(&handle).copied().unwrap_or_else(|| Either::Right(universe));
+                        let u = universes
+                            .get(&handle)
+                            .copied()
+                            .unwrap_or_else(|| Either::Right(universe));
                         match u {
                             Either::Left(_) => {}
                             Either::Right(_) => {

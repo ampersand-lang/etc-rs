@@ -118,7 +118,11 @@ pub struct Definition {
 
 impl Definition {
     /// Creates a new function definition.
-    pub fn new_function(universe: i32, arg_types: SmallVec<[TypeId; 4]>, result_type: TypeId) -> Self {
+    pub fn new_function(
+        universe: i32,
+        arg_types: SmallVec<[TypeId; 4]>,
+        result_type: TypeId,
+    ) -> Self {
         Self {
             universe,
             is_func: true,

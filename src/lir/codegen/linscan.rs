@@ -31,7 +31,7 @@ impl Interval {
             end,
         }
     }
-    
+
     pub fn on_stack(name: BindingPrototype, ti: TypeInfo, start: i64, end: i64) -> Self {
         Self {
             stack: true,
@@ -90,7 +90,7 @@ impl Allocator {
         let mut delta = Vec::new();
         for idx in 0..self.live.len() {
             let i = &self.live[idx];
-            
+
             for (j, (jdx, _)) in self.active.iter().enumerate() {
                 if self.live[*jdx].end >= i.start {
                     break;
@@ -101,7 +101,7 @@ impl Allocator {
             for j in expire.drain(..) {
                 self.pool.push(self.active.remove(j).1);
             }
-            
+
             if self.pool.is_empty() {
                 if let Some((jdx, reg)) = self.active.last() {
                     let j = self.active.len() - 1;
@@ -136,16 +136,41 @@ impl Allocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn alloc() {
         let pool = vec![Register::rax(), Register::rdx(), Register::rcx()];
         let mut alloc = Allocator::new(pool);
-        alloc.add(Interval::new(BindingPrototype::new(0, 1), TypeInfo::new(8, 8), 1, 10));
-        alloc.add(Interval::new(BindingPrototype::new(0, 2), TypeInfo::new(8, 8), 1, 7));
-        alloc.add(Interval::new(BindingPrototype::new(0, 3), TypeInfo::new(8, 8), 3, 6));
-        alloc.add(Interval::new(BindingPrototype::new(0, 4), TypeInfo::new(8, 8), 7, 10));
-        alloc.add(Interval::new(BindingPrototype::new(0, 5), TypeInfo::new(8, 8), 6, 8));
+        alloc.add(Interval::new(
+            BindingPrototype::new(0, 1),
+            TypeInfo::new(8, 8),
+            1,
+            10,
+        ));
+        alloc.add(Interval::new(
+            BindingPrototype::new(0, 2),
+            TypeInfo::new(8, 8),
+            1,
+            7,
+        ));
+        alloc.add(Interval::new(
+            BindingPrototype::new(0, 3),
+            TypeInfo::new(8, 8),
+            3,
+            6,
+        ));
+        alloc.add(Interval::new(
+            BindingPrototype::new(0, 4),
+            TypeInfo::new(8, 8),
+            7,
+            10,
+        ));
+        alloc.add(Interval::new(
+            BindingPrototype::new(0, 5),
+            TypeInfo::new(8, 8),
+            6,
+            8,
+        ));
         alloc.allocate();
         for i in alloc.iter() {
             println!("{:?}", i);

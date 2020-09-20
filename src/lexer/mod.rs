@@ -20,7 +20,7 @@ pub trait CharExt: private::Seal {
     /// Returns true if the character contains the Alphabetic Unicode property, or is an ASCII punctuation mark, but not one of the following characters:
     /// '$', '"', '#', '\'', '(', ')', ',', '.', ':', ';', '=', '[', ']', '{', '}'
     fn is_ident_begin(self) -> bool;
-    
+
     /// A predicate for checking if the character may be a character of an identifier, but not the first.
     ///
     /// Returns true if the character contains the Alphabetic Unicode property, Numeric Unicode property, or is an ASCII punctuation mark, but not one of the following characters:
@@ -289,7 +289,7 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
         if !self.errors.is_empty() {
             return Some(Err(self.errors.remove(0)));
         }
-        
+
         self.data.next.take().map(Ok).or_else(|| {
             let location = Location {
                 line: self.data.line,
@@ -395,58 +395,54 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                         Normal,
                         Backslash,
                     }
-                    
+
                     let mut string = String::new();
                     let mut state = State::Normal;
                     while let Some(ch) = self.data.src.next() {
                         match state {
-                            State::Normal => {
-                                match ch {
-                                    '"' => break,
-                                    '\\' => {
-                                        self.data.column += 1;
-                                        state = State::Backslash;
-                                    }
-                                    '\n' => {
-                                        self.data.line += 1;
-                                        self.data.column = 0;
-                                    }
-                                    next => {
-                                        self.data.column += 1;
-                                        string.push(next);
-                                    }
+                            State::Normal => match ch {
+                                '"' => break,
+                                '\\' => {
+                                    self.data.column += 1;
+                                    state = State::Backslash;
                                 }
-                            }
-                            State::Backslash => {
-                                match ch {
-                                    '\\' => {
-                                        self.data.column += 1;
-                                        state = State::Normal;
-                                        string.push('\\');
-                                    }
-                                    'e' => {
-                                        self.data.column += 1;
-                                        state = State::Normal;
-                                        string.push('\x1b');
-                                    }
-                                    'n' => {
-                                        self.data.column += 1;
-                                        state = State::Normal;
-                                        string.push('\n');
-                                    }
-                                    't' => {
-                                        self.data.column += 1;
-                                        state = State::Normal;
-                                        string.push('\t');
-                                    }
-                                    'r' => {
-                                        self.data.column += 1;
-                                        state = State::Normal;
-                                        string.push('\r');
-                                    }
-                                    _ => return Some(Err(From::from(LexerError { location }))),
+                                '\n' => {
+                                    self.data.line += 1;
+                                    self.data.column = 0;
                                 }
-                            }
+                                next => {
+                                    self.data.column += 1;
+                                    string.push(next);
+                                }
+                            },
+                            State::Backslash => match ch {
+                                '\\' => {
+                                    self.data.column += 1;
+                                    state = State::Normal;
+                                    string.push('\\');
+                                }
+                                'e' => {
+                                    self.data.column += 1;
+                                    state = State::Normal;
+                                    string.push('\x1b');
+                                }
+                                'n' => {
+                                    self.data.column += 1;
+                                    state = State::Normal;
+                                    string.push('\n');
+                                }
+                                't' => {
+                                    self.data.column += 1;
+                                    state = State::Normal;
+                                    string.push('\t');
+                                }
+                                'r' => {
+                                    self.data.column += 1;
+                                    state = State::Normal;
+                                    string.push('\r');
+                                }
+                                _ => return Some(Err(From::from(LexerError { location }))),
+                            },
                         }
                     }
                     let str_handle = Handle::from_hash(&string);
@@ -469,8 +465,8 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                                 int += next.to_digit(10).unwrap() as u64;
                             }
                             x if x.is_whitespace() => break,
-                            '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '[' | ']'
-                                | '{' | '}' => break,
+                            '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '['
+                            | ']' | '{' | '}' => break,
                             _ => return Some(Err(From::from(LexerError { location }))),
                         }
                     }
@@ -491,8 +487,8 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                                 ident.push(next);
                             }
                             x if x.is_whitespace() => break,
-                            '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '[' | ']'
-                                | '{' | '}' => break,
+                            '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '['
+                            | ']' | '{' | '}' => break,
                             _ => return Some(Err(From::from(LexerError { location }))),
                         }
                     }

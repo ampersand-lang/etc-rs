@@ -17,53 +17,74 @@ pub mod builtin {
     use super::*;
 
     pub fn init(mut res: Resources<&mut NamedType>) {
-        res.insert(DECLARE.concrete.to_type(), NamedType {
-            name: Some("declare".to_string()),
-            t: Type::Function {
-                result_type: *primitive::UNIT,
-                param_types: smallvec![*primitive::NODE],
+        res.insert(
+            DECLARE.concrete.to_type(),
+            NamedType {
+                name: Some("declare".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::UNIT,
+                    param_types: smallvec![*primitive::NODE],
+                },
             },
-        });
+        );
 
-        res.insert(PTR.concrete.to_type(), NamedType {
-            name: Some("ptr".to_string()),
-            t: Type::Function {
-                result_type: *primitive::TYPE,
-                param_types: smallvec![*primitive::TYPE],
+        res.insert(
+            PTR.concrete.to_type(),
+            NamedType {
+                name: Some("ptr".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::TYPE,
+                    param_types: smallvec![*primitive::TYPE],
+                },
             },
-        });
+        );
 
-        res.insert(FN.concrete.to_type(), NamedType {
-            name: Some("fn".to_string()),
-            t: Type::Function {
-                result_type: *primitive::TYPE,
-                param_types: smallvec![*primitive::TYPE, *primitive::TYPE],
+        res.insert(
+            FN.concrete.to_type(),
+            NamedType {
+                name: Some("fn".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::TYPE,
+                    param_types: smallvec![*primitive::TYPE, *primitive::TYPE],
+                },
             },
-        });
+        );
 
-        res.insert(FORMAT_AST.concrete.to_type(), NamedType {
-            name: Some("format-ast".to_string()),
-            t: Type::Function {
-                result_type: *primitive::NODE,
-                param_types: smallvec![*primitive::NODE],
+        res.insert(
+            FORMAT_AST.concrete.to_type(),
+            NamedType {
+                name: Some("format-ast".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::NODE,
+                    param_types: smallvec![*primitive::NODE],
+                },
             },
-        });
+        );
 
-        res.insert(NEW_NODE.concrete.to_type(), NamedType {
-            name: Some("new-node".to_string()),
-            t: Type::Function {
-                result_type: *primitive::NODE,
-                param_types: smallvec![*primitive::U8, *primitive::TYPE, /* ANY, VARIADIC */],
+        res.insert(
+            NEW_NODE.concrete.to_type(),
+            NamedType {
+                name: Some("new-node".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::NODE,
+                    param_types: smallvec![
+                        *primitive::U8,
+                        *primitive::TYPE, /* ANY, VARIADIC */
+                    ],
+                },
             },
-        });
+        );
 
-        res.insert(QUASIQUOTE.concrete.to_type(), NamedType {
-            name: Some("quasiquote".to_string()),
-            t: Type::Function {
-                result_type: *primitive::NODE,
-                param_types: smallvec![/* ANY */],
+        res.insert(
+            QUASIQUOTE.concrete.to_type(),
+            NamedType {
+                name: Some("quasiquote".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::NODE,
+                    param_types: smallvec![/* ANY */],
+                },
             },
-        });
+        );
     }
 
     lazy_static! {
@@ -112,91 +133,139 @@ pub mod primitive {
     use super::*;
 
     pub fn init(mut res: Resources<&mut NamedType>) {
-        res.insert(UNIT.concrete.to_type(), NamedType {
-            name: Some("unit".to_string()),
-            t: Type::Struct {
-                fields: SmallVec::new(),
+        res.insert(
+            UNIT.concrete.to_type(),
+            NamedType {
+                name: Some("unit".to_string()),
+                t: Type::Struct {
+                    fields: SmallVec::new(),
+                },
             },
-        });
+        );
 
-        res.insert(TYPE.concrete.to_type(), NamedType {
-            name: Some("type".to_string()),
-            t: Type::Struct {
-                fields: smallvec![*U64, *U64],
+        res.insert(
+            TYPE.concrete.to_type(),
+            NamedType {
+                name: Some("type".to_string()),
+                t: Type::Struct {
+                    fields: smallvec![*U64, *U64],
+                },
             },
-        });
+        );
 
-        res.insert(NODE.concrete.to_type(), NamedType {
-            name: Some("node".to_string()),
-            t: Type::Struct {
-                fields: smallvec![*U64, *U64],
+        res.insert(
+            NODE.concrete.to_type(),
+            NamedType {
+                name: Some("node".to_string()),
+                t: Type::Struct {
+                    fields: smallvec![*U64, *U64],
+                },
             },
-        });
+        );
 
-        res.insert(S8.concrete.to_type(), NamedType {
-            name: Some("s8".to_string()),
-            t: Type::S8,
-        });
+        res.insert(
+            S8.concrete.to_type(),
+            NamedType {
+                name: Some("s8".to_string()),
+                t: Type::S8,
+            },
+        );
 
-        res.insert(S16.concrete.to_type(), NamedType {
-            name: Some("s16".to_string()),
-            t: Type::S16,
-        });
+        res.insert(
+            S16.concrete.to_type(),
+            NamedType {
+                name: Some("s16".to_string()),
+                t: Type::S16,
+            },
+        );
 
-        res.insert(S32.concrete.to_type(), NamedType {
-            name: Some("s32".to_string()),
-            t: Type::S32,
-        });
+        res.insert(
+            S32.concrete.to_type(),
+            NamedType {
+                name: Some("s32".to_string()),
+                t: Type::S32,
+            },
+        );
 
-        res.insert(S64.concrete.to_type(), NamedType {
-            name: Some("s64".to_string()),
-            t: Type::S64,
-        });
+        res.insert(
+            S64.concrete.to_type(),
+            NamedType {
+                name: Some("s64".to_string()),
+                t: Type::S64,
+            },
+        );
 
-        res.insert(SINT.concrete.to_type(), NamedType {
-            name: Some("sint".to_string()),
-            t: Type::Sint,
-        });
+        res.insert(
+            SINT.concrete.to_type(),
+            NamedType {
+                name: Some("sint".to_string()),
+                t: Type::Sint,
+            },
+        );
 
-        res.insert(U8.concrete.to_type(), NamedType {
-            name: Some("u8".to_string()),
-            t: Type::U8,
-        });
+        res.insert(
+            U8.concrete.to_type(),
+            NamedType {
+                name: Some("u8".to_string()),
+                t: Type::U8,
+            },
+        );
 
-        res.insert(U16.concrete.to_type(), NamedType {
-            name: Some("u16".to_string()),
-            t: Type::U16,
-        });
+        res.insert(
+            U16.concrete.to_type(),
+            NamedType {
+                name: Some("u16".to_string()),
+                t: Type::U16,
+            },
+        );
 
-        res.insert(U32.concrete.to_type(), NamedType {
-            name: Some("u32".to_string()),
-            t: Type::U32,
-        });
+        res.insert(
+            U32.concrete.to_type(),
+            NamedType {
+                name: Some("u32".to_string()),
+                t: Type::U32,
+            },
+        );
 
-        res.insert(U64.concrete.to_type(), NamedType {
-            name: Some("u64".to_string()),
-            t: Type::U64,
-        });
+        res.insert(
+            U64.concrete.to_type(),
+            NamedType {
+                name: Some("u64".to_string()),
+                t: Type::U64,
+            },
+        );
 
-        res.insert(UINT.concrete.to_type(), NamedType {
-            name: Some("uint".to_string()),
-            t: Type::Uint,
-        });
+        res.insert(
+            UINT.concrete.to_type(),
+            NamedType {
+                name: Some("uint".to_string()),
+                t: Type::Uint,
+            },
+        );
 
-        res.insert(FLOAT32.concrete.to_type(), NamedType {
-            name: Some("float32".to_string()),
-            t: Type::Float32,
-        });
+        res.insert(
+            FLOAT32.concrete.to_type(),
+            NamedType {
+                name: Some("float32".to_string()),
+                t: Type::Float32,
+            },
+        );
 
-        res.insert(FLOAT64.concrete.to_type(), NamedType {
-            name: Some("float64".to_string()),
-            t: Type::Float64,
-        });
+        res.insert(
+            FLOAT64.concrete.to_type(),
+            NamedType {
+                name: Some("float64".to_string()),
+                t: Type::Float64,
+            },
+        );
 
-        res.insert(FLOAT.concrete.to_type(), NamedType {
-            name: Some("float".to_string()),
-            t: Type::Float,
-        });
+        res.insert(
+            FLOAT.concrete.to_type(),
+            NamedType {
+                name: Some("float".to_string()),
+                t: Type::Float,
+            },
+        );
     }
 
     lazy_static! {
@@ -697,27 +766,40 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                     write!(f, "{}", name)
                 } else {
                     match &ty.t {
-    			Type::S8 => write!(f, "s8"),
-    			Type::S16 => write!(f, "s16"),
-    			Type::S32 => write!(f, "s32"),
-    			Type::S64 => write!(f, "s64"),
-    			Type::Sint => write!(f, "sint"),
-    			Type::U8 => write!(f, "u8"),
-    			Type::U16 => write!(f, "u16"),
-    			Type::U32 => write!(f, "u32"),
-    			Type::U64 => write!(f, "u64"),
-    			Type::Uint => write!(f, "uint"),
-    			Type::Float32 => write!(f, "float32"),
-    			Type::Float64 => write!(f, "float64"),
-    			Type::Float => write!(f, "float"),
-    			Type::Struct { ..} => todo!(),
+                        Type::S8 => write!(f, "s8"),
+                        Type::S16 => write!(f, "s16"),
+                        Type::S32 => write!(f, "s32"),
+                        Type::S64 => write!(f, "s64"),
+                        Type::Sint => write!(f, "sint"),
+                        Type::U8 => write!(f, "u8"),
+                        Type::U16 => write!(f, "u16"),
+                        Type::U32 => write!(f, "u32"),
+                        Type::U64 => write!(f, "u64"),
+                        Type::Uint => write!(f, "uint"),
+                        Type::Float32 => write!(f, "float32"),
+                        Type::Float64 => write!(f, "float64"),
+                        Type::Float => write!(f, "float"),
+                        Type::Struct { .. } => todo!(),
                         Type::Tagged { .. } => todo!(),
                         Type::Enum { .. } => todo!(),
                         Type::Union { .. } => todo!(),
                         Type::Function { .. } => todo!(),
-                        Type::Pointer(pointee) => write!(f, "^{}", PrettyPrinterRef::new(self.config, self.res, *pointee)),
-                        Type::Array(elem, size) => write!(f, "$[{}; {}]", PrettyPrinterRef::new(self.config, self.res, *elem), size),
-                        Type::Slice(elem) => write!(f, "$[{}]", PrettyPrinterRef::new(self.config, self.res, *elem)),
+                        Type::Pointer(pointee) => write!(
+                            f,
+                            "^{}",
+                            PrettyPrinterRef::new(self.config, self.res, *pointee)
+                        ),
+                        Type::Array(elem, size) => write!(
+                            f,
+                            "$[{}; {}]",
+                            PrettyPrinterRef::new(self.config, self.res, *elem),
+                            size
+                        ),
+                        Type::Slice(elem) => write!(
+                            f,
+                            "$[{}]",
+                            PrettyPrinterRef::new(self.config, self.res, *elem)
+                        ),
                     }
                 }
             }

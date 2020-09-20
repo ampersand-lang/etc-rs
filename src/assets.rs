@@ -1248,7 +1248,10 @@ impl LazyUpdate {
             let assets = Assets::<T>::new();
             Box::new(assets)
         });
-        assets.downcast_mut::<Assets<T>>().unwrap().insert(handle, t);
+        assets
+            .downcast_mut::<Assets<T>>()
+            .unwrap()
+            .insert(handle, t);
     }
 
     pub fn commit(self, w: &World) {

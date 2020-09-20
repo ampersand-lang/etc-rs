@@ -29,7 +29,7 @@ pub fn parse(state: &mut State) -> Fallible<NodeId> {
                     .as_ref()
                     .clone(),
             )));
-            
+
             let mut depth = 0_usize;
             let mut tok = match state.lexer.next().unwrap() {
                 Ok(tok) => tok,

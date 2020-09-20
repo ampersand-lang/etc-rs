@@ -7,7 +7,8 @@ use ast::{Node, RootNode, Visit, VisitResult};
 use dispatch::Dispatcher;
 use lexer::{Lexer, Location};
 use lir::{
-    context::ExecutionContext, foreign, target::Target, Binding, Bytes, Elems, Fields, Foreign, Value, Variants,
+    context::ExecutionContext, foreign, target::Target, Binding, Bytes, Elems, Fields, Foreign,
+    Value, Variants,
 };
 use parser::{grammar, State};
 use pipeline::*;
@@ -36,7 +37,7 @@ const SRC: &str = include_str!("../examples/hello.amp");
 
 fn main() {
     better_panic::install();
-    
+
     let world = World::new();
     world.init_asset::<RootNode>();
     world.init_asset::<Node>();
@@ -68,9 +69,17 @@ fn main() {
         ),
         nodes: world.resources::<&mut Node>(),
     })
-        .unwrap();
-    
-    println!("{}", ast::PrettyPrinter::with_default(world.resources(), world.resources(), world.resources(), node));
+    .unwrap();
+
+    println!(
+        "{}",
+        ast::PrettyPrinter::with_default(
+            world.resources(),
+            world.resources(),
+            world.resources(),
+            node
+        )
+    );
 
     let handle = Handle::new();
     let root = RootNode(node, false);

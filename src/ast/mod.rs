@@ -1,16 +1,16 @@
 //! The abstract syntax tree used throughout semantical passes of etc.
 use std::fmt::{self, Debug, Display};
 
+use hashbrown::HashSet;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use smallvec::SmallVec;
-use hashbrown::HashSet;
 
 use crate::assets::{AssetBundle, Handle, Resources};
+use crate::lexer::Location;
 use crate::lir::{ThreadId, Value};
 use crate::scope::ScopeId;
 use crate::types::{NamedType, TypeId};
 use crate::values::{self, Payload};
-use crate::lexer::Location;
 
 /// A handle to a `Node`.
 pub type NodeId = Handle<Node>;
@@ -248,7 +248,11 @@ pub struct Node {
 
 impl Node {
     /// Creates a new node with a `Kind` and some children.
-    pub fn new<I: IntoIterator<Item = Option<NodeId>>>(kind: Kind, location: Handle<Location>, children: I) -> Self {
+    pub fn new<I: IntoIterator<Item = Option<NodeId>>>(
+        kind: Kind,
+        location: Handle<Location>,
+        children: I,
+    ) -> Self {
         Node {
             parent: None,
             id: NodeId::new(),
@@ -309,7 +313,12 @@ impl Node {
     }
 
     /// Visits immutably every child in this node and self.
-    fn private_visit<A: AssetBundle, F>(&self, visit: Visit, res: &Resources<A>, f: &mut F) -> PrivateVisitResult
+    fn private_visit<A: AssetBundle, F>(
+        &self,
+        visit: Visit,
+        res: &Resources<A>,
+        f: &mut F,
+    ) -> PrivateVisitResult
     where
         F: FnMut(&Resources<A>, &Self) -> VisitResult,
     {
@@ -331,7 +340,7 @@ impl Node {
                     if skip.contains(&handle) {
                         continue;
                     }
-                    
+
                     let node = res.get(handle).unwrap();
                     match node.private_visit(visit, res, f) {
                         PrivateVisitResult::Recurse => {}
@@ -437,12 +446,29 @@ pub struct PrettyPrinter<'res> {
 
 impl<'res> PrettyPrinter<'res> {
     /// Initializes a pretty-printer with all the fields.
-    pub fn new(config: PrettyConfig, res: Resources<&'res Node>, types: Resources<&'res NamedType>, strings: Resources<&'res String>, id: NodeId) -> Self {
-        Self { config, res, types, strings, id }
+    pub fn new(
+        config: PrettyConfig,
+        res: Resources<&'res Node>,
+        types: Resources<&'res NamedType>,
+        strings: Resources<&'res String>,
+        id: NodeId,
+    ) -> Self {
+        Self {
+            config,
+            res,
+            types,
+            strings,
+            id,
+        }
     }
 
     /// Initializes a pretty-printer with a default config.
-    pub fn with_default(res: Resources<&'res Node>, types: Resources<&'res NamedType>, strings: Resources<&'res String>, id: NodeId) -> Self {
+    pub fn with_default(
+        res: Resources<&'res Node>,
+        types: Resources<&'res NamedType>,
+        strings: Resources<&'res String>,
+        id: NodeId,
+    ) -> Self {
         Self::new(Default::default(), res, types, strings, id)
     }
 
@@ -483,8 +509,20 @@ pub struct PrettyPrinterRef<'a, 'res> {
 #[doc(hidden)]
 #[allow(missing_docs)]
 impl<'a, 'res> PrettyPrinterRef<'a, 'res> {
-    pub fn new(config: PrettyConfig, res: &'a Resources<&'res Node>, types: &'a Resources<&'res NamedType>, strings: &'a Resources<&'res String>, id: NodeId) -> Self {
-        Self { config, res, types, strings, id }
+    pub fn new(
+        config: PrettyConfig,
+        res: &'a Resources<&'res Node>,
+        types: &'a Resources<&'res NamedType>,
+        strings: &'a Resources<&'res String>,
+        id: NodeId,
+    ) -> Self {
+        Self {
+            config,
+            res,
+            types,
+            strings,
+            id,
+        }
     }
 }
 
@@ -504,13 +542,29 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                         .children
                         .iter()
                         .take(node.children.len() - 1)
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node.unwrap()))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node.unwrap(),
+                            )
+                        })
                         .collect::<Vec<_>>(),
                 )
                 .field(
                     "expr",
                     &node.children.last().and_then(|node| {
-                        node.map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        node.map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                     }),
                 )
                 .finish(),
@@ -519,13 +573,29 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .field(
                     "parameters",
                     &node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .field(
                     "body",
                     &node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .finish(),
@@ -537,7 +607,15 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                         .children
                         .first()
                         .and_then(|node| {
-                            node.map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                            node.map(|node| {
+                                PrettyPrinterRef::new(
+                                    self.config,
+                                    self.res,
+                                    self.types,
+                                    self.strings,
+                                    node,
+                                )
+                            })
                         })
                         .unwrap(),
                 )
@@ -547,7 +625,15 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                         .children
                         .iter()
                         .skip(1)
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node.unwrap()))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node.unwrap(),
+                            )
+                        })
                         .collect::<Vec<_>>(),
                 )
                 .finish(),
@@ -556,18 +642,35 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .field(
                     "pattern",
                     &node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .field(
                     "type",
-                    &node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node)),
+                    &node.children[1].map(|node| {
+                        PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node)
+                    }),
                 )
                 .field(
                     "value",
                     &node.children[2]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .finish(),
@@ -576,13 +679,29 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .field(
                     "name",
                     &node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .field(
                     "value",
                     &node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .finish(),
@@ -591,13 +710,29 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .field(
                     "pattern",
                     &node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .field(
                     "type",
                     &node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .finish(),
@@ -608,7 +743,15 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                     &node
                         .children
                         .iter()
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node.unwrap()))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node.unwrap(),
+                            )
+                        })
                         .collect::<Vec<_>>(),
                 )
                 .finish(),
@@ -617,13 +760,29 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .field(
                     "value",
                     &node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .field(
                     "index",
                     &node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .finish(),
@@ -632,13 +791,29 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .field(
                     "value",
                     &node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .field(
                     "field",
                     &node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
                         .unwrap(),
                 )
                 .finish(),
@@ -649,7 +824,15 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                     &node
                         .children
                         .iter()
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node.unwrap()))
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node.unwrap(),
+                            )
+                        })
                         .collect::<Vec<_>>(),
                 )
                 .finish(),
@@ -664,41 +847,69 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
             write!(f, "$")?;
         }
         match node.kind {
-            Kind::Nil => {
-                write!(
-                    f,
-                    "{}",
-                    values::PrettyPrinterRef::new(
-                        &Default::default(),
-                        self.types,
-                        self.strings,
-                        node.payload.unwrap(),
-                    ),
-                )
-            }
+            Kind::Nil => write!(
+                f,
+                "{}",
+                values::PrettyPrinterRef::new(
+                    &Default::default(),
+                    self.types,
+                    self.strings,
+                    node.payload.unwrap(),
+                ),
+            ),
             Kind::Block => {
                 write!(f, "{{ ")?;
                 for stmt in node.children.iter().take(node.children.len() - 1) {
-                    write!(f, "{}; ", PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, stmt.unwrap()))?;
+                    write!(
+                        f,
+                        "{}; ",
+                        PrettyPrinterRef::new(
+                            self.config,
+                            self.res,
+                            self.types,
+                            self.strings,
+                            stmt.unwrap()
+                        )
+                    )?;
                 }
                 let expr = node.children.last().unwrap();
                 if let Some(expr) = expr {
-                    write!(f, "{} ", PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, *expr))?;
+                    write!(
+                        f,
+                        "{} ",
+                        PrettyPrinterRef::new(
+                            self.config,
+                            self.res,
+                            self.types,
+                            self.strings,
+                            *expr
+                        )
+                    )?;
                 }
                 write!(f, "}}")
             }
-            Kind::Function => {
-                write!(
-                    f,
-                    "{} => {}",
-                    node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
-                        .unwrap(),
-                    node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
-                        .unwrap(),
-                )
-            }
+            Kind::Function => write!(
+                f,
+                "{} => {}",
+                node.children[0]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+                node.children[1]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+            ),
             Kind::Application => {
                 write!(
                     f,
@@ -707,7 +918,15 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                         .children
                         .first()
                         .and_then(|node| {
-                            node.map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
+                            node.map(|node| {
+                                PrettyPrinterRef::new(
+                                    self.config,
+                                    self.res,
+                                    self.types,
+                                    self.strings,
+                                    node,
+                                )
+                            })
                         })
                         .unwrap(),
                 )?;
@@ -715,55 +934,111 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                     if i > 1 {
                         write!(f, ", ")?;
                     }
-                    let argument = PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, argument.unwrap());
+                    let argument = PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        argument.unwrap(),
+                    );
                     write!(f, "{}", argument)?;
                 }
                 Ok(())
             }
-            Kind::Binding => {
-                write!(
-                    f,
-                    "{} := {}",
-                    node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
-                        .unwrap(),
-                    node.children[2]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
-                        .unwrap(),
-                )
-            }
-            Kind::Argument => {
-                write!(
-                    f,
-                    "{}: {}",
-                    node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
-                        .unwrap(),
-                    node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
-                        .unwrap(),
-                )
-            }
-            Kind::Declaration => {
-                write!(
-                    f,
-                    "{}: {}",
-                    node.children[0]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
-                        .unwrap(),
-                    node.children[1]
-                        .map(|node| PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node))
-                        .unwrap(),
-                )
-            }
+            Kind::Binding => write!(
+                f,
+                "{} := {}",
+                node.children[0]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+                node.children[2]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+            ),
+            Kind::Argument => write!(
+                f,
+                "{}: {}",
+                node.children[0]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+                node.children[1]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+            ),
+            Kind::Declaration => write!(
+                f,
+                "{}: {}",
+                node.children[0]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+                node.children[1]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+            ),
             Kind::Tuple => {
                 write!(f, "(")?;
                 for stmt in node.children.iter().take(node.children.len() - 1) {
-                    write!(f, "{}; ", PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, stmt.unwrap()))?;
+                    write!(
+                        f,
+                        "{}; ",
+                        PrettyPrinterRef::new(
+                            self.config,
+                            self.res,
+                            self.types,
+                            self.strings,
+                            stmt.unwrap()
+                        )
+                    )?;
                 }
                 let expr = node.children.last().unwrap();
                 if let Some(expr) = expr {
-                    write!(f, "{}", PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, *expr))?;
+                    write!(
+                        f,
+                        "{}",
+                        PrettyPrinterRef::new(
+                            self.config,
+                            self.res,
+                            self.types,
+                            self.strings,
+                            *expr
+                        )
+                    )?;
                 }
                 write!(f, ")")
             }

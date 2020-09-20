@@ -43,12 +43,26 @@ pub struct PrettyPrinter<'res> {
 
 impl<'res> PrettyPrinter<'res> {
     /// Initializes a pretty-printer with all the fields.
-    pub fn new(config: PrettyConfig, types: Resources<&'res NamedType>, strings: Resources<&'res String>, payload: Payload) -> Self {
-        Self { config, types, strings, payload }
+    pub fn new(
+        config: PrettyConfig,
+        types: Resources<&'res NamedType>,
+        strings: Resources<&'res String>,
+        payload: Payload,
+    ) -> Self {
+        Self {
+            config,
+            types,
+            strings,
+            payload,
+        }
     }
 
     /// Initializes a pretty-printer with a default config.
-    pub fn with_default(types: Resources<&'res NamedType>, strings: Resources<&'res String>, payload: Payload) -> Self {
+    pub fn with_default(
+        types: Resources<&'res NamedType>,
+        strings: Resources<&'res String>,
+        payload: Payload,
+    ) -> Self {
         Self::new(Default::default(), types, strings, payload)
     }
 
@@ -81,8 +95,18 @@ pub(crate) struct PrettyPrinterRef<'a, 'res> {
 #[doc(hidden)]
 #[allow(missing_docs)]
 impl<'a, 'res> PrettyPrinterRef<'a, 'res> {
-    pub fn new(config: &'a PrettyConfig, types: &'a Resources<&'res NamedType>, strings: &'a Resources<&'res String>, payload: Payload) -> Self {
-        Self { config, types, strings, payload }
+    pub fn new(
+        config: &'a PrettyConfig,
+        types: &'a Resources<&'res NamedType>,
+        strings: &'a Resources<&'res String>,
+        payload: Payload,
+    ) -> Self {
+        Self {
+            config,
+            types,
+            strings,
+            payload,
+        }
     }
 }
 
@@ -92,9 +116,21 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
             Payload::Unit => write!(f, "()"),
             Payload::Integer(u) => write!(f, "{}", u),
             Payload::Float(x) => write!(f, "{:?}", x),
-            Payload::String(handle) => write!(f, "{:?}", self.strings.get::<String>(handle).unwrap().as_ref()),
-            Payload::Identifier(handle) => write!(f, "{}", self.strings.get::<String>(handle).unwrap().as_ref()),
-            Payload::Type(typ) => write!(f, "{}", types::PrettyPrinterRef::new(&Default::default(), self.types, typ)),
+            Payload::String(handle) => write!(
+                f,
+                "{:?}",
+                self.strings.get::<String>(handle).unwrap().as_ref()
+            ),
+            Payload::Identifier(handle) => write!(
+                f,
+                "{}",
+                self.strings.get::<String>(handle).unwrap().as_ref()
+            ),
+            Payload::Type(typ) => write!(
+                f,
+                "{}",
+                types::PrettyPrinterRef::new(&Default::default(), self.types, typ)
+            ),
             Payload::Function(func) => write!(f, "{:x}", func),
         }
     }

@@ -1,8 +1,8 @@
 use failure::Fallible;
 use hashbrown::HashSet;
 
-use crate::utils::IntPtr;
 use crate::types::TypeInfo;
+use crate::utils::IntPtr;
 
 use super::*;
 
@@ -11,8 +11,20 @@ pub trait CallConv: 'static {
     fn free(&self, args: &[TypeInfo]) -> Vec<Register>;
     fn begin(&self, builder: &mut FunctionBuilder) -> Fallible<()>;
     fn end(&self, builder: &mut FunctionBuilder) -> Fallible<()>;
-    fn build_call(&self, builder: &mut FunctionBuilder, bb: BasicBlock, func: String, result: TypeInfo, args: &[TypedArgument]) -> Fallible<()>;
-    fn build_ret(&self, builder: &mut FunctionBuilder, bb: BasicBlock, value: TypedArgument) -> Fallible<()>;
+    fn build_call(
+        &self,
+        builder: &mut FunctionBuilder,
+        bb: BasicBlock,
+        func: String,
+        result: TypeInfo,
+        args: &[TypedArgument],
+    ) -> Fallible<()>;
+    fn build_ret(
+        &self,
+        builder: &mut FunctionBuilder,
+        bb: BasicBlock,
+        value: TypedArgument,
+    ) -> Fallible<()>;
 }
 
 pub struct AmpCall64;
@@ -21,7 +33,7 @@ impl CallConv for AmpCall64 {
     fn name(&self) -> &'static str {
         "amp-call_amd64"
     }
-    
+
     fn free(&self, args: &[TypeInfo]) -> Vec<Register> {
         let mut free = HashSet::with_capacity(16);
         free.insert(Register::rax());
@@ -38,7 +50,14 @@ impl CallConv for AmpCall64 {
         free.insert(Register::r13());
         free.insert(Register::r14());
         free.insert(Register::r15());
-        let params = &[Register::rdi(), Register::rsi(), Register::rdx(), Register::rcx(), Register::r8(), Register::r9()];
+        let params = &[
+            Register::rdi(),
+            Register::rsi(),
+            Register::rdx(),
+            Register::rcx(),
+            Register::r8(),
+            Register::r9(),
+        ];
         let mut idx = 0;
         for arg in args {
             if idx == params.len() {
@@ -51,7 +70,7 @@ impl CallConv for AmpCall64 {
         }
         free.into_iter().collect()
     }
-    
+
     fn begin(&self, builder: &mut FunctionBuilder) -> Fallible<()> {
         if !builder.is_naked() {
             let mut size = builder.local_size();
@@ -76,14 +95,12 @@ impl CallConv for AmpCall64 {
         }
         Ok(())
     }
-    
+
     fn end(&self, builder: &mut FunctionBuilder) -> Fallible<()> {
         if !builder.is_naked() {
             let bb = builder.add_basic_block();
             let bb = builder.basic_block_mut(bb);
-            bb.instruction()
-                .label("_ret".to_string())
-                .build()?;
+            bb.instruction().label("_ret".to_string()).build()?;
             bb.instruction()
                 .opcode("mov")
                 .argument(Register::rsp())
@@ -93,16 +110,28 @@ impl CallConv for AmpCall64 {
                 .opcode("pop")
                 .argument(Register::rbp())
                 .build()?;
-            bb.instruction()
-                .opcode("ret")
-                .build()?;
+            bb.instruction().opcode("ret").build()?;
         }
         Ok(())
     }
-    
-    fn build_call(&self, builder: &mut FunctionBuilder, bb: BasicBlock, func: String, result: TypeInfo, args: &[TypedArgument]) -> Fallible<()> {
+
+    fn build_call(
+        &self,
+        builder: &mut FunctionBuilder,
+        bb: BasicBlock,
+        func: String,
+        result: TypeInfo,
+        args: &[TypedArgument],
+    ) -> Fallible<()> {
         let bb = builder.basic_block_mut(bb);
-        let target = &[Register::rdi(), Register::rsi(), Register::rdx(), Register::rcx(), Register::r8(), Register::r9()];
+        let target = &[
+            Register::rdi(),
+            Register::rsi(),
+            Register::rdx(),
+            Register::rcx(),
+            Register::r8(),
+            Register::r9(),
+        ];
         let mut tgt_idx = 0;
         if result.size > 8 {
             tgt_idx += 1;
@@ -147,9 +176,18 @@ impl CallConv for AmpCall64 {
             } else {
                 stack_offset = stack_offset.align_up(value.info.align);
                 match value.arg {
-                    Argument::Memory { base, index, size, offset } => {
+                    Argument::Memory {
+                        base,
+                        index,
+                        size,
+                        offset,
+                    } => {
                         let stack_offset = stack_offset as u64;
-                        let size = if index.is_some() { size.unwrap_or(1) } else { size.unwrap_or(0) };
+                        let size = if index.is_some() {
+                            size.unwrap_or(1)
+                        } else {
+                            size.unwrap_or(0)
+                        };
                         let offset = offset.unwrap_or(0);
                         let address = match (base, index, size, offset) {
                             (Some(base), _, 0, offset) => base + offset,
@@ -161,7 +199,8 @@ impl CallConv for AmpCall64 {
                         for i in 0..size.align_up(8) / 8 {
                             let offset = i * 8;
                             let mut address = address;
-                            address.offset = address.offset.map(|off| off + offset).or(Some(offset));
+                            address.offset =
+                                address.offset.map(|off| off + offset).or(Some(offset));
                             bb.instruction()
                                 .opcode("mov")
                                 .argument(Register::rax())
@@ -188,9 +227,18 @@ impl CallConv for AmpCall64 {
         for value in args.iter().skip(6) {
             stack_offset = stack_offset.align_up(value.info.align);
             match value.arg {
-                Argument::Memory { base, index, size, offset } => {
+                Argument::Memory {
+                    base,
+                    index,
+                    size,
+                    offset,
+                } => {
                     let stack_offset = stack_offset as u64;
-                    let size = if index.is_some() { size.unwrap_or(1) } else { size.unwrap_or(0) };
+                    let size = if index.is_some() {
+                        size.unwrap_or(1)
+                    } else {
+                        size.unwrap_or(0)
+                    };
                     let offset = offset.unwrap_or(0);
                     let address = match (base, index, size, offset) {
                         (Some(base), _, 0, offset) => base + offset,
@@ -220,10 +268,7 @@ impl CallConv for AmpCall64 {
             }
             stack_offset += value.info.size;
         }
-        bb.instruction()
-            .opcode("call")
-            .argument(func)
-            .build()?;
+        bb.instruction().opcode("call").argument(func).build()?;
         if stack_size != 0 {
             bb.instruction()
                 .opcode("add")
@@ -233,8 +278,13 @@ impl CallConv for AmpCall64 {
         }
         Ok(())
     }
-    
-    fn build_ret(&self, builder: &mut FunctionBuilder, bb: BasicBlock, value: TypedArgument) -> Fallible<()> {
+
+    fn build_ret(
+        &self,
+        builder: &mut FunctionBuilder,
+        bb: BasicBlock,
+        value: TypedArgument,
+    ) -> Fallible<()> {
         let is_naked = builder.is_naked();
         let bb = builder.basic_block_mut(bb);
         if value.info.size <= 8 {
@@ -245,8 +295,17 @@ impl CallConv for AmpCall64 {
                 .build()?;
         } else {
             match value.arg {
-                Argument::Memory { base, index, size, offset } => {
-                    let size = if index.is_some() { size.unwrap_or(1) } else { size.unwrap_or(0) };
+                Argument::Memory {
+                    base,
+                    index,
+                    size,
+                    offset,
+                } => {
+                    let size = if index.is_some() {
+                        size.unwrap_or(1)
+                    } else {
+                        size.unwrap_or(0)
+                    };
                     let offset = offset.unwrap_or(0);
                     let address = match (base, index, size, offset) {
                         (Some(base), _, 0, offset) => base + offset,
@@ -276,9 +335,7 @@ impl CallConv for AmpCall64 {
             }
         }
         if is_naked {
-            bb.instruction()
-                .opcode("ret")
-                .build()?;
+            bb.instruction().opcode("ret").build()?;
         } else {
             bb.instruction()
                 .opcode("jmp")

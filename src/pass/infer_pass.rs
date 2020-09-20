@@ -4,36 +4,32 @@ use failure::{Fail, Fallible};
 use hashbrown::{HashMap, HashSet};
 use smallvec::smallvec;
 
-use crate::error::MultiError;
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
 use crate::dispatch::*;
+use crate::error::MultiError;
+use crate::lexer::Location;
 use crate::scope::Scope;
 use crate::types::{builtin, primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
-use crate::lexer::Location;
 
 #[derive(Debug, Fail)]
 pub enum InferError {
-    #[fail(display = "type error at {}: expected {:?}, but got {:?}", location, expected, got)]
+    #[fail(
+        display = "type error at {}: expected {:?}, but got {:?}",
+        location, expected, got
+    )]
     TypeError {
         location: Location,
         expected: TypeId,
         got: TypeId,
     },
     #[fail(display = "type at {} is not a function: {:?}", location, typ)]
-    NotAFunction {
-        location: Location,
-        typ: TypeId,
-    },
+    NotAFunction { location: Location, typ: TypeId },
     #[fail(display = "no matching definition found at {}", location)]
-    NoDefinitions {
-        location: Location,
-    },
+    NoDefinitions { location: Location },
     #[fail(display = "multiple matching definition found at {}", location)]
-    MultipleDefinitions {
-        location: Location,
-    },
+    MultipleDefinitions { location: Location },
 }
 
 pub fn infer_update(
@@ -51,39 +47,35 @@ pub fn infer_update(
         let root = nodes.get::<Node>(root_node.0).unwrap();
         let mut skip = HashSet::new();
         let mut types = HashMap::new();
-        root.visit(Visit::Preorder, &nodes, |res, node| {
-            match node.kind {
-                Kind::Application => {
-                    let func = node.children[0].unwrap();
-                    let func = res.get(func).unwrap();
-                    if !func.alternative {
-                        return VisitResult::Recurse;
-                    }
-                    match func.kind {
-                        Kind::Nil => {
-                            match func.payload.unwrap() {
-                                Payload::Identifier(string) => {
-                                    match strings.get::<String>(string).unwrap().as_str() {
-                                        "quasiquote" => {
-                                            node.visit(Visit::Postorder, res, |_, node| {
-                                                skip.insert(node.id());
-                                                VisitResult::Recurse
-                                            });
-                                            skip.remove(&node.id());
-                                            skip.remove(&func.id());
-                                            VisitResult::Continue
-                                        }
-                                        _ => VisitResult::Recurse,
-                                    }
+        root.visit(Visit::Preorder, &nodes, |res, node| match node.kind {
+            Kind::Application => {
+                let func = node.children[0].unwrap();
+                let func = res.get(func).unwrap();
+                if !func.alternative {
+                    return VisitResult::Recurse;
+                }
+                match func.kind {
+                    Kind::Nil => match func.payload.unwrap() {
+                        Payload::Identifier(string) => {
+                            match strings.get::<String>(string).unwrap().as_str() {
+                                "quasiquote" => {
+                                    node.visit(Visit::Postorder, res, |_, node| {
+                                        skip.insert(node.id());
+                                        VisitResult::Recurse
+                                    });
+                                    skip.remove(&node.id());
+                                    skip.remove(&func.id());
+                                    VisitResult::Continue
                                 }
                                 _ => VisitResult::Recurse,
                             }
                         }
                         _ => VisitResult::Recurse,
-                    }
+                    },
+                    _ => VisitResult::Recurse,
                 }
-                _ => VisitResult::Recurse,
             }
+            _ => VisitResult::Recurse,
         });
         root.visit(Visit::Postorder, &nodes, |res, node| {
             if skip.contains(&node.id()) {
@@ -160,9 +152,7 @@ pub fn infer_update(
                                     match param.kind {
                                         Kind::Nil => {
                                             match param.payload.unwrap() {
-                                                Payload::Identifier(_) => {
-                                                    TypeId::new_placeholder()
-                                                }
+                                                Payload::Identifier(_) => TypeId::new_placeholder(),
                                                 // other patterns
                                                 _ => todo!(),
                                             }
@@ -198,21 +188,25 @@ pub fn infer_update(
                     }
                 }
                 Kind::Application => {
-                    let func = nodes
-                        .get::<Node>(node.children[0].unwrap())
-                        .unwrap();
-                    let typ = func.type_of
+                    let func = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
+                    let typ = func
+                        .type_of
                         .or_else(|| types.get(&node.children[0].unwrap()).copied())
                         .unwrap();
                     let typ = match typ.concrete {
                         TypeOrPlaceholder::Type(handle) => {
                             match &named_types.get::<NamedType>(handle).unwrap().t {
-                                Type::Function { result_type, param_types } => {
-                                    Some((result_type.clone(), param_types.clone()))
-                                }
+                                Type::Function {
+                                    result_type,
+                                    param_types,
+                                } => Some((result_type.clone(), param_types.clone())),
                                 _ => {
                                     errors.push(From::from(InferError::NotAFunction {
-                                        location: locations.get::<Location>(func.location).unwrap().as_ref().clone(),
+                                        location: locations
+                                            .get::<Location>(func.location)
+                                            .unwrap()
+                                            .as_ref()
+                                            .clone(),
                                         typ,
                                     }));
                                     return VisitResult::Recurse;
@@ -224,28 +218,31 @@ pub fn infer_update(
                             let args = node.children[1..]
                                 .iter()
                                 .map(|param| {
-                                    nodes
-                                        .get::<Node>(param.unwrap())
-                                        .unwrap()
-                                        .type_of
-                                        .unwrap()
+                                    nodes.get::<Node>(param.unwrap()).unwrap().type_of.unwrap()
                                 })
                                 .collect();
-                            let dispatch =
-                                dispatch.get::<Dispatcher>(DispatchId::from_name(
+                            let dispatch = dispatch
+                                .get::<Dispatcher>(DispatchId::from_name(
                                     name.0,
                                     &name.1.as_u128().to_le_bytes(),
-                                )).unwrap();
-                            let query =
-                                Query::new(name, IsFunction::Yes, Some(args), None);
+                                ))
+                                .unwrap();
+                            let query = Query::new(name, IsFunction::Yes, Some(args), None);
                             let results = dispatch.query(&query, &named_types);
                             match results.len() {
                                 // TODO: traverse parents
                                 0 => todo!(),
-                                1 => Some((results[0].result_type(), results[0].arg_types().unwrap().iter().copied().collect())),
+                                1 => Some((
+                                    results[0].result_type(),
+                                    results[0].arg_types().unwrap().iter().copied().collect(),
+                                )),
                                 _ => {
                                     errors.push(From::from(InferError::MultipleDefinitions {
-                                        location: locations.get::<Location>(func.location).unwrap().as_ref().clone(),
+                                        location: locations
+                                            .get::<Location>(func.location)
+                                            .unwrap()
+                                            .as_ref()
+                                            .clone(),
                                     }));
                                     return VisitResult::Recurse;
                                 }
@@ -297,7 +294,11 @@ pub fn infer_update(
                     };
                     let d = if let Some(mut d) = dispatch.remove(handle) {
                         if let Some(param_types) = param_types {
-                            d.push(Definition::new_function(node.universe, param_types, result_type));
+                            d.push(Definition::new_function(
+                                node.universe,
+                                param_types,
+                                result_type,
+                            ));
                         } else {
                             d.push(Definition::new_variable(node.universe, result_type));
                         }
@@ -307,7 +308,11 @@ pub fn infer_update(
                         if let Some(param_types) = param_types {
                             Dispatcher::with_definitions(
                                 name,
-                                iter::once(Definition::new_function(node.universe, param_types, result_type)),
+                                iter::once(Definition::new_function(
+                                    node.universe,
+                                    param_types,
+                                    result_type,
+                                )),
                             )
                         } else {
                             Dispatcher::with_definitions(
@@ -327,9 +332,7 @@ pub fn infer_update(
                     let fields = node
                         .children
                         .iter()
-                        .map(|param| {
-                            nodes.get::<Node>(param.unwrap()).unwrap().type_of.unwrap()
-                        })
+                        .map(|param| nodes.get::<Node>(param.unwrap()).unwrap().type_of.unwrap())
                         .collect();
                     let named = Handle::new();
                     lazy.insert(
@@ -351,7 +354,7 @@ pub fn infer_update(
                 Kind::Index => todo!(),
                 Kind::Dotted => todo!(),
             }
-            
+
             VisitResult::Recurse
         });
         for (handle, typ) in types {

@@ -3,8 +3,8 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::assets::Resources;
 use crate::ast::Kind;
-use crate::lir::repr::*;
 use crate::lir::context::*;
+use crate::lir::repr::*;
 use crate::types::NamedType;
 
 use super::*;
@@ -122,7 +122,12 @@ impl<'a> FunctionBuilder<'a> {
         self
     }
 
-    pub fn build_call(mut self, out: &mut Value, t: TypeId, mut args: SmallVec<[Value; 4]>) -> Self {
+    pub fn build_call(
+        mut self,
+        out: &mut Value,
+        t: TypeId,
+        mut args: SmallVec<[Value; 4]>,
+    ) -> Self {
         let counter = &mut self.counter;
         let binding = *counter;
         counter.inc();

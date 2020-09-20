@@ -30,7 +30,10 @@ impl Pipeline {
     }
 
     /// Sets the `repeat` predicate.
-    pub fn repeat<F: FnMut(&World) -> Option<&'static str> + Send + Sync + 'static>(&mut self, f: F) {
+    pub fn repeat<F: FnMut(&World) -> Option<&'static str> + Send + Sync + 'static>(
+        &mut self,
+        f: F,
+    ) {
         self.repeat = Some(Box::new(f));
     }
 
@@ -39,7 +42,11 @@ impl Pipeline {
         let mut idx = 0;
         let mut brk = false;
         let mut repeat = self.repeat.as_mut();
-        let stages = self.stages.iter().map(|stage| stage.name.clone()).collect::<Vec<_>>();
+        let stages = self
+            .stages
+            .iter()
+            .map(|stage| stage.name.clone())
+            .collect::<Vec<_>>();
         while let Some(stage) = self.stages.get_mut(idx) {
             if brk {
                 break;
@@ -56,7 +63,7 @@ impl Pipeline {
                             let position = stages.iter().position(|stage| *stage == name);
                             idx = position.unwrap();
                         }
-                    },
+                    }
                     Ok(Some("finish")) => {
                         brk = true;
                     }

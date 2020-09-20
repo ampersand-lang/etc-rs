@@ -143,7 +143,8 @@ impl Repr for str {
             panic!("attempt to copy from slice of invalid length");
         }
         unsafe {
-            self.as_bytes_mut().copy_from_slice(str::from_utf8(bytes).expect("invalid utf-8").as_bytes())
+            self.as_bytes_mut()
+                .copy_from_slice(str::from_utf8(bytes).expect("invalid utf-8").as_bytes())
         }
     }
 }

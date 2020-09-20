@@ -4,14 +4,14 @@ use failure::{Fail, Fallible};
 use hashbrown::{HashMap, HashSet};
 use smallvec::smallvec;
 
-use crate::error::MultiError;
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
 use crate::dispatch::*;
+use crate::error::MultiError;
+use crate::lexer::Location;
 use crate::scope::Scope;
 use crate::types::{builtin, primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
-use crate::lexer::Location;
 
 pub fn collapse_update(
     lazy: &mut LazyUpdate,
@@ -35,7 +35,8 @@ pub fn collapse_update(
                             TypeOrPlaceholder::Dispatch(scope, name) => {
                                 let id = Handle::from_name(scope, &name.as_u128().to_le_bytes());
                                 let dispatcher = dispatch.get::<Dispatcher>(id).unwrap();
-                                let query = Query::new(Name(scope, name), IsFunction::Maybe, None, None);
+                                let query =
+                                    Query::new(Name(scope, name), IsFunction::Maybe, None, None);
                                 let results = dispatcher.query(&query, &named_types);
                                 let t = match results.len() {
                                     // TODO: traverse parents
@@ -46,7 +47,10 @@ pub fn collapse_update(
                                 payloads.insert(node.id(), Payload::Type(t));
                             }
                             TypeOrPlaceholder::Typeof(id) => {
-                                payloads.insert(node.id(), Payload::Type(nodes.get(id).unwrap().type_of.unwrap()));
+                                payloads.insert(
+                                    node.id(),
+                                    Payload::Type(nodes.get(id).unwrap().type_of.unwrap()),
+                                );
                             }
                         }
                     }

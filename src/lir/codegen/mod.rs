@@ -1,13 +1,13 @@
-use std::ops::{Add, Sub, Mul};
 use std::fmt::{self, Display, Write};
+use std::ops::{Add, Mul, Sub};
 
-use smallvec::SmallVec;
-use hashbrown::HashMap;
 use bitflags::bitflags;
+use hashbrown::HashMap;
+use smallvec::SmallVec;
 
-use crate::utils::IntPtr;
-use crate::types::TypeInfo;
 use crate::lir::BindingPrototype;
+use crate::types::TypeInfo;
+use crate::utils::IntPtr;
 
 use linscan::*;
 
@@ -80,63 +80,63 @@ impl Register {
     pub const fn rax() -> Self {
         Self::Rax(Bits::R)
     }
-    
+
     pub const fn rdx() -> Self {
         Self::Rdx(Bits::R)
     }
-    
+
     pub const fn rcx() -> Self {
         Self::Rcx(Bits::R)
     }
-    
+
     pub const fn rbx() -> Self {
         Self::Rbx(Bits::R)
     }
-    
+
     pub const fn rsp() -> Self {
         Self::Rsp(Bits::R)
     }
-    
+
     pub const fn rbp() -> Self {
         Self::Rbp(Bits::R)
     }
-    
+
     pub const fn rsi() -> Self {
         Self::Rsi(Bits::R)
     }
-    
+
     pub const fn rdi() -> Self {
         Self::Rdi(Bits::R)
     }
-    
+
     pub const fn r8() -> Self {
         Self::R8
     }
-    
+
     pub const fn r9() -> Self {
         Self::R9
     }
-    
+
     pub const fn r10() -> Self {
         Self::R10
     }
-    
+
     pub const fn r11() -> Self {
         Self::R11
     }
-    
+
     pub const fn r12() -> Self {
         Self::R12
     }
-    
+
     pub const fn r13() -> Self {
         Self::R13
     }
-    
+
     pub const fn r14() -> Self {
         Self::R14
     }
-    
+
     pub const fn r15() -> Self {
         Self::R15
     }
@@ -366,7 +366,12 @@ impl Display for Argument {
             Self::Float32(x) => write!(f, "__?float32?__({})", x),
             Self::Float64(x) => write!(f, "__?float64?__({})", x),
             Self::Identifier(i) => write!(f, "{}", i),
-            Self::Memory { base, index, size, offset } => {
+            Self::Memory {
+                base,
+                index,
+                size,
+                offset,
+            } => {
                 write!(f, "[")?;
                 if let Some(base) = base {
                     write!(f, "{}", base)?;
@@ -413,22 +418,22 @@ impl<'a> LineBuilder<'a> {
         self.label = Some(label);
         self
     }
-    
+
     pub fn opcode(mut self, opcode: &'static str) -> Self {
         self.opcode = Some(opcode);
         self
     }
-    
+
     pub fn size(mut self, size: Size) -> Self {
         self.size = Some(size);
         self
     }
-    
+
     pub fn argument<T: Into<Argument>>(mut self, arg: T) -> Self {
         self.arguments.push(arg.into());
         self
     }
-    
+
     pub fn build(self) -> fmt::Result {
         let mut line = String::new();
         if let Some(label) = self.label {
@@ -512,13 +517,26 @@ impl FunctionBuilder {
         self.naked
     }
 
-    pub fn add_local(&mut self, binding: BindingPrototype, ti: TypeInfo, start: i64, end: i64) -> &mut Self {
+    pub fn add_local(
+        &mut self,
+        binding: BindingPrototype,
+        ti: TypeInfo,
+        start: i64,
+        end: i64,
+    ) -> &mut Self {
         self.allocator.add(Interval::new(binding, ti, start, end));
         self
     }
 
-    pub fn add_stack(&mut self, binding: BindingPrototype, ti: TypeInfo, start: i64, end: i64) -> &mut Self {
-        self.allocator.add(Interval::on_stack(binding, ti, start, end));
+    pub fn add_stack(
+        &mut self,
+        binding: BindingPrototype,
+        ti: TypeInfo,
+        start: i64,
+        end: i64,
+    ) -> &mut Self {
+        self.allocator
+            .add(Interval::on_stack(binding, ti, start, end));
         self
     }
 
@@ -540,7 +558,7 @@ impl FunctionBuilder {
     pub fn build(mut self, call_conv: &dyn CallConv) -> String {
         call_conv.begin(&mut self).expect("begin failed");
         call_conv.end(&mut self).expect("end failed");
-        
+
         let mut output = String::new();
         if self.export {
             write!(&mut output, "global {}\n", self.name).expect("formatting failed");
@@ -562,10 +580,13 @@ impl FunctionBuilder {
         let bb = self.bb;
         self.bb.0 += 1;
         self.block_list.push(bb);
-        self.basic_blocks.insert(bb, BasicBlockBuilder {
-            block: Vec::new(),
+        self.basic_blocks.insert(
             bb,
-        });
+            BasicBlockBuilder {
+                block: Vec::new(),
+                bb,
+            },
+        );
         bb
     }
 
@@ -573,10 +594,13 @@ impl FunctionBuilder {
         let bb = self.bb;
         self.bb.0 += 1;
         self.block_list.insert(0, bb);
-        self.basic_blocks.insert(bb, BasicBlockBuilder {
-            block: Vec::new(),
+        self.basic_blocks.insert(
             bb,
-        });
+            BasicBlockBuilder {
+                block: Vec::new(),
+                bb,
+            },
+        );
         bb
     }
 
@@ -585,10 +609,13 @@ impl FunctionBuilder {
         let bb = self.bb;
         self.bb.0 += 1;
         self.block_list.insert(idx, bb);
-        self.basic_blocks.insert(bb, BasicBlockBuilder {
-            block: Vec::new(),
+        self.basic_blocks.insert(
             bb,
-        });
+            BasicBlockBuilder {
+                block: Vec::new(),
+                bb,
+            },
+        );
         bb
     }
 
@@ -597,10 +624,13 @@ impl FunctionBuilder {
         let bb = self.bb;
         self.bb.0 += 1;
         self.block_list.insert(idx + 1, bb);
-        self.basic_blocks.insert(bb, BasicBlockBuilder {
-            block: Vec::new(),
+        self.basic_blocks.insert(
             bb,
-        });
+            BasicBlockBuilder {
+                block: Vec::new(),
+                bb,
+            },
+        );
         bb
     }
 
@@ -636,7 +666,8 @@ pub struct Data {
 impl Data {
     pub fn build(self) -> String {
         let mut output = String::new();
-        write!(&mut output, "align {}\n{}: db", self.info.align, self.name).expect("formatting failed");
+        write!(&mut output, "align {}\n{}: db", self.info.align, self.name)
+            .expect("formatting failed");
         if let Some(byte) = self.data.get(0) {
             write!(&mut output, "{}", byte).expect("formatting failed");
         }
@@ -655,7 +686,10 @@ pub struct Bss {
 
 impl Bss {
     pub fn build(self) -> String {
-        format!("align {}\n{}: resb {}", self.info.align, self.name, self.info.size)
+        format!(
+            "align {}\n{}: resb {}",
+            self.info.align, self.name, self.info.size
+        )
     }
 }
 
@@ -670,11 +704,11 @@ impl Global {
     pub fn add_extern(&mut self, ext: Extern) {
         self.externs.insert(ext.name.clone(), ext);
     }
-    
+
     pub fn add_data(&mut self, data: Data) {
         self.data.push(data);
     }
-    
+
     pub fn add_bss(&mut self, bss: Bss) {
         self.bss.push(bss);
     }
@@ -692,16 +726,24 @@ impl CodeBuilder {
     }
 
     pub fn build(self, call_conv: &dyn CallConv) -> String {
-        self.functions.into_iter().map(|(_, func)| func.build(call_conv)).collect()
+        self.functions
+            .into_iter()
+            .map(|(_, func)| func.build(call_conv))
+            .collect()
     }
-    
-    pub fn add_function(&mut self, call_conv: &dyn CallConv, name: String, param_types: &[TypeInfo]) -> &mut FunctionBuilder {
+
+    pub fn add_function(
+        &mut self,
+        call_conv: &dyn CallConv,
+        name: String,
+        param_types: &[TypeInfo],
+    ) -> &mut FunctionBuilder {
         let free = call_conv.free(param_types);
         self.functions
             .entry(name.clone())
             .or_insert_with(|| FunctionBuilder::new(name, free))
     }
-    
+
     pub fn function_mut(&mut self, name: &str) -> Option<&mut FunctionBuilder> {
         self.functions.get_mut(name)
     }
@@ -723,35 +765,52 @@ impl ProgramBuilder {
     }
 
     pub fn build(self) -> String {
-        let externs = self.global.externs.into_iter().map(|(_, ext)| ext.build()).collect::<String>();
-        let data = self.global.data.into_iter().map(Data::build).collect::<String>();
-        let bss = self.global.bss.into_iter().map(Bss::build).collect::<String>();
+        let externs = self
+            .global
+            .externs
+            .into_iter()
+            .map(|(_, ext)| ext.build())
+            .collect::<String>();
+        let data = self
+            .global
+            .data
+            .into_iter()
+            .map(Data::build)
+            .collect::<String>();
+        let bss = self
+            .global
+            .bss
+            .into_iter()
+            .map(Bss::build)
+            .collect::<String>();
         let text = self.codegen.build(&*self.call_conv);
 
         format!(
             "    bits 64\n    section .text\n{}\n{}    section .data\n{}    section .bss\n{}",
-            externs,
-            text,
-            data,
-            bss,
+            externs, text, data, bss,
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::lir::Binding;
     use super::*;
-    
+    use crate::lir::Binding;
+
     #[test]
     fn codegen() {
         let mut program = ProgramBuilder::new(AmpCall64);
-        
-        let start = program.codegen.add_function(&*program.call_conv, "_start".to_string(), &[]);
+
+        let start = program
+            .codegen
+            .add_function(&*program.call_conv, "_start".to_string(), &[]);
         start.export(true);
         start.naked(true);
         let bb = start.add_basic_block();
-        program.call_conv.build_call(start, bb, "main".to_string(), TypeInfo::new(8, 8), &[]).unwrap();
+        program
+            .call_conv
+            .build_call(start, bb, "main".to_string(), TypeInfo::new(8, 8), &[])
+            .unwrap();
         let basic_block = start.basic_block_mut(bb);
         basic_block
             .instruction()
@@ -767,13 +826,11 @@ mod tests {
             .argument(0)
             .build()
             .unwrap();
-        basic_block
-            .instruction()
-            .opcode("syscall")
-            .build()
-            .unwrap();
-        
-        let main = program.codegen.add_function(&*program.call_conv, "main".to_string(), &[]);
+        basic_block.instruction().opcode("syscall").build().unwrap();
+
+        let main = program
+            .codegen
+            .add_function(&*program.call_conv, "main".to_string(), &[]);
         let bb = main.add_basic_block();
         let a = BindingPrototype::new(0, 0);
         let b = BindingPrototype::new(0, 1);
@@ -797,8 +854,18 @@ mod tests {
             .argument(a.reg)
             .build()
             .unwrap();
-        program.call_conv.build_ret(main, bb, TypedArgument { info: TypeInfo::new(8, 8), arg: 0_u64.into() }).unwrap();
-        
+        program
+            .call_conv
+            .build_ret(
+                main,
+                bb,
+                TypedArgument {
+                    info: TypeInfo::new(8, 8),
+                    arg: 0_u64.into(),
+                },
+            )
+            .unwrap();
+
         let code = program.build();
         println!("{}", code);
     }

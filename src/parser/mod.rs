@@ -230,7 +230,6 @@ pub fn literal(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<()> {
                         tok.kind,
                         state
                             .lexer
-                            
                             .res
                             .get::<Location>(tok.location)
                             .unwrap()
@@ -270,7 +269,6 @@ pub fn atom(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<NodeId> {
                         tok.kind,
                         state
                             .lexer
-                            
                             .res
                             .get::<Location>(tok.location)
                             .unwrap()

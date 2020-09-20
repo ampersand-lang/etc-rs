@@ -1,8 +1,8 @@
 use failure::{Fail, Fallible};
 
-use crate::error::MultiError;
 use crate::assets::{LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
+use crate::error::MultiError;
 use crate::lexer::Location;
 
 #[derive(Debug, Fail)]

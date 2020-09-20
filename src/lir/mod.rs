@@ -1,9 +1,9 @@
-use std::iter;
 use std::fmt::{self, Display};
+use std::iter;
 
-use smallvec::SmallVec;
-use lazy_static::lazy_static;
 use failure::Fallible;
+use lazy_static::lazy_static;
+use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
 use crate::ast::{Kind, Node, NodeId};
@@ -28,14 +28,18 @@ pub mod foreign {
         pub static ref FN: Handle<Foreign> = Handle::new();
         pub static ref FORMAT_AST: Handle<Foreign> = Handle::new();
     }
-    
+
     pub fn init(mut res: Resources<&mut Foreign>) {
         res.insert(*PTR, Box::new(type_ptr));
         res.insert(*FN, Box::new(type_fn));
         res.insert(*FORMAT_AST, Box::new(format_ast));
     }
 
-    fn type_ptr(ctx: &mut ExecutionContext, res: &mut Resources<(&String, &mut NamedType, &mut Node)>, args: &[Value]) -> Fallible<Value> {
+    fn type_ptr(
+        ctx: &mut ExecutionContext,
+        res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
+        args: &[Value],
+    ) -> Fallible<Value> {
         let pointee = match args[0] {
             Value::Type(t) => t,
             Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
@@ -54,7 +58,11 @@ pub mod foreign {
         Ok(Value::Type(t))
     }
 
-    fn type_fn(ctx: &mut ExecutionContext, res: &mut Resources<(&String, &mut NamedType, &mut Node)>, args: &[Value]) -> Fallible<Value> {
+    fn type_fn(
+        ctx: &mut ExecutionContext,
+        res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
+        args: &[Value],
+    ) -> Fallible<Value> {
         let result_type = match args[0] {
             Value::Type(t) => t,
             Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
@@ -70,7 +78,7 @@ pub mod foreign {
             };
             param_types.push(param);
         }
-        
+
         let named = NamedType {
             name: None,
             t: Type::Function {
@@ -87,7 +95,11 @@ pub mod foreign {
         Ok(Value::Type(t))
     }
 
-    fn format_ast(ctx: &mut ExecutionContext, res: &mut Resources<(&String, &mut NamedType, &mut Node)>, args: &[Value]) -> Fallible<Value> {
+    fn format_ast(
+        ctx: &mut ExecutionContext,
+        res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
+        args: &[Value],
+    ) -> Fallible<Value> {
         let node = match args[0] {
             Value::Node(node) => node,
             Value::Register(r) => NodeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
@@ -101,30 +113,28 @@ pub mod foreign {
                 Kind::Application => {
                     let func = res.get(children[0].unwrap()).unwrap();
                     let replace = match func.kind {
-                        Kind::Nil if func.alternative => {
-                            match func.payload.unwrap() {
-                                Payload::Identifier(ident) => {
-                                    match res.get::<String>(ident).unwrap().as_str() {
-                                        "replace" => true,
-                                        _ => false,
-                                    }
+                        Kind::Nil if func.alternative => match func.payload.unwrap() {
+                            Payload::Identifier(ident) => {
+                                match res.get::<String>(ident).unwrap().as_str() {
+                                    "replace" => true,
+                                    _ => false,
                                 }
-                                _ => false,
                             }
-                        }
+                            _ => false,
+                        },
                         _ => false,
                     };
                     if replace {
                         let ident = res.get(children[1].unwrap()).unwrap();
                         let ident = match ident.kind {
-                            Kind::Nil => {
-                                match ident.payload.unwrap() {
-                                    Payload::Identifier(ident) => {
-                                        Some(res.get::<String>(ident).unwrap()[1..].parse::<usize>().unwrap())
-                                    }
-                                    _ => None,
-                                }
-                            }
+                            Kind::Nil => match ident.payload.unwrap() {
+                                Payload::Identifier(ident) => Some(
+                                    res.get::<String>(ident).unwrap()[1..]
+                                        .parse::<usize>()
+                                        .unwrap(),
+                                ),
+                                _ => None,
+                            },
                             _ => None,
                         };
                         if let Some(num) = ident {
@@ -166,11 +176,11 @@ impl BindingPrototype {
     pub fn inc(&mut self) {
         self.number += 1;
     }
-    
+
     pub fn scope(&self) -> usize {
         self.scope
     }
-    
+
     pub fn number(&self) -> i32 {
         self.number
     }
@@ -211,7 +221,16 @@ pub type Elems = SmallVec<[Value; 4]>;
 pub type Fields = SmallVec<[TypedValue; 4]>;
 pub type Variants = SmallVec<[Fields; 4]>;
 pub type Bytes = SmallVec<[u8; 32]>;
-pub type Foreign = Box<dyn Fn(&mut ExecutionContext, &mut Resources<(&String, &mut NamedType, &mut Node)>, &[Value]) -> Fallible<Value> + Send + Sync + 'static>;
+pub type Foreign = Box<
+    dyn Fn(
+            &mut ExecutionContext,
+            &mut Resources<(&String, &mut NamedType, &mut Node)>,
+            &[Value],
+        ) -> Fallible<Value>
+        + Send
+        + Sync
+        + 'static,
+>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {

@@ -3,9 +3,9 @@ use smallvec::SmallVec;
 
 use crate::assets::{Asset, Handle, Resources};
 use crate::ast::{Kind, Node};
-use crate::lir::Instruction;
 use crate::lir::builder::*;
 use crate::lir::context::{ExecutionContext, VirtualAddress};
+use crate::lir::Instruction;
 use crate::types::{primitive, NamedType};
 use crate::values::Payload;
 
@@ -101,38 +101,40 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
         // PERF: can we avoid this clone?
         let this = res.get::<Node>(handle).unwrap().as_ref().clone();
         let value = match this.kind {
-            Kind::Nil => {
-                match this.payload.unwrap() {
-                    Payload::Unit => (Value::Unit, builder.0),
-                    Payload::Integer(i) => (Value::Uint(i), builder.0),
-                    Payload::Float(f) => (Value::Float(f), builder.0),
-                    Payload::Type(t) => (Value::Type(t), builder.0),
-                    Payload::String(string) => {
-                        let string = res.get::<String>(string).unwrap();
-                        let mut addr = VirtualAddress(0);
-                        builder.0.builder = builder.0.builder.add_global(&mut addr, string.as_str());
-                        (Value::Address(addr), builder.0)
-                    }
-                    Payload::Identifier(ident) if this.alternative => {
-                        match res.get::<String>(ident).unwrap().as_str() {
-                            "ptr" => (Value::Ffi(*foreign::PTR), builder.0),
-                            "fn" => (Value::Ffi(*foreign::FN), builder.0),
-                            "format-ast" => (Value::Ffi(*foreign::FORMAT_AST), builder.0),
-                            _ => todo!(),
-                        }
-                    }
-                    Payload::Identifier(ident) => {
-                        let handle =
-                            Handle::from_name(this.scope.unwrap(), &ident.as_u128().to_le_bytes());
-                        let name = res.get::<String>(ident).unwrap();
-                        let addr = *res.get::<Value>(handle).expect(&format!("binding not found: {}", name.as_str()));
-                        let mut value = Value::Unit;
-                        builder.0 = builder.0.build_load(&mut value, this.type_of.unwrap(), addr);
-                        (value, builder.0)
-                    }
-                    Payload::Function(id) => (Value::Function(id), builder.0),
+            Kind::Nil => match this.payload.unwrap() {
+                Payload::Unit => (Value::Unit, builder.0),
+                Payload::Integer(i) => (Value::Uint(i), builder.0),
+                Payload::Float(f) => (Value::Float(f), builder.0),
+                Payload::Type(t) => (Value::Type(t), builder.0),
+                Payload::String(string) => {
+                    let string = res.get::<String>(string).unwrap();
+                    let mut addr = VirtualAddress(0);
+                    builder.0.builder = builder.0.builder.add_global(&mut addr, string.as_str());
+                    (Value::Address(addr), builder.0)
                 }
-            }
+                Payload::Identifier(ident) if this.alternative => {
+                    match res.get::<String>(ident).unwrap().as_str() {
+                        "ptr" => (Value::Ffi(*foreign::PTR), builder.0),
+                        "fn" => (Value::Ffi(*foreign::FN), builder.0),
+                        "format-ast" => (Value::Ffi(*foreign::FORMAT_AST), builder.0),
+                        _ => todo!(),
+                    }
+                }
+                Payload::Identifier(ident) => {
+                    let handle =
+                        Handle::from_name(this.scope.unwrap(), &ident.as_u128().to_le_bytes());
+                    let name = res.get::<String>(ident).unwrap();
+                    let addr = *res
+                        .get::<Value>(handle)
+                        .expect(&format!("binding not found: {}", name.as_str()));
+                    let mut value = Value::Unit;
+                    builder.0 = builder
+                        .0
+                        .build_load(&mut value, this.type_of.unwrap(), addr);
+                    (value, builder.0)
+                }
+                Payload::Function(id) => (Value::Function(id), builder.0),
+            },
             Kind::Block => {
                 let mut result = Value::Unit;
                 for expr in &this.children {
@@ -153,7 +155,11 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 for _ in 0..16 {
                     name.push((b'a' + rand::random::<u8>() % 26) as char);
                 }
-                let f = builder.0.builder.function(name).result(body.type_of.unwrap());
+                let f = builder
+                    .0
+                    .builder
+                    .function(name)
+                    .result(body.type_of.unwrap());
                 let (id, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
                 builder.0.builder = b;
                 let result = Value::Function(id);
@@ -165,39 +171,35 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 let func = res.get::<Node>(func).unwrap().as_ref().clone();
                 // NOTE: special forms
                 let done = match func.kind {
-                    Kind::Nil => {
-                        match func.payload.unwrap() {
-                            Payload::Identifier(ident) if func.alternative => {
-                                match res.get::<String>(ident).unwrap().as_str() {
-                                    "quasiquote" => Some(Value::Node(this.children[1].unwrap())),
-                                    "new-node" => {
-                                        let mut args = SmallVec::new();
-                                        for expr in &this.children[1..] { 
-                                            if let Some(expr) = expr {
-                                                let (v, f) = Node::compile(*expr, res, builder)?;
-                                                builder = ValueBuilder(f);
-                                                args.push(v);
-                                            }
+                    Kind::Nil => match func.payload.unwrap() {
+                        Payload::Identifier(ident) if func.alternative => {
+                            match res.get::<String>(ident).unwrap().as_str() {
+                                "quasiquote" => Some(Value::Node(this.children[1].unwrap())),
+                                "new-node" => {
+                                    let mut args = SmallVec::new();
+                                    for expr in &this.children[1..] {
+                                        if let Some(expr) = expr {
+                                            let (v, f) = Node::compile(*expr, res, builder)?;
+                                            builder = ValueBuilder(f);
+                                            args.push(v);
                                         }
-                                        let mut result = Value::Unit;
-                                        builder.0 = builder
-                                            .0
-                                            .build_newnode(&mut result, args);
-                                        Some(result)
                                     }
-                                    _ => None,
+                                    let mut result = Value::Unit;
+                                    builder.0 = builder.0.build_newnode(&mut result, args);
+                                    Some(result)
                                 }
+                                _ => None,
                             }
-                            _ => None,
                         }
-                    }
+                        _ => None,
+                    },
                     _ => None,
                 };
                 if let Some(done) = done {
                     (done, builder.0)
                 } else {
                     let mut args = SmallVec::new();
-                    for expr in &this.children { 
+                    for expr in &this.children {
                         if let Some(expr) = expr {
                             let (v, f) = Node::compile(*expr, res, builder)?;
                             builder = ValueBuilder(f);

@@ -2,8 +2,8 @@ use failure::Fallible;
 
 use crate::assets::{LazyUpdate, Resources};
 use crate::ast::{Node, RootNode};
-use crate::lir::{context::ExecutionContext, codegen::*, Instruction, Value};
-use crate::types::{TypeInfo, NamedType};
+use crate::lir::{codegen::*, context::ExecutionContext, Instruction, Value};
+use crate::types::{NamedType, TypeInfo};
 
 pub fn codegen_update(
     lazy: &mut LazyUpdate,
@@ -18,21 +18,26 @@ pub fn codegen_update(
             .remove::<ExecutionContext>(root.thread.unwrap())
             .unwrap();
         for func in ctx.functions() {
-            let builder = program.codegen.add_function(&*program.call_conv, "main".to_string(), &[]);
+            let builder =
+                program
+                    .codegen
+                    .add_function(&*program.call_conv, "main".to_string(), &[]);
             let bb = builder.add_basic_block();
             for ir in func.body {
                 match ir.instr {
-                    Instruction::Return => {
-                        match ir.args[1] {
-                            Value::Uint(u) => {
-                                program.call_conv.build_ret(builder, bb, TypedArgument {
+                    Instruction::Return => match ir.args[1] {
+                        Value::Uint(u) => {
+                            program.call_conv.build_ret(
+                                builder,
+                                bb,
+                                TypedArgument {
                                     info: TypeInfo::new(8, 8),
                                     arg: u.into(),
-                                })?;
-                            }
-                            _ => todo!(),
+                                },
+                            )?;
                         }
-                    }
+                        _ => todo!(),
+                    },
                     _ => todo!(),
                 }
             }
