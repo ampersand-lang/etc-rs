@@ -1,5 +1,7 @@
+get_sint := () => sint;
+
 x := {
-  y: sint = 42;
+  y: get_sint () = 42;
   y
 };
 x
