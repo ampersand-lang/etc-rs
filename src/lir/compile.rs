@@ -124,16 +124,21 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     }
                 }
                 Payload::Identifier(ident) => {
-                    let handle =
-                        Handle::from_name(this.scope.unwrap(), &ident.as_u128().to_le_bytes());
                     let name = res.get::<String>(ident).unwrap();
+                    let handle =
+                        Handle::from_name(this.scope.unwrap(), name.as_bytes());
                     let addr = *res
                         .get::<Value>(handle)
                         .expect(&format!("binding not found: {}", name.as_str()));
                     let mut value = Value::Unit;
-                    builder.0 = builder
-                        .0
-                        .build_load(&mut value, this.type_of.unwrap(), addr);
+                    match addr {
+                        Value::Address(_) | Value::Register(_) => {
+                            builder.0 = builder
+                                .0
+                                .build_load(&mut value, this.type_of.unwrap(), addr);
+                        }
+                        _ => value = addr,
+                    }
                     (value, builder.0)
                 }
                 Payload::Function(id) => (Value::Function(id), builder.0),
@@ -237,9 +242,10 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     // TODO: other bindings
                     _ => todo!(),
                 };
+                let name = res.get(ident).unwrap();
 
                 let scope = this.scope.unwrap();
-                let handle = Handle::from_name(scope, &ident.as_u128().to_le_bytes());
+                let handle = Handle::from_name(scope, name.as_bytes());
                 res.insert::<Value>(handle, addr);
                 (Value::Unit, builder)
             }

@@ -25,7 +25,7 @@ pub fn scope_update(
                     let scope = if let Some(parent) = node.parent() {
                         Scope::with_parent(scopes[&parent])
                     } else {
-                        Scope::new()
+                        Scope::with_parent(ScopeId::new())
                     };
                     scopes.insert(node.id(), handle);
                     lazy.insert(handle, scope);

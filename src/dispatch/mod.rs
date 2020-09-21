@@ -1,9 +1,25 @@
 //! Contains primitives for querying and applying multiple-dispatch and overloaded functions.
+use std::iter;
+
 use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
 use crate::scope::ScopeId;
-use crate::types::{NamedType, TypeId};
+use crate::types::{primitive, NamedType, TypeId};
+use crate::lir::Value;
+
+pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut Value)>) {
+    let i_sint = Handle::new();
+    res.insert(i_sint, "sint".to_string());
+    let name = Name(ScopeId::nil(), i_sint);
+    let t_sint = Definition::new_variable(i32::MIN, *primitive::TYPE);
+    let h_sint = Handle::from_name(name.0, "sint".as_bytes());
+    res.insert(h_sint, Dispatcher::with_definitions(name, iter::once(t_sint)));
+
+    let v_sint = Value::Type(*primitive::SINT);
+    let h_sint = Handle::from_name(name.0, "sint".as_bytes());
+    res.insert(h_sint, v_sint);
+}
 
 /// Handle to a dispatcher.
 ///
@@ -13,7 +29,7 @@ pub type DispatchId = Handle<Dispatcher>;
 /// A unique name.
 ///
 /// Contains a scope and an identifier.
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub struct Name(pub(crate) ScopeId, pub(crate) Handle<String>);
 
 /// Defines if a `Query` should query functions.
@@ -53,8 +69,8 @@ impl Query {
     }
 
     /// Creates a `DispatchId` corresponding to this query.
-    pub fn id(&self) -> DispatchId {
-        Handle::from_name(self.name.0, &self.name.1.as_u128().to_le_bytes())
+    pub fn id(&self, strings: &Resources<&String>) -> DispatchId {
+        Handle::from_name(self.name.0, strings.get(self.name.1).unwrap().as_bytes())
     }
 }
 
@@ -86,8 +102,8 @@ impl Dispatcher {
     }
 
     /// Creates a `DispatchId` corresponding to this dispatcher.
-    pub fn id(&self) -> DispatchId {
-        Handle::from_name(self.name.0, &self.name.1.as_u128().to_le_bytes())
+    pub fn id(&self, strings: &Resources<&String>) -> DispatchId {
+        Handle::from_name(self.name.0, strings.get(self.name.1).unwrap().as_bytes())
     }
 
     /// Pushes an element to the end of the definitions list.

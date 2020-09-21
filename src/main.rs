@@ -60,6 +60,7 @@ fn main() {
     primitive::init(world.resources());
     builtin::init(world.resources());
     foreign::init(world.resources());
+    dispatch::init(world.resources());
 
     let node = grammar::parse(&mut State {
         lexer: Lexer::new(

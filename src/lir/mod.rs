@@ -146,13 +146,17 @@ pub mod foreign {
                                 Value::Node(node) => node,
                                 _ => panic!("not a node"),
                             };
-                            return res.get(id).unwrap().as_ref().clone();
+                            let mut new = res.get(id).unwrap().as_ref().clone();
+                            new.universe += 1;
+                            return new;
                         }
                     }
                 }
                 _ => {}
             }
-            this.clone()
+            let mut new = this.clone();
+            new.children = children;
+            new
         });
 
         let handle = node.id();

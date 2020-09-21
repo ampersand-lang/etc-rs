@@ -9,7 +9,6 @@ use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
 use crate::dispatch::*;
 use crate::error::MultiError;
 use crate::lexer::Location;
-use crate::scope::Scope;
 use crate::types::{builtin, primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
 
@@ -35,7 +34,6 @@ pub enum InferError {
 pub fn infer_update(
     lazy: &mut LazyUpdate,
     roots: Resources<&RootNode>,
-    _scopes: Resources<&Scope>,
     mut dispatch: Resources<&mut Dispatcher>,
     named_types: Resources<&NamedType>,
     strings: Resources<&String>,
@@ -214,6 +212,7 @@ pub fn infer_update(
                             }
                         }
                         TypeOrPlaceholder::Dispatch(scope, handle) => {
+                            let ident = strings.get(handle).unwrap();
                             let name = Name(scope, handle);
                             let args = node.children[1..]
                                 .iter()
@@ -224,7 +223,7 @@ pub fn infer_update(
                             let dispatch = dispatch
                                 .get::<Dispatcher>(DispatchId::from_name(
                                     name.0,
-                                    &name.1.as_u128().to_le_bytes(),
+                                    ident.as_bytes(),
                                 ))
                                 .unwrap();
                             let query = Query::new(name, IsFunction::Yes, Some(args), None);
@@ -273,8 +272,9 @@ pub fn infer_update(
                         // TODO: other bindings
                         _ => todo!(),
                     };
+                    let name = strings.get(ident).unwrap();
                     let scope = node.scope.unwrap();
-                    let handle = DispatchId::from_name(scope, &ident.as_u128().to_le_bytes());
+                    let handle = DispatchId::from_name(scope, name.as_bytes());
                     let binding = nodes
                         .get::<Node>(node.children[2].unwrap())
                         .and_then(|node| node.type_of)

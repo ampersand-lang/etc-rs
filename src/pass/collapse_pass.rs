@@ -5,6 +5,7 @@ use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Node, RootNode, Visit, VisitResult};
 use crate::dispatch::*;
 use crate::error::MultiError;
+use crate::scope::Scope;
 
 use crate::types::{NamedType, TypeOrPlaceholder};
 use crate::values::Payload;
@@ -12,6 +13,8 @@ use crate::values::Payload;
 pub fn collapse_update(
     _lazy: &mut LazyUpdate,
     roots: Resources<&RootNode>,
+    scopes: Resources<&Scope>,
+    strings: Resources<&String>,
     dispatch: Resources<&Dispatcher>,
     named_types: Resources<&NamedType>,
     mut nodes: Resources<&mut Node>,
@@ -19,6 +22,7 @@ pub fn collapse_update(
     let errors = Vec::new();
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
+        let mut new_scopes = HashMap::new();
         let mut payloads = HashMap::new();
         let mut types = HashMap::new();
         root.visit(Visit::Postorder, &nodes, |_res, node| {
@@ -29,18 +33,41 @@ pub fn collapse_update(
                             TypeOrPlaceholder::Type(_) => {}
                             TypeOrPlaceholder::Placeholder(_) => {}
                             TypeOrPlaceholder::Dispatch(scope, name) => {
-                                let id = Handle::from_name(scope, &name.as_u128().to_le_bytes());
-                                let dispatcher = dispatch.get::<Dispatcher>(id).unwrap();
-                                let query =
-                                    Query::new(Name(scope, name), IsFunction::Maybe, None, None);
-                                let results = dispatcher.query(&query, &named_types);
-                                let t = match results.len() {
-                                    // TODO: traverse parents
-                                    0 => todo!(),
-                                    1 => results[0].result_type(),
-                                    _ => todo!(),
-                                };
-                                payloads.insert(node.id(), Payload::Type(t));
+                                let string = strings.get(name).unwrap();
+                                let mut iter = Some(scope);
+                                while let Some(scope) = iter {
+                                    let id = Handle::from_name(scope, string.as_bytes());
+                                    let dispatcher = if let Some(d) = dispatch.get::<Dispatcher>(id) {
+                                        d
+                                    } else {
+                                        let scope = scopes.get(scope);
+                                        if let Some(scope) = scope {
+                                            iter = Some(scope.parent());
+                                        } else {
+                                            iter = None;
+                                        }
+                                        continue;
+                                    };
+                                    let query =
+                                        Query::new(Name(scope, name), IsFunction::Maybe, None, None);
+                                    let results = dispatcher.query(&query, &named_types);
+                                    let t = match results.len() {
+                                        0 => {
+                                            let scope = scopes.get(scope);
+                                            if let Some(scope) = scope {
+                                                iter = Some(scope.parent());
+                                            } else {
+                                                iter = None;
+                                            }
+                                            continue;
+                                        }
+                                        1 => results[0].result_type(),
+                                        _ => todo!(),
+                                    };
+                                    new_scopes.insert(node.id(), scope);
+                                    payloads.insert(node.id(), Payload::Type(t));
+                                    break;
+                                }
                             }
                             TypeOrPlaceholder::Typeof(id) => {
                                 payloads.insert(
@@ -58,17 +85,41 @@ pub fn collapse_update(
                     TypeOrPlaceholder::Type(_) => {}
                     TypeOrPlaceholder::Placeholder(_) => {}
                     TypeOrPlaceholder::Dispatch(scope, name) => {
-                        let id = Handle::from_name(scope, &name.as_u128().to_le_bytes());
-                        let dispatcher = dispatch.get::<Dispatcher>(id).unwrap();
-                        let query = Query::new(Name(scope, name), IsFunction::Maybe, None, None);
-                        let results = dispatcher.query(&query, &named_types);
-                        let t = match results.len() {
-                            // TODO: traverse parents
-                            0 => todo!(),
-                            1 => results[0].result_type(),
-                            _ => todo!(),
-                        };
-                        types.insert(node.id(), t);
+                        let string = strings.get(name).unwrap();
+                        let mut iter = Some(scope);
+                        while let Some(scope) = iter {
+                            let id = Handle::from_name(scope, string.as_bytes());
+                            let dispatcher = if let Some(d) = dispatch.get::<Dispatcher>(id) {
+                                d
+                            } else {
+                                let scope = scopes.get(scope);
+                                if let Some(scope) = scope {
+                                    iter = Some(scope.parent());
+                                } else {
+                                    iter = None;
+                                }
+                                continue;
+                            };
+                            let query =
+                                Query::new(Name(scope, name), IsFunction::Maybe, None, None);
+                            let results = dispatcher.query(&query, &named_types);
+                            let t = match results.len() {
+                                0 => {
+                                    let scope = scopes.get(scope);
+                                    if let Some(scope) = scope {
+                                        iter = Some(scope.parent());
+                                    } else {
+                                        iter = None;
+                                    }
+                                    continue;
+                                }
+                                1 => results[0].result_type(),
+                                _ => todo!(),
+                            };
+                            new_scopes.insert(node.id(), scope);
+                            types.insert(node.id(), t);
+                            break;
+                        }
                     }
                     TypeOrPlaceholder::Typeof(id) => {
                         types.insert(node.id(), nodes.get(id).unwrap().type_of.unwrap());
@@ -77,6 +128,9 @@ pub fn collapse_update(
             }
             VisitResult::Recurse
         });
+        for (handle, scope) in new_scopes {
+            nodes.get_mut::<Node>(handle).unwrap().scope = Some(scope);
+        }
         for (handle, payload) in payloads {
             nodes.get_mut::<Node>(handle).unwrap().payload = Some(payload);
         }

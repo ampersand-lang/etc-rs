@@ -7,19 +7,23 @@ pub type ScopeId = Handle<Scope>;
 // A node in the scope tree with a parent or the root scope.
 #[derive(Debug, Clone)]
 pub struct Scope {
-    parent: Option<ScopeId>,
+    parent: ScopeId,
 }
 
 impl Scope {
     /// Constructs a new root scope.
     pub fn new() -> Self {
-        Self { parent: None }
+        Self { parent: ScopeId::nil() }
     }
 
     /// Constructs a new node scope.
     pub fn with_parent(parent: ScopeId) -> Self {
         Self {
-            parent: Some(parent),
+            parent,
         }
+    }
+
+    pub fn parent(&self) -> ScopeId {
+        self.parent
     }
 }
