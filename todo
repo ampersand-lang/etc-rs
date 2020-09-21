@@ -1,0 +1,41 @@
+# TODO list
+
+TODO: analyze_verify
+* an analysis pass for verifying code for low-level soundness
+TODO: analyze_loop
+* an analysis pass for adding loop-metadata to basic blocks
+TODO: analyze_side_effect
+* an analysis pass for adding side-effect metadata to every instruction and function
+TODO: optimize_alloca_elim
+* an optimization pass that eliminates alloca's which only have a single store in the same basic block, or no store at all
+TODO: optimize_const_fold
+* an optimization pass that evaluates constant expressions (those without side-effects) at compile-time
+TODO: optimize_dead_code
+* an optimization pass that eliminates code which has no side-effects or no effect on the output of the function
+TODO: optimize_loop_unroll
+* an optimization pass that unrolls loop which have a small induction constant
+TODO: optimize_instr_combine
+* an optimization pass that combines known patterns of instructions into less instructions
+TODO: optimize_reassociate
+* an optimization pass that reassociates commutative operation arguments into a canonical form
+TODO: optimize_common_subexpr
+* reduces identical subexpressions in a single basic block into a single occurence of that subexpression
+TODO: optimize_cfg_simplify
+* simplifies the cfg in various ways
+TODO: debug symbols
+TODO: a jit engine
+TODO: manifest.amp
+TODO: comments
+TODO: functions
+TODO: intrinsics
+TODO: reader macros
+TODO: support for floating point numbers
+
+ir passes order:
+analyze_verify
+analyze_loop
+optimize_loop_unroll
+optimize_alloca_elim
+analyze_side_effect
+optimize_dead_code
+optimize_const_fold
