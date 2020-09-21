@@ -5,12 +5,11 @@ use bitflags::bitflags;
 use hashbrown::HashMap;
 use smallvec::SmallVec;
 
-use crate::lir::BindingPrototype;
+use crate::lir::{BasicBlockPrototype, BindingPrototype};
 use crate::types::TypeInfo;
 use crate::utils::IntPtr;
 
-use linscan::*;
-
+pub use linscan::*;
 pub use call_conv::*;
 
 mod call_conv;
@@ -269,6 +268,18 @@ pub enum Size {
     Qword,
 }
 
+impl Size {
+    pub fn from_bytes(bytes: usize) -> Option<Self> {
+        match bytes {
+            1 => Some(Self::Byte),
+            2 => Some(Self::Word),
+            4 => Some(Self::Dword),
+            8 => Some(Self::Qword),
+            _ => None,
+        }
+    }
+}
+
 impl Display for Size {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -489,10 +500,11 @@ pub struct FunctionBuilder {
     naked: bool,
     locals: HashMap<BindingPrototype, Interval>,
     allocator: Allocator,
+    block_listing: Vec<BasicBlockPrototype>,
 }
 
 impl FunctionBuilder {
-    pub fn new(name: String, pool: Vec<Register>) -> Self {
+    pub fn new(name: String, pool: Vec<Register>, block_listing: Vec<BasicBlockPrototype>) -> Self {
         Self {
             name,
             basic_blocks: HashMap::new(),
@@ -502,6 +514,7 @@ impl FunctionBuilder {
             naked: false,
             locals: HashMap::new(),
             allocator: Allocator::new(pool),
+            block_listing,
         }
     }
 
@@ -521,8 +534,8 @@ impl FunctionBuilder {
         &mut self,
         binding: BindingPrototype,
         ti: TypeInfo,
-        start: i64,
-        end: i64,
+        start: Lifetime,
+        end: Lifetime,
     ) -> &mut Self {
         self.allocator.add(Interval::new(binding, ti, start, end));
         self
@@ -532,8 +545,8 @@ impl FunctionBuilder {
         &mut self,
         binding: BindingPrototype,
         ti: TypeInfo,
-        start: i64,
-        end: i64,
+        start: Lifetime,
+        end: Lifetime,
     ) -> &mut Self {
         self.allocator
             .add(Interval::on_stack(binding, ti, start, end));
@@ -541,7 +554,7 @@ impl FunctionBuilder {
     }
 
     pub fn allocate(&mut self) -> &mut Self {
-        self.allocator.allocate();
+        self.allocator.allocate(&self.block_listing);
         let locals = self.allocator.iter().map(|i| (i.name, *i));
         self.locals.extend(locals);
         self
@@ -738,11 +751,12 @@ impl CodeBuilder {
         call_conv: &dyn CallConv,
         name: String,
         param_types: &[TypeInfo],
+        listing: Vec<BasicBlockPrototype>,
     ) -> &mut FunctionBuilder {
         let free = call_conv.free(param_types);
         self.functions
             .entry(name.clone())
-            .or_insert_with(|| FunctionBuilder::new(name, free))
+            .or_insert_with(|| FunctionBuilder::new(name, free, listing))
     }
 
     pub fn function_mut(&mut self, name: &str) -> Option<&mut FunctionBuilder> {
@@ -796,7 +810,7 @@ impl ProgramBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lir::Binding;
+    use crate::lir;
 
     #[test]
     fn codegen() {
@@ -804,7 +818,7 @@ mod tests {
 
         let start = program
             .codegen
-            .add_function(&*program.call_conv, "_start".to_string(), &[]);
+            .add_function(&*program.call_conv, "_start".to_string(), &[], vec![BasicBlockPrototype::with_start(0, 0)]);
         start.export(true);
         start.naked(true);
         let bb = start.add_basic_block();
@@ -831,12 +845,12 @@ mod tests {
 
         let main = program
             .codegen
-            .add_function(&*program.call_conv, "main".to_string(), &[]);
+            .add_function(&*program.call_conv, "main".to_string(), &[], vec![BasicBlockPrototype::with_start(0, 0)]);
         let bb = main.add_basic_block();
         let a = BindingPrototype::new(0, 0);
         let b = BindingPrototype::new(0, 1);
-        main.add_local(a, TypeInfo::new(8, 8), 0, 1)
-            .add_stack(b, TypeInfo::new(8, 8), 0, 1)
+        main.add_local(a, TypeInfo::new(8, 8), Lifetime::new(lir::BasicBlock::new(0), 0), Lifetime::new(lir::BasicBlock::new(0), 1))
+            .add_stack(b, TypeInfo::new(8, 8), Lifetime::new(lir::BasicBlock::new(0), 0), Lifetime::new(lir::BasicBlock::new(0), 1))
             .allocate();
         let a = main.local(a).copied().unwrap();
         let b = main.local(b).copied().unwrap();

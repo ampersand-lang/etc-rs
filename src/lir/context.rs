@@ -314,6 +314,8 @@ impl ExecutionContext {
                         value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                     }
                     Value::Function(_id) => todo!(),
+                    Value::Label(_b) => todo!(),
+                    Value::Bool(p) => u8::from(p).write_bytes(&mut value),
                     Value::Uint(int) => int.write_bytes(&mut value),
                     Value::Float(flt) => flt.write_bytes(&mut value),
                     Value::Address(addr) => addr.write_bytes(&mut value),
@@ -376,6 +378,8 @@ impl ExecutionContext {
                                 bytes.copy_from_slice(&self.registers[&r.build(self.invocation)])
                             }
                             Value::Function(_id) => todo!(),
+                            Value::Label(_b) => todo!(),
+                            Value::Bool(p) => u8::from(p).write_bytes(&mut bytes),
                             Value::Uint(int) => int.write_bytes(&mut bytes),
                             Value::Float(flt) => flt.write_bytes(&mut bytes),
                             Value::Address(addr) => addr.write_bytes(&mut bytes),
@@ -511,6 +515,8 @@ impl ExecutionContext {
                             value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                         }
                         Value::Function(_id) => todo!(),
+                        Value::Label(_b) => todo!(),
+                        Value::Bool(p) => u8::from(p).write_bytes(&mut value),
                         Value::Uint(int) => int.write_bytes(&mut value),
                         Value::Float(flt) => flt.write_bytes(&mut value),
                         Value::Address(addr) => addr.write_bytes(&mut value),
@@ -525,6 +531,46 @@ impl ExecutionContext {
                     self.registers.insert(binding, value);
                     Ok(Result::Continue)
                 }
+            }
+            Instruction::Jmp => {
+                match ir.args[0] {
+                    Value::Label(b) => {
+                        let func = &self.text[self.instr_ptr.0 as usize];
+                        let b = &func.blocks[b.number() as usize];
+                        self.instr_ptr.1 = b.start as _;
+                    }
+                    _ => return Err(From::from(TypeError)),
+                }
+                Ok(Result::Continue)
+            }
+            Instruction::IfThenElse => {
+                let cond = match ir.args[0] {
+                    Value::Bool(p) => p,
+                    Value::Register(r) => {
+                        u8::from_bytes(&self.registers[&r.build(self.invocation)]) == 1
+                    }
+                    _ => return Err(From::from(TypeError)),
+                };
+                if cond {
+                    match ir.args[1] {
+                        Value::Label(b) => {
+                            let func = &self.text[self.instr_ptr.0 as usize];
+                            let b = &func.blocks[b.number() as usize];
+                            self.instr_ptr.1 = b.start as _;
+                        }
+                        _ => return Err(From::from(TypeError)),
+                    }
+                } else {
+                    match ir.args[2] {
+                        Value::Label(b) => {
+                            let func = &self.text[self.instr_ptr.0 as usize];
+                            let b = &func.blocks[b.number() as usize];
+                            self.instr_ptr.1 = b.start as _;
+                        }
+                        _ => return Err(From::from(TypeError)),
+                    }
+                }
+                Ok(Result::Continue)
             }
         };
         if let Some(r) = ir.binding {
@@ -573,6 +619,8 @@ impl ExecutionContext {
                     value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                 }
                 Value::Function(_id) => todo!(),
+                Value::Label(_b) => todo!(),
+                Value::Bool(p) => u8::from(*p).write_bytes(&mut value),
                 Value::Uint(int) => int.write_bytes(&mut value),
                 Value::Float(flt) => flt.write_bytes(&mut value),
                 Value::Address(addr) => addr.write_bytes(&mut value),

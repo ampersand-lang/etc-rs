@@ -49,7 +49,10 @@ impl<'a> Compile<Builder<'a>> for Node {
     ) -> Fallible<Self::Output> {
         let _root = res.get::<Node>(handle).unwrap();
         // TODO: remove this primitive
-        let f = builder.function("main").result(*primitive::S32);
+        let mut start = BasicBlock::new(0);
+        let f = builder.function("main")
+            .add_basic_block(&mut start)
+            .result(*primitive::S32);
         let (_, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
         Ok(b.build())
     }

@@ -1,8 +1,9 @@
+use hashbrown::HashSet;
 use smallvec::{smallvec, SmallVec};
 
 use crate::assets::Resources;
-
 use crate::lir::context::*;
+use crate::lir::codegen::Lifetime;
 use crate::lir::repr::*;
 use crate::types::NamedType;
 
@@ -28,6 +29,10 @@ impl<'a> Builder<'a> {
             param_types: SmallVec::new(),
             result_type: None,
             body: Vec::new(),
+            blocks: Vec::new(),
+            is_ref: HashSet::new(),
+            current_block: None,
+            block_count: 0,
         }
     }
 
@@ -46,17 +51,26 @@ pub struct FunctionBuilder<'a> {
     param_types: SmallVec<[TypeId; 4]>,
     result_type: Option<TypeId>,
     body: Vec<Ir>,
+    blocks: Vec<BasicBlockPrototype>,
+    is_ref: HashSet<BindingPrototype>,
+    current_block: Option<BasicBlock>,
+    block_count: u32,
 }
 
 impl<'a> FunctionBuilder<'a> {
-    pub fn build(self, idx: &mut FuncId) -> Builder<'a> {
+    pub fn build(mut self, idx: &mut FuncId) -> Builder<'a> {
         let mut builder = self.builder;
         *idx = builder.ctx.data.len();
+        for (idx, ir) in self.body.iter_mut().enumerate() {
+            ir.life.position = idx as _;
+        }
         builder.ctx.text.push(Function {
             name: self.name,
             param_types: self.param_types,
             result_type: self.result_type.expect("no result type given"),
             body: self.body,
+            blocks: self.blocks,
+            is_ref: self.is_ref,
         });
         builder
     }
@@ -71,12 +85,22 @@ impl<'a> FunctionBuilder<'a> {
         self
     }
 
+    pub fn add_basic_block(mut self, out: &mut BasicBlock) -> Self {
+        let bb = BasicBlock::new(self.block_count as u32);
+        self.current_block = Some(bb);
+        *out = bb;
+        self.blocks.push(BasicBlockPrototype::new(self.block_count));
+        self.block_count += 1;
+        self
+    }
+
     pub fn build_alloca(mut self, out: &mut Value, t: TypeId, n: u64) -> Self {
         let counter = &mut self.counter;
         let binding = *counter;
         counter.inc();
         self.body.push(Ir {
             binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Alloca,
             args: smallvec![Value::Type(t), Value::Uint(n)],
         });
@@ -85,8 +109,15 @@ impl<'a> FunctionBuilder<'a> {
     }
 
     pub fn build_store(mut self, t: TypeId, addr: Value, v: Value) -> Self {
+        match addr {
+            Value::Register(r) => {
+                self.is_ref.insert(r);
+            }
+            _ => {}
+        }
         self.body.push(Ir {
             binding: None,
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Store,
             args: smallvec![Value::Type(t), addr, v],
         });
@@ -99,6 +130,7 @@ impl<'a> FunctionBuilder<'a> {
         counter.inc();
         self.body.push(Ir {
             binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Load,
             args: smallvec![Value::Type(t), v],
         });
@@ -112,6 +144,7 @@ impl<'a> FunctionBuilder<'a> {
         counter.inc();
         self.body.push(Ir {
             binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::NewNode,
             args,
         });
@@ -131,6 +164,7 @@ impl<'a> FunctionBuilder<'a> {
         args.insert(0, Value::Type(t));
         self.body.push(Ir {
             binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Call,
             args,
         });
@@ -141,6 +175,7 @@ impl<'a> FunctionBuilder<'a> {
     pub fn build_return(mut self, t: TypeId, v: Value) -> Self {
         self.body.push(Ir {
             binding: None,
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Return,
             args: smallvec![Value::Type(t), v],
         });

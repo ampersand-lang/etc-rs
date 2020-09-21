@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 use failure::Fallible;
+use hashbrown::HashSet;
 use lazy_static::lazy_static;
 use smallvec::SmallVec;
 
@@ -10,6 +11,7 @@ use crate::types::{NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
 
 use self::context::{ExecutionContext, TypeError};
+use self::codegen::Lifetime;
 use self::repr::*;
 
 pub mod builder;
@@ -236,6 +238,7 @@ pub enum Value {
     Unit,
     Register(BindingPrototype),
     Address(context::VirtualAddress),
+    Bool(bool),
     Uint(u64),
     Float(f64),
     Type(TypeId),
@@ -245,6 +248,7 @@ pub enum Value {
     Tagged(Handle<Value>, Handle<Fields>, Handle<Variants>),
     Union(Handle<Bytes>),
     Function(FuncId),
+    Label(BasicBlock),
     Ffi(Handle<Foreign>),
 }
 
@@ -254,6 +258,7 @@ impl Display for Value {
             Value::Unit => write!(f, "()"),
             Value::Register(b) => write!(f, "%{}/{}", b.scope(), b.number()),
             Value::Address(addr) => write!(f, "0x{:016x}", addr.0),
+            Value::Bool(p) => write!(f, "{}", p),
             Value::Uint(u) => write!(f, "{}", u),
             Value::Float(x) => write!(f, "{:?}", x),
             Value::Type(id) => write!(f, "type {:?}", id.group),
@@ -263,6 +268,7 @@ impl Display for Value {
             Value::Tagged(..) => todo!(),
             Value::Union(..) => todo!(),
             Value::Function(func) => write!(f, "%{}", func),
+            Value::Label(b) => write!(f, "%{}", b.number()),
             Value::Ffi(id) => write!(f, "ffi {}", id.display()),
         }
     }
@@ -282,13 +288,18 @@ pub enum Instruction {
     NewNode,
     /// One argument: any value
     Return,
+    /// One argument: a basic block
+    Jmp,
+    /// Three arguments: a boolean or register and two basic blocks
+    IfThenElse,
 }
 
 #[derive(Debug, Clone)]
 pub struct Ir {
     pub(crate) binding: Option<BindingPrototype>,
+    pub(crate) life: Lifetime,
     pub(crate) instr: Instruction,
-    pub(crate) args: SmallVec<[Value; 4]>,
+    pub(crate) args: SmallVec< [Value; 4]>,
 }
 
 impl Display for Ir {
@@ -307,12 +318,152 @@ impl Display for Ir {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BasicBlock(u32);
+
+impl BasicBlock {
+    pub fn new(number: u32) -> Self {
+        Self(number)
+    }
+    
+    pub fn number(&self) -> u32 {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BasicBlockPrototype {
+    number: u32,
+    start: usize,
+    children: SmallVec<[u32; 2]>,
+}
+
+impl BasicBlockPrototype {
+    pub fn new(number: u32) -> Self {
+        Self {
+            number,
+            start: 0,
+            children: SmallVec::new(),
+        }
+    }
+
+    pub fn with_start(number: u32, start: usize) -> Self {
+        Self {
+            number,
+            start,
+            children: SmallVec::new(),
+        }
+    }
+
+    pub fn as_ref(&self) -> BasicBlock {
+        BasicBlock::new(self.number)
+    }
+
+    pub(self) fn add(&mut self, number: u32) {
+        self.children.push(number);
+    }
+}
+
+pub trait BasicBlockExt {
+    fn is_child(&self, this: BasicBlock, other: BasicBlock) -> bool;
+}
+
+impl BasicBlockExt for &[BasicBlockPrototype] {
+    fn is_child(&self, this: BasicBlock, other: BasicBlock) -> bool {
+        let mut children = self[this.number() as usize].children.to_vec();
+        let mut append = Vec::<u32>::new();
+        while !children.is_empty() {
+            for child in children.drain(..) {
+                if child == other.number() {
+                    return true;
+                }
+                append.extend(&self[child as usize].children);
+            }
+            children.extend(append.drain(..));
+        }
+        false
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     pub(crate) name: String,
     pub(crate) param_types: SmallVec<[TypeId; 4]>,
     pub(crate) result_type: TypeId,
     pub(crate) body: Vec<Ir>,
+    pub(crate) blocks: Vec<BasicBlockPrototype>,
+    pub(crate) is_ref: HashSet<BindingPrototype>,
+}
+
+impl Function {
+    pub fn add_basic_block(&mut self, start: usize, parents: &[u32]) -> BasicBlock {
+        let number = self.blocks.len() as u32;
+        for &p in parents {
+            self.blocks[p as usize].add(number);
+        }
+        self.blocks.push(BasicBlockPrototype::with_start(number, start));
+        BasicBlock::new(number)
+    }
+
+    fn lifetime_inner<'a, I>(&self, binding: BindingPrototype, start: &mut Option<Lifetime>, end: &mut Option<Lifetime>, iter: I)
+    where
+        I: Iterator<Item = &'a Ir>,
+    {
+        for ir in iter {
+            if ir.binding == Some(binding) {
+                if start.is_none() {
+                    *start = Some(ir.life);
+                    *end = Some(ir.life);
+                } else {
+                    *end = Some(ir.life);
+                }
+            }
+            match ir.instr {
+                Instruction::Jmp => {
+                    match ir.args[0] {
+                        Value::Label(bb) => {
+                            let bb = &self.blocks[bb.number() as usize];
+                            self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
+                        }
+                        _ => {}
+                    }
+                    break;
+                }
+                Instruction::IfThenElse => {
+                    match ir.args[1] {
+                        Value::Label(bb) => {
+                            let bb = &self.blocks[bb.number() as usize];
+                            self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
+                        }
+                        _ => {}
+                    }
+                    match ir.args[2] {
+                        Value::Label(bb) => {
+                            let bb = &self.blocks[bb.number() as usize];
+                            self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
+                        }
+                        _ => {}
+                    }
+                    break;
+                }
+                Instruction::Return => break,
+                _ => {}
+            }
+        }
+    }
+
+    pub fn lifetime(&self, binding: BindingPrototype) -> (Lifetime, Lifetime) {
+        let mut start = None;
+        let mut end = None;
+        self.lifetime_inner(binding, &mut start, &mut end, self.body.iter());
+        let start = start.unwrap();
+        let end = end.unwrap();
+        (start, end)
+    }
+
+    pub fn is_ref(&self, r: BindingPrototype) -> bool {
+        self.is_ref.contains(&r)
+    }
 }
 
 impl Display for Function {
@@ -337,12 +488,15 @@ mod tests {
     #[test]
     fn sanity() {
         let world = World::new();
+        world.init_asset::<Foreign>();
         world.init_asset::<NamedType>();
+        world.init_asset::<Node>();
+        world.init_asset::<String>();
 
         let mut lazy = LazyUpdate::new();
 
         let mut main = 0;
-        let (res, mut ctx) =
+        let (_, mut ctx) =
             ExecutionContext::builder(world.resources::<&NamedType>(), Target::default())
                 .function("main")
                 .result(*primitive::SINT)
@@ -350,7 +504,7 @@ mod tests {
                 .build(&mut main)
                 .build();
         assert_eq!(
-            ctx.call(&mut lazy, &world.resources(), &res, main, &[])
+            ctx.call(&mut lazy, &world.resources(), &mut world.resources(), main, &[])
                 .unwrap(),
             Value::Uint(5)
         );
