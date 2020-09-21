@@ -12,15 +12,15 @@ impl Lifetime {
     pub fn new(block: BasicBlock, position: u32) -> Self {
         Self { block, position }
     }
-    
+
     pub fn empty(block: BasicBlock) -> Self {
         Self { block, position: 0 }
     }
-    
+
     pub fn to_cmp(&self) -> (BasicBlock, u32) {
         (self.block, self.position)
     }
-    
+
     pub fn ge(&self, other: &Self, prot: &[BasicBlockPrototype]) -> bool {
         if self.block == other.block {
             self.position >= other.position
@@ -32,7 +32,7 @@ impl Lifetime {
             false
         }
     }
-    
+
     pub fn gt(&self, other: &Self, prot: &[BasicBlockPrototype]) -> bool {
         if self.block == other.block {
             self.position > other.position
@@ -174,7 +174,8 @@ impl Allocator {
                 self.active.push((idx, reg));
                 // PERF: sorting in every repetition of this loop *might* be inoptimal
                 let live = &self.live;
-                self.active.sort_unstable_by_key(|(idx, _)| live[*idx].end.to_cmp());
+                self.active
+                    .sort_unstable_by_key(|(idx, _)| live[*idx].end.to_cmp());
             }
 
             for (idx, reg) in delta.drain(..) {

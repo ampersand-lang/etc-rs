@@ -106,12 +106,19 @@ fn binding(state: &mut State) -> Fallible<NodeId> {
         literal(TokenKind::Equals),
         binary,
     )(state)?;
-    let node = Node::new(
+    let ident = state.nodes.get(name).unwrap();
+    let ident = match ident.payload.unwrap() {
+        Payload::Identifier(ident) => ident,
+        _ => panic!("patterns are not implemented yet"),
+    };
+    let ident = state.lexer.res.get(ident).unwrap();
+    let node = Node::with_name(
         Kind::Binding,
         location,
         iter::once(Some(name))
             .chain(iter::once(typ))
             .chain(iter::once(Some(value))),
+        ident.as_bytes(),
     );
     let handle = node.id();
     state.nodes.insert(handle, node);

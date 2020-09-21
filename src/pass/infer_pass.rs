@@ -2,13 +2,15 @@ use std::iter;
 
 use failure::{Fail, Fallible};
 use hashbrown::{HashMap, HashSet};
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
 use crate::dispatch::*;
 use crate::error::MultiError;
 use crate::lexer::Location;
+use crate::lir::context::ExecutionContext;
+use crate::scope::Scope;
 use crate::types::{builtin, primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
 
@@ -32,10 +34,12 @@ pub enum InferError {
 }
 
 pub fn infer_update(
-    lazy: &mut LazyUpdate,
+    _lazy: &mut LazyUpdate,
     roots: Resources<&RootNode>,
+    scopes: Resources<&Scope>,
+    contexts: Resources<&ExecutionContext>,
     mut dispatch: Resources<&mut Dispatcher>,
-    named_types: Resources<&NamedType>,
+    mut named_types: Resources<&mut NamedType>,
     strings: Resources<&String>,
     locations: Resources<&Location>,
     mut nodes: Resources<&mut Node>,
@@ -92,7 +96,7 @@ pub fn infer_update(
                                 name: None,
                                 t: Type::Pointer(pointee),
                             };
-                            lazy.insert(handle, t);
+                            named_types.insert(handle, t);
                             TypeId {
                                 group: TypeGroup::Pointer,
                                 concrete: TypeOrPlaceholder::Type(handle),
@@ -114,7 +118,27 @@ pub fn infer_update(
                             concrete: TypeOrPlaceholder::Dispatch(node.scope.unwrap(), string),
                         },
                         Payload::Type(_) => primitive::TYPE.clone(),
-                        Payload::Function(_) => todo!(),
+                        Payload::Function(id) => {
+                            let ctx = contexts.get(root.thread.unwrap()).unwrap();
+                            let funk = ctx.function(id);
+                            let param_types = funk.param_types().iter().copied().collect();
+                            let result_type = funk.result_type();
+                            let named = Handle::new();
+                            named_types.insert(
+                                named,
+                                NamedType {
+                                    name: None,
+                                    t: Type::Function {
+                                        result_type,
+                                        param_types,
+                                    },
+                                },
+                            );
+                            TypeId {
+                                group: TypeGroup::Function,
+                                concrete: TypeOrPlaceholder::Type(named),
+                            }
+                        }
                     };
                     types.insert(node.id(), typ);
                 }
@@ -164,11 +188,17 @@ pub fn infer_update(
                         _ => panic!("did the validation stage run?"),
                     };
                     let result_type = node.children.get(1).and_then(|last| {
-                        last.and_then(|last| nodes.get::<Node>(last).unwrap().type_of.clone())
+                        last.and_then(|last| {
+                            nodes
+                                .get::<Node>(last)
+                                .unwrap()
+                                .type_of
+                                .or_else(|| types.get(&last).copied())
+                        })
                     });
                     if let Some(result_type) = result_type {
                         let named = Handle::new();
-                        lazy.insert(
+                        named_types.insert(
                             named,
                             NamedType {
                                 name: None,
@@ -214,48 +244,95 @@ pub fn infer_update(
                         TypeOrPlaceholder::Dispatch(scope, handle) => {
                             let ident = strings.get(handle).unwrap();
                             let name = Name(scope, handle);
-                            let args = node.children[1..]
+                            let args: SmallVec<_> = node.children[1..]
                                 .iter()
                                 .map(|param| {
-                                    nodes.get::<Node>(param.unwrap()).unwrap().type_of.unwrap()
+                                    let id = param.unwrap();
+                                    nodes
+                                        .get::<Node>(id)
+                                        .unwrap()
+                                        .type_of
+                                        .or_else(|| types.get(&id).copied())
+                                        .unwrap()
                                 })
                                 .collect();
-                            let dispatch = dispatch
-                                .get::<Dispatcher>(DispatchId::from_name(
+                            let mut iter = Some(scope);
+                            let mut result = None;
+                            while let Some(scope) = iter {
+                                let dispatch = dispatch.get::<Dispatcher>(DispatchId::from_name(
                                     name.0,
                                     ident.as_bytes(),
-                                ))
-                                .unwrap();
-                            let query = Query::new(name, IsFunction::Yes, Some(args), None);
-                            let results = dispatch.query(&query, &named_types);
-                            match results.len() {
-                                // TODO: traverse parents
-                                0 => todo!(),
-                                1 => Some((
-                                    results[0].result_type(),
-                                    results[0].arg_types().unwrap().iter().copied().collect(),
-                                )),
-                                _ => {
-                                    errors.push(From::from(InferError::MultipleDefinitions {
-                                        location: locations
-                                            .get::<Location>(func.location)
-                                            .unwrap()
-                                            .as_ref()
-                                            .clone(),
-                                    }));
-                                    return VisitResult::Recurse;
+                                ));
+                                let dispatch = if let Some(d) = dispatch {
+                                    d
+                                } else {
+                                    let scope = scopes.get(scope);
+                                    if let Some(scope) = scope {
+                                        iter = Some(scope.parent());
+                                    } else {
+                                        iter = None;
+                                    }
+                                    continue;
+                                };
+                                let query =
+                                    Query::new(name, IsFunction::Yes, Some(args.clone()), None);
+                                let results = dispatch.query(&query, &named_types);
+                                match results.len() {
+                                    0 => {
+                                        let scope = scopes.get(scope);
+                                        if let Some(scope) = scope {
+                                            iter = Some(scope.parent());
+                                        } else {
+                                            iter = None;
+                                        }
+                                        continue;
+                                    }
+                                    1 => {
+                                        result = Some((
+                                            results[0].result_type(),
+                                            results[0]
+                                                .arg_types()
+                                                .unwrap()
+                                                .iter()
+                                                .copied()
+                                                .collect(),
+                                        ));
+                                        break;
+                                    }
+                                    _ => {
+                                        errors.push(From::from(InferError::MultipleDefinitions {
+                                            location: locations
+                                                .get::<Location>(func.location)
+                                                .unwrap()
+                                                .as_ref()
+                                                .clone(),
+                                        }));
+                                        return VisitResult::Recurse;
+                                    }
                                 }
                             }
+                            result
                         }
                         _ => todo!(),
                     };
                     if let Some((result_type, param_types)) = typ {
-                        for (idx, t) in param_types.into_iter().enumerate() {
-                            if t.group == TypeGroup::Node {
-                                let handle = node.children[1 + idx].unwrap();
-                                types.insert(handle, t);
-                            }
-                        }
+                        let named = Handle::new();
+                        named_types.insert(
+                            named,
+                            NamedType {
+                                name: None,
+                                t: Type::Function {
+                                    result_type,
+                                    param_types,
+                                },
+                            },
+                        );
+                        let typ = TypeId {
+                            group: TypeGroup::Function,
+                            concrete: TypeOrPlaceholder::Type(named),
+                        };
+                        types.insert(func.id(), typ);
+
                         types.insert(node.id(), result_type);
                     }
                 }
@@ -322,7 +399,7 @@ pub fn infer_update(
                         }
                     };
                     types.insert(node.id(), binding);
-                    lazy.insert(handle, d);
+                    dispatch.insert(handle, d);
                 }
                 Kind::Tuple => {
                     if node.alternative {
@@ -335,7 +412,7 @@ pub fn infer_update(
                         .map(|param| nodes.get::<Node>(param.unwrap()).unwrap().type_of.unwrap())
                         .collect();
                     let named = Handle::new();
-                    lazy.insert(
+                    named_types.insert(
                         named,
                         NamedType {
                             name: None,

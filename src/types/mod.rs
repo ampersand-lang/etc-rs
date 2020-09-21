@@ -148,7 +148,7 @@ pub mod primitive {
             NamedType {
                 name: Some("type".to_string()),
                 t: Type::Struct {
-                    fields: smallvec![*U64, *U64],
+                    fields: smallvec![*U8, *U64, *U64],
                 },
             },
         );
@@ -490,7 +490,7 @@ impl TypeId {
         }
     }
 
-    pub fn matches(&self, other: &TypeId, res: &Resources<&NamedType>) -> bool {
+    pub fn matches<A: AssetBundle>(&self, other: &TypeId, res: &Resources<A>) -> bool {
         match (self.group, other.group) {
             (_, TypeGroup::None) => return true,
             (TypeGroup::Type, TypeGroup::Type) => return true,
@@ -580,11 +580,11 @@ pub enum TypeGroup {
 }
 
 trait Matches {
-    fn matches(&self, other: &Self, res: &Resources<&NamedType>) -> bool;
+    fn matches<A: AssetBundle>(&self, other: &Self, res: &Resources<A>) -> bool;
 }
 
 impl Matches for SmallVec<[TypeId; 4]> {
-    fn matches(&self, other: &Self, res: &Resources<&NamedType>) -> bool {
+    fn matches<A: AssetBundle>(&self, other: &Self, res: &Resources<A>) -> bool {
         if self.len() != other.len() {
             return false;
         }
@@ -599,7 +599,7 @@ impl Matches for SmallVec<[TypeId; 4]> {
 }
 
 impl Handle<NamedType> {
-    pub fn matches(self, other: Self, res: &Resources<&NamedType>) -> bool {
+    pub fn matches<A: AssetBundle>(self, other: Self, res: &Resources<A>) -> bool {
         let this = res.get::<NamedType>(self).unwrap();
         let other = res.get::<NamedType>(other).unwrap();
         match (&this.t, &other.t) {
@@ -783,7 +783,31 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                         Type::Tagged { .. } => todo!(),
                         Type::Enum { .. } => todo!(),
                         Type::Union { .. } => todo!(),
-                        Type::Function { .. } => todo!(),
+                        Type::Function {
+                            result_type,
+                            param_types,
+                        } => {
+                            write!(f, "(")?;
+                            if let Some(param) = param_types.first() {
+                                write!(
+                                    f,
+                                    "{}",
+                                    PrettyPrinterRef::new(self.config, self.res, *param)
+                                )?;
+                            }
+                            for param in param_types.iter().skip(1) {
+                                write!(
+                                    f,
+                                    ", {}",
+                                    PrettyPrinterRef::new(self.config, self.res, *param)
+                                )?;
+                            }
+                            write!(
+                                f,
+                                ") -> {}",
+                                PrettyPrinterRef::new(self.config, self.res, *result_type)
+                            )
+                        }
                         Type::Pointer(pointee) => write!(
                             f,
                             "^{}",
@@ -803,7 +827,9 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                     }
                 }
             }
-            _ => Err(fmt::Error),
+            TypeOrPlaceholder::Placeholder(..) => write!(f, "<placeholder>"),
+            TypeOrPlaceholder::Dispatch(..) => write!(f, "<dispatch>"),
+            TypeOrPlaceholder::Typeof(..) => write!(f, "<typeof>"),
         }
     }
 }

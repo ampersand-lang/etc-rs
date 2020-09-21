@@ -50,10 +50,12 @@ impl<'a> Compile<Builder<'a>> for Node {
         let _root = res.get::<Node>(handle).unwrap();
         // TODO: remove this primitive
         let mut start = BasicBlock::new(0);
-        let f = builder.function("main")
+        let f = builder
+            .function("main")
             .add_basic_block(&mut start)
             .result(*primitive::S32);
-        let (_, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
+        let (main, mut b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
+        b.ctx.main = main;
         Ok(b.build())
     }
 }
@@ -125,17 +127,17 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 }
                 Payload::Identifier(ident) => {
                     let name = res.get::<String>(ident).unwrap();
-                    let handle =
-                        Handle::from_name(this.scope.unwrap(), name.as_bytes());
+                    let handle = Handle::from_name(this.scope.unwrap(), name.as_bytes());
                     let addr = *res
                         .get::<Value>(handle)
                         .expect(&format!("binding not found: {}", name.as_str()));
                     let mut value = Value::Unit;
                     match addr {
                         Value::Address(_) | Value::Register(_) => {
-                            builder.0 = builder
-                                .0
-                                .build_load(&mut value, this.type_of.unwrap(), addr);
+                            builder.0 =
+                                builder
+                                    .0
+                                    .build_load(&mut value, this.type_of.unwrap(), addr);
                         }
                         _ => value = addr,
                     }
@@ -163,10 +165,12 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 for _ in 0..16 {
                     name.push((b'a' + rand::random::<u8>() % 26) as char);
                 }
+                let mut start = BasicBlock::new(0);
                 let f = builder
                     .0
                     .builder
                     .function(name)
+                    .add_basic_block(&mut start)
                     .result(body.type_of.unwrap());
                 let (id, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
                 builder.0.builder = b;
@@ -247,7 +251,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 let scope = this.scope.unwrap();
                 let handle = Handle::from_name(scope, name.as_bytes());
                 res.insert::<Value>(handle, addr);
-                (Value::Unit, builder)
+                (v, builder)
             }
             Kind::Tuple => {
                 let mut result = Fields::new();

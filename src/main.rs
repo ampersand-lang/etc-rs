@@ -63,12 +63,8 @@ fn main() {
     dispatch::init(world.resources());
 
     let node = grammar::parse(&mut State {
-        lexer: Lexer::new(
-            "hello.amp",
-            SRC,
-            world.resources::<(&mut String, &mut Location)>(),
-        ),
-        nodes: world.resources::<&mut Node>(),
+        lexer: Lexer::new("hello.amp", SRC, world.resources()),
+        nodes: world.resources(),
     })
     .unwrap();
 

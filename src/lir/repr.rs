@@ -3,6 +3,7 @@ use std::mem;
 use std::str;
 
 use crate::types::TypeInfo;
+use crate::utils::IntPtr;
 
 pub trait Repr: 'static {
     fn type_info(&self) -> TypeInfo;
@@ -48,21 +49,28 @@ impl<A: ReprExt> ReprExt for (A,) {
 
 impl<A: Repr, B: Repr> Repr for (A, B) {
     fn type_info(&self) -> TypeInfo {
-        let mut t = self.0.type_info();
-        t.size += self.0.type_info().size;
-        t
+        let mut t0 = self.0.type_info();
+        let t1 = self.1.type_info();
+        t0.size = t0.size.align_up(t1.align);
+        t0.size += t1.size;
+        t0.align = t0.align.max(t1.align);
+        t0
     }
 
     fn write_bytes(&self, out: &mut [u8]) {
-        let t = self.0.type_info();
-        self.0.write_bytes(&mut out[..t.size]);
-        self.1.write_bytes(&mut out[t.size..]);
+        let mut t0 = self.0.type_info();
+        let t1 = self.1.type_info();
+        self.0.write_bytes(&mut out[..t0.size]);
+        t0.size = t0.size.align_up(t1.align);
+        self.1.write_bytes(&mut out[t0.size..]);
     }
 
     fn copy_from_bytes(&mut self, bytes: &[u8]) {
-        let t = self.0.type_info();
-        self.0.copy_from_bytes(&bytes[..t.size]);
-        self.1.copy_from_bytes(&bytes[t.size..]);
+        let mut t0 = self.0.type_info();
+        let t1 = self.1.type_info();
+        self.0.copy_from_bytes(&bytes[..t0.size]);
+        t0.size = t0.size.align_up(t1.align);
+        self.1.copy_from_bytes(&bytes[t0.size..]);
     }
 }
 
@@ -74,11 +82,12 @@ impl<A: ReprExt, B: ReprExt> ReprExt for (A, B) {
     }
 
     fn from_bytes(bytes: &[u8]) -> Self {
-        let t = A::static_type_info();
-        (
-            A::from_bytes(&bytes[..t.size]),
-            B::from_bytes(&bytes[t.size..]),
-        )
+        let mut t0 = A::static_type_info();
+        let t1 = B::static_type_info();
+        let a = &bytes[..t0.size];
+        t0.size = t0.size.align_up(t1.align);
+        let b = &bytes[t0.size..];
+        (A::from_bytes(a), B::from_bytes(b))
     }
 }
 

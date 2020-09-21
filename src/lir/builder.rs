@@ -2,8 +2,8 @@ use hashbrown::HashSet;
 use smallvec::{smallvec, SmallVec};
 
 use crate::assets::Resources;
-use crate::lir::context::*;
 use crate::lir::codegen::Lifetime;
+use crate::lir::context::*;
 use crate::lir::repr::*;
 use crate::types::NamedType;
 
@@ -60,7 +60,7 @@ pub struct FunctionBuilder<'a> {
 impl<'a> FunctionBuilder<'a> {
     pub fn build(mut self, idx: &mut FuncId) -> Builder<'a> {
         let mut builder = self.builder;
-        *idx = builder.ctx.data.len();
+        *idx = builder.ctx.text.len();
         for (idx, ir) in self.body.iter_mut().enumerate() {
             ir.life.position = idx as _;
         }

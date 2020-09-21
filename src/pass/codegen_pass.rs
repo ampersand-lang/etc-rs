@@ -20,10 +20,12 @@ pub fn codegen_update(
             .remove::<ExecutionContext>(root.thread.unwrap())
             .unwrap();
         for func in ctx.functions() {
-            let builder =
-                program
-                    .codegen
-                    .add_function(&*program.call_conv, "main".to_string(), &[], func.blocks.clone());
+            let builder = program.codegen.add_function(
+                &*program.call_conv,
+                "main".to_string(),
+                &[],
+                func.blocks.clone(),
+            );
             for ir in &func.body {
                 match ir.instr {
                     Instruction::Alloca => {
@@ -156,12 +158,10 @@ pub fn codegen_update(
                         };
                         let t = t.type_info(&named_types, &target);
                         let result = match ir.args[1] {
-                            Value::Uint(u) => {
-                                TypedArgument {
-                                    info: t,
-                                    arg: u.into(),
-                                }
-                            }
+                            Value::Uint(u) => TypedArgument {
+                                info: t,
+                                arg: u.into(),
+                            },
                             Value::Register(r) => {
                                 let source = builder.local(r).unwrap();
                                 TypedArgument {
@@ -171,11 +171,7 @@ pub fn codegen_update(
                             }
                             _ => todo!(),
                         };
-                        program.call_conv.build_ret(
-                            builder,
-                            bb,
-                            result,
-                        )?;
+                        program.call_conv.build_ret(builder, bb, result)?;
                     }
                     _ => todo!(),
                 }

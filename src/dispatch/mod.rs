@@ -3,10 +3,10 @@ use std::iter;
 
 use smallvec::SmallVec;
 
-use crate::assets::{Handle, Resources};
-use crate::scope::ScopeId;
-use crate::types::{primitive, NamedType, TypeId};
+use crate::assets::{AssetBundle, Handle, Resources};
 use crate::lir::Value;
+use crate::scope::ScopeId;
+use crate::types::{primitive, TypeId};
 
 pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut Value)>) {
     let i_sint = Handle::new();
@@ -14,7 +14,10 @@ pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut Value)>) {
     let name = Name(ScopeId::nil(), i_sint);
     let t_sint = Definition::new_variable(i32::MIN, *primitive::TYPE);
     let h_sint = Handle::from_name(name.0, "sint".as_bytes());
-    res.insert(h_sint, Dispatcher::with_definitions(name, iter::once(t_sint)));
+    res.insert(
+        h_sint,
+        Dispatcher::with_definitions(name, iter::once(t_sint)),
+    );
 
     let v_sint = Value::Type(*primitive::SINT);
     let h_sint = Handle::from_name(name.0, "sint".as_bytes());
@@ -112,7 +115,11 @@ impl Dispatcher {
     }
 
     /// Queries this dispatcher for a definition.
-    pub fn query(&self, q: &Query, res: &Resources<&NamedType>) -> SmallVec<[&Definition; 1]> {
+    pub fn query<A: AssetBundle>(
+        &self,
+        q: &Query,
+        res: &Resources<A>,
+    ) -> SmallVec<[&Definition; 1]> {
         let mut result = SmallVec::new();
         for def in &self.definitions {
             if def.matches(q, res) {
@@ -168,7 +175,7 @@ impl Definition {
     }
 
     /// Returns true if the query matches this definition.
-    pub fn matches(&self, q: &Query, res: &Resources<&NamedType>) -> bool {
+    pub fn matches<A: AssetBundle>(&self, q: &Query, res: &Resources<A>) -> bool {
         match (self.is_func, q.is_func) {
             (_, IsFunction::Maybe) => {}
             (true, IsFunction::Yes) => {}

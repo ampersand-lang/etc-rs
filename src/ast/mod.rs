@@ -269,6 +269,32 @@ impl Node {
         }
     }
 
+    /// Creates a new node with a `Kind` and some children.
+    ///
+    /// The node id gets set to an id based on the name.
+    pub fn with_name<I: IntoIterator<Item = Option<NodeId>>, T: AsRef<[u8]> + ?Sized>(
+        kind: Kind,
+        location: Handle<Location>,
+        children: I,
+        name: &T,
+    ) -> Self {
+        let id = NodeId::from_hash(name);
+        Node {
+            parent: None,
+            id,
+            universe: 0,
+            location,
+            alternative: false,
+            kind,
+            scope: None,
+            thread: None,
+            value: None,
+            payload: None,
+            type_of: None,
+            children: children.into_iter().collect(),
+        }
+    }
+
     /// Creates a new node with a parent, a `Kind` and some children.
     pub fn with_parent<I: IntoIterator<Item = Option<NodeId>>>(
         parent: NodeId,
@@ -859,7 +885,11 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
             ),
             Kind::Block => {
                 write!(f, "{{ ")?;
-                for stmt in node.children.iter().take(node.children.len() - 1) {
+                for stmt in node
+                    .children
+                    .iter()
+                    .take(node.children.len().saturating_sub(1))
+                {
                     write!(
                         f,
                         "{}; ",
@@ -1013,7 +1043,11 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
             ),
             Kind::Tuple => {
                 write!(f, "(")?;
-                for stmt in node.children.iter().take(node.children.len() - 1) {
+                for stmt in node
+                    .children
+                    .iter()
+                    .take(node.children.len().saturating_sub(1))
+                {
                     write!(
                         f,
                         "{}; ",
@@ -1026,7 +1060,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                         )
                     )?;
                 }
-                let expr = node.children.last().unwrap();
+                let expr = node.children.last().map(Option::as_ref).flatten();
                 if let Some(expr) = expr {
                     write!(
                         f,

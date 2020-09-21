@@ -9,8 +9,8 @@ use crate::lir::{BasicBlockPrototype, BindingPrototype};
 use crate::types::TypeInfo;
 use crate::utils::IntPtr;
 
-pub use linscan::*;
 pub use call_conv::*;
+pub use linscan::*;
 
 mod call_conv;
 mod linscan;
@@ -816,9 +816,12 @@ mod tests {
     fn codegen() {
         let mut program = ProgramBuilder::new(AmpCall64);
 
-        let start = program
-            .codegen
-            .add_function(&*program.call_conv, "_start".to_string(), &[], vec![BasicBlockPrototype::with_start(0, 0)]);
+        let start = program.codegen.add_function(
+            &*program.call_conv,
+            "_start".to_string(),
+            &[],
+            vec![BasicBlockPrototype::with_start(0, 0)],
+        );
         start.export(true);
         start.naked(true);
         let bb = start.add_basic_block();
@@ -843,15 +846,28 @@ mod tests {
             .unwrap();
         basic_block.instruction().opcode("syscall").build().unwrap();
 
-        let main = program
-            .codegen
-            .add_function(&*program.call_conv, "main".to_string(), &[], vec![BasicBlockPrototype::with_start(0, 0)]);
+        let main = program.codegen.add_function(
+            &*program.call_conv,
+            "main".to_string(),
+            &[],
+            vec![BasicBlockPrototype::with_start(0, 0)],
+        );
         let bb = main.add_basic_block();
         let a = BindingPrototype::new(0, 0);
         let b = BindingPrototype::new(0, 1);
-        main.add_local(a, TypeInfo::new(8, 8), Lifetime::new(lir::BasicBlock::new(0), 0), Lifetime::new(lir::BasicBlock::new(0), 1))
-            .add_stack(b, TypeInfo::new(8, 8), Lifetime::new(lir::BasicBlock::new(0), 0), Lifetime::new(lir::BasicBlock::new(0), 1))
-            .allocate();
+        main.add_local(
+            a,
+            TypeInfo::new(8, 8),
+            Lifetime::new(lir::BasicBlock::new(0), 0),
+            Lifetime::new(lir::BasicBlock::new(0), 1),
+        )
+        .add_stack(
+            b,
+            TypeInfo::new(8, 8),
+            Lifetime::new(lir::BasicBlock::new(0), 0),
+            Lifetime::new(lir::BasicBlock::new(0), 1),
+        )
+        .allocate();
         let a = main.local(a).copied().unwrap();
         let b = main.local(b).copied().unwrap();
         let basic_block = main.basic_block_mut(bb);

@@ -13,14 +13,14 @@ pub struct Scope {
 impl Scope {
     /// Constructs a new root scope.
     pub fn new() -> Self {
-        Self { parent: ScopeId::nil() }
+        Self {
+            parent: ScopeId::nil(),
+        }
     }
 
     /// Constructs a new node scope.
     pub fn with_parent(parent: ScopeId) -> Self {
-        Self {
-            parent,
-        }
+        Self { parent }
     }
 
     pub fn parent(&self) -> ScopeId {

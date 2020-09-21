@@ -10,8 +10,8 @@ use crate::ast::{Kind, Node, NodeId};
 use crate::types::{NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
 
-use self::context::{ExecutionContext, TypeError};
 use self::codegen::Lifetime;
+use self::context::{ExecutionContext, TypeError};
 use self::repr::*;
 
 pub mod builder;
@@ -268,7 +268,8 @@ impl Display for Value {
             Value::Type(id) => write!(f, "type {:?}", id.group),
             Value::Node(id) => write!(f, "node {}", id.display()),
             Value::Array(..) => todo!(),
-            Value::Struct(..) => todo!(),
+            // TODO
+            Value::Struct(_fields) => write!(f, "()"),
             Value::Tagged(..) => todo!(),
             Value::Union(..) => todo!(),
             Value::Function(func) => write!(f, "%{}", func),
@@ -303,7 +304,7 @@ pub struct Ir {
     pub(crate) binding: Option<BindingPrototype>,
     pub(crate) life: Lifetime,
     pub(crate) instr: Instruction,
-    pub(crate) args: SmallVec< [Value; 4]>,
+    pub(crate) args: SmallVec<[Value; 4]>,
 }
 
 impl Display for Ir {
@@ -329,7 +330,7 @@ impl BasicBlock {
     pub fn new(number: u32) -> Self {
         Self(number)
     }
-    
+
     pub fn number(&self) -> u32 {
         self.0
     }
@@ -400,17 +401,31 @@ pub struct Function {
 }
 
 impl Function {
+    pub fn param_types(&self) -> &[TypeId] {
+        &self.param_types
+    }
+
+    pub fn result_type(&self) -> TypeId {
+        self.result_type
+    }
+
     pub fn add_basic_block(&mut self, start: usize, parents: &[u32]) -> BasicBlock {
         let number = self.blocks.len() as u32;
         for &p in parents {
             self.blocks[p as usize].add(number);
         }
-        self.blocks.push(BasicBlockPrototype::with_start(number, start));
+        self.blocks
+            .push(BasicBlockPrototype::with_start(number, start));
         BasicBlock::new(number)
     }
 
-    fn lifetime_inner<'a, I>(&self, binding: BindingPrototype, start: &mut Option<Lifetime>, end: &mut Option<Lifetime>, iter: I)
-    where
+    fn lifetime_inner<'a, I>(
+        &self,
+        binding: BindingPrototype,
+        start: &mut Option<Lifetime>,
+        end: &mut Option<Lifetime>,
+        iter: I,
+    ) where
         I: Iterator<Item = &'a Ir>,
     {
         for ir in iter {
@@ -508,8 +523,14 @@ mod tests {
                 .build(&mut main)
                 .build();
         assert_eq!(
-            ctx.call(&mut lazy, &world.resources(), &mut world.resources(), main, &[])
-                .unwrap(),
+            ctx.call(
+                &mut lazy,
+                &world.resources(),
+                &mut world.resources(),
+                main,
+                &[]
+            )
+            .unwrap(),
             Value::Uint(5)
         );
     }

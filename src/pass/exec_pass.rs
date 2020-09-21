@@ -36,9 +36,14 @@ pub fn exec_update(
             continue;
         }
 
-        let result = ctx.call(lazy, &foreign, &mut res, ExecutionContext::MAIN, &[])?;
+        let main = ctx.main();
+        let result = ctx.call(lazy, &foreign, &mut res, main, &[])?;
         match result {
             Value::Node(handle) => {
+                let node = res.get(root_node.0).unwrap();
+                let thread = node.thread.unwrap();
+                let mut node = res.get_mut(handle).unwrap();
+                node.thread = Some(thread);
                 root_node.0 = handle;
             }
             _ => panic!("not a node"),

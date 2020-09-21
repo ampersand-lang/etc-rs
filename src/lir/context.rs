@@ -95,7 +95,7 @@ pub struct ExecAddress(pub(crate) u32, pub(crate) u32, pub(crate) BindingPrototy
 
 #[derive(Debug, Clone)]
 pub enum Result {
-    Continue,
+    Continue(u32),
     Return(TypedValue),
 }
 
@@ -117,6 +117,7 @@ impl<'a> Display for ContextDisplay<'a> {
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
     pub(crate) target: Target,
+    pub(crate) main: usize,
     pub(crate) call_stack: Vec<(usize, u64, ExecAddress)>,
     pub(crate) instr_ptr: ExecAddress,
     pub(crate) invocation: u64,
@@ -132,11 +133,10 @@ pub struct ExecutionContext {
 }
 
 impl ExecutionContext {
-    pub const MAIN: FuncId = 0;
-
     pub fn new(target: Target) -> Self {
         Self {
             target,
+            main: 0,
             call_stack: Vec::new(),
             instr_ptr: ExecAddress(0, 0, BindingPrototype::new(0, 0)),
             invocation: 0,
@@ -159,12 +159,20 @@ impl ExecutionContext {
         }
     }
 
+    pub fn main(&self) -> usize {
+        self.main
+    }
+
     pub fn display(&self) -> ContextDisplay<'_> {
         ContextDisplay { ctx: self }
     }
 
     pub fn functions(self) -> impl Iterator<Item = Function> {
         self.text.into_iter()
+    }
+
+    pub fn function(&self, id: usize) -> &Function {
+        &self.text[id]
     }
 
     pub fn to_physical(&self, addr: VirtualAddress) -> Option<PhysicalAddress> {
@@ -289,7 +297,7 @@ impl ExecutionContext {
                 );
                 value = bytes;
                 self.stack_ptr += t.size * n as usize;
-                Ok(Result::Continue)
+                Ok(Result::Continue(1))
             }
             Instruction::Store => {
                 let t = match ir.args[0] {
@@ -313,7 +321,7 @@ impl ExecutionContext {
                     Value::Register(r) => {
                         value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                     }
-                    Value::Function(_id) => todo!(),
+                    Value::Function(id) => (id as u64).write_bytes(&mut value),
                     Value::Label(_b) => todo!(),
                     Value::Bool(p) => u8::from(p).write_bytes(&mut value),
                     Value::Uint(int) => int.write_bytes(&mut value),
@@ -328,7 +336,7 @@ impl ExecutionContext {
                     Value::Ffi(foreign) => foreign.write_bytes(&mut value),
                 }
                 self.write(ptr, &value)?;
-                Ok(Result::Continue)
+                Ok(Result::Continue(1))
             }
             Instruction::Load => {
                 let t = match ir.args[0] {
@@ -352,7 +360,7 @@ impl ExecutionContext {
                     .copied()
                     .collect::<SmallVec<_>>();
                 value = bytes;
-                Ok(Result::Continue)
+                Ok(Result::Continue(1))
             }
             Instruction::Call => {
                 let t = match ir.args[0] {
@@ -377,7 +385,7 @@ impl ExecutionContext {
                             Value::Register(r) => {
                                 bytes.copy_from_slice(&self.registers[&r.build(self.invocation)])
                             }
-                            Value::Function(_id) => todo!(),
+                            Value::Function(id) => (id as u64).write_bytes(&mut bytes),
                             Value::Label(_b) => todo!(),
                             Value::Bool(p) => u8::from(p).write_bytes(&mut bytes),
                             Value::Uint(int) => int.write_bytes(&mut bytes),
@@ -402,9 +410,10 @@ impl ExecutionContext {
                         .push((self.stack_ptr, self.invocation, self.instr_ptr));
                     self.instr_ptr = ExecAddress(func as _, 0, ir.binding.unwrap());
                     self.invocation = rand::random();
+                    Ok(Result::Continue(0))
+                } else {
+                    Ok(Result::Continue(1))
                 }
-
-                Ok(Result::Continue)
             }
             Instruction::NewNode => {
                 let n = match ir.args[0] {
@@ -455,6 +464,7 @@ impl ExecutionContext {
                     Value::Float(x) => Some(Payload::Float(x)),
                     Value::Type(t) => Some(Payload::Type(t)),
                     Value::Unit => None,
+                    Value::Function(id) => Some(Payload::Function(id)),
                     _ => return Err(From::from(TypeError)),
                 };
                 let kind = ast::Kind::try_from(n).expect("invalid node kind");
@@ -474,7 +484,7 @@ impl ExecutionContext {
                 node.id().write_bytes(&mut bytes);
                 res.insert(node.id(), node);
                 value = bytes;
-                Ok(Result::Continue)
+                Ok(Result::Continue(1))
             }
             Instruction::Return => {
                 if self.call_stack.len() == 1 {
@@ -492,6 +502,7 @@ impl ExecutionContext {
                     });
                     Ok(result)
                 } else {
+                    let r = self.instr_ptr.2;
                     let (sp, inv, ip) = self.call_stack.pop().unwrap();
                     self.stack_ptr = sp;
                     self.instr_ptr = ip;
@@ -506,7 +517,6 @@ impl ExecutionContext {
                     };
                     let t = t.type_info(res, &self.target);
 
-                    let r = self.instr_ptr.2;
                     let binding = r.build(self.invocation);
                     let mut value = smallvec![0_u8; t.size];
                     match ir.args[1] {
@@ -514,7 +524,7 @@ impl ExecutionContext {
                         Value::Register(r) => {
                             value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                         }
-                        Value::Function(_id) => todo!(),
+                        Value::Function(id) => (id as u64).write_bytes(&mut value),
                         Value::Label(_b) => todo!(),
                         Value::Bool(p) => u8::from(p).write_bytes(&mut value),
                         Value::Uint(int) => int.write_bytes(&mut value),
@@ -529,7 +539,7 @@ impl ExecutionContext {
                         Value::Ffi(foreign) => foreign.write_bytes(&mut value),
                     }
                     self.registers.insert(binding, value);
-                    Ok(Result::Continue)
+                    Ok(Result::Continue(1))
                 }
             }
             Instruction::Jmp => {
@@ -541,7 +551,7 @@ impl ExecutionContext {
                     }
                     _ => return Err(From::from(TypeError)),
                 }
-                Ok(Result::Continue)
+                Ok(Result::Continue(0))
             }
             Instruction::IfThenElse => {
                 let cond = match ir.args[0] {
@@ -570,7 +580,7 @@ impl ExecutionContext {
                         _ => return Err(From::from(TypeError)),
                     }
                 }
-                Ok(Result::Continue)
+                Ok(Result::Continue(0))
             }
         };
         if let Some(r) = ir.binding {
@@ -589,9 +599,8 @@ impl ExecutionContext {
         loop {
             let func = &self.text[self.instr_ptr.0 as usize];
             let ir: Ir = func.body[self.instr_ptr.1 as usize].clone();
-            self.instr_ptr.1 += 1;
             match self.execute(lazy, foreign, res, ir)? {
-                Result::Continue => {}
+                Result::Continue(inc) => self.instr_ptr.1 += inc,
                 Result::Return(value) => return Ok(value),
             }
         }
@@ -618,7 +627,7 @@ impl ExecutionContext {
                 Value::Register(r) => {
                     value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                 }
-                Value::Function(_id) => todo!(),
+                Value::Function(id) => (*id as u64).write_bytes(&mut value),
                 Value::Label(_b) => todo!(),
                 Value::Bool(p) => u8::from(*p).write_bytes(&mut value),
                 Value::Uint(int) => int.write_bytes(&mut value),
