@@ -283,6 +283,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             }
             Kind::Index => todo!(),
             Kind::Dotted => todo!(),
+            Kind::With => todo!(),
         };
         Ok(value)
     }

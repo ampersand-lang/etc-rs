@@ -166,6 +166,17 @@ pub enum Kind {
     /// # Alternative
     /// An array preceded by a `$` is a type.
     Array,
+    /// An application or binary expression with an effect handler.
+    ///
+    /// # Children
+    /// - 0: application
+    /// - 1 to n: handler declarations
+    ///
+    /// # Examples
+    /// ```text
+    /// parse-int "1023" with! _e => yield 0;
+    /// ```
+    With,
 }
 
 /// Defines how the `Node::visit` function works.
@@ -862,6 +873,44 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                         .collect::<Vec<_>>(),
                 )
                 .finish(),
+            Kind::With => f
+                .debug_struct("With")
+                .field(
+                    "application",
+                    &node
+                        .children
+                        .first()
+                        .and_then(|node| {
+                            node.map(|node| {
+                                PrettyPrinterRef::new(
+                                    self.config,
+                                    self.res,
+                                    self.types,
+                                    self.strings,
+                                    node,
+                                )
+                            })
+                        })
+                        .unwrap(),
+                )
+                .field(
+                    "handlers",
+                    &node
+                        .children
+                        .iter()
+                        .skip(1)
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node.unwrap(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .finish(),
         }
     }
 }
@@ -1079,6 +1128,39 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
             Kind::Index => todo!(),
             Kind::Dotted => todo!(),
             Kind::Array => todo!(),
+            Kind::With => {
+                write!(
+                    f,
+                    "{}",
+                    &node
+                        .children
+                        .first()
+                        .and_then(|node| {
+                            node.map(|node| {
+                                PrettyPrinterRef::new(
+                                    self.config,
+                                    self.res,
+                                    self.types,
+                                    self.strings,
+                                    node,
+                                )
+                            })
+                        })
+                        .unwrap(),
+                )?;
+                for argument in &node.children {
+                    write!(f, " with! ")?;
+                    let argument = PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        argument.unwrap(),
+                    );
+                    write!(f, "{}", argument)?;
+                }
+                Ok(())
+            }
         }
     }
 }

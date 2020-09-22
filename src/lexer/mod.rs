@@ -131,6 +131,7 @@ pub enum TokenKind {
     Dot,
     Dollar,
     SingleQuote,
+    With,
     Paren(Side),
     Bracket(Side),
     Curly(Side),
@@ -174,6 +175,7 @@ impl Display for TokenKind {
             Self::Dot => ".",
             Self::SingleQuote => "'",
             Self::Dollar => "$",
+            Self::With => "with!",
             Self::Paren(Side::Left) => "(",
             Self::Paren(Side::Right) => ")",
             Self::Bracket(Side::Left) => "[",
@@ -492,13 +494,21 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                             _ => return Some(Err(From::from(LexerError { location }))),
                         }
                     }
-                    let id_handle = Handle::from_hash(&ident);
-                    self.res.insert(id_handle, ident);
-                    Some(Ok(Token {
-                        location: handle,
-                        kind: TokenKind::Identifier,
-                        value: TokenValue::Identifier(id_handle),
-                    }))
+                    if ident == "with!" {
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::With,
+                            value: TokenValue::None,
+                        }))
+                    } else {
+                        let id_handle = Handle::from_hash(&ident);
+                        self.res.insert(id_handle, ident);
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::Identifier,
+                            value: TokenValue::Identifier(id_handle),
+                        }))
+                    }
                 }
                 _ => Some(Err(From::from(LexerError { location }))),
             }

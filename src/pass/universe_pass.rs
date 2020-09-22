@@ -37,7 +37,8 @@ pub fn universe_update(
                 | Kind::Function
                 | Kind::Index
                 | Kind::Nil
-                | Kind::Tuple => {
+                | Kind::Tuple
+                | Kind::With => {
                     let mut dependencies = SmallVec::new();
                     if let Some(payload) = node.payload {
                         match payload {

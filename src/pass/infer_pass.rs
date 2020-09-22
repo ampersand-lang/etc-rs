@@ -430,6 +430,7 @@ pub fn infer_update(
                 Kind::Array => todo!(),
                 Kind::Index => todo!(),
                 Kind::Dotted => todo!(),
+                Kind::With => todo!(),
             }
 
             VisitResult::Recurse

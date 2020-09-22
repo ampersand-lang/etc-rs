@@ -129,20 +129,39 @@ fn declaration(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
             let location = state.location().unwrap_or_else(Handle::nil);
-            and3(alternative, literal(TokenKind::Colon), binary)(state).map(|(name, _, typ)| {
-                let node = Node::new(
-                    Kind::Declaration,
-                    location,
-                    iter::once(Some(name)).chain(iter::once(Some(typ))),
-                );
-                let handle = node.id();
-                state.nodes.insert(handle, node);
-                handle
-            })
+            and3(alternative, literal(TokenKind::Colon), with_handler)(state).map(
+                |(name, _, typ)| {
+                    let node = Node::new(
+                        Kind::Declaration,
+                        location,
+                        iter::once(Some(name)).chain(iter::once(Some(typ))),
+                    );
+                    let handle = node.id();
+                    state.nodes.insert(handle, node);
+                    handle
+                },
+            )
         },
-        binary,
+        with_handler,
     )(state)?
     .into_inner())
+}
+
+fn with_handler(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
+    let (binary, handlers) = and(binary, repeat(and(literal(TokenKind::With), argument)))(state)?;
+    if handlers.is_empty() {
+        Ok(binary)
+    } else {
+        let node = Node::new(
+            Kind::With,
+            location,
+            iter::once(Some(binary)).chain(handlers.into_iter().map(|(_, h)| Some(h))),
+        );
+        let handle = node.id();
+        state.nodes.insert(handle, node);
+        Ok(handle)
+    }
 }
 
 fn binary(state: &mut State) -> Fallible<NodeId> {

@@ -133,6 +133,17 @@ pub fn validate_update(
                         }
                     }
                 }
+                Kind::With => {
+                    if node.children.len() < 2 {
+                        errors.push(From::from(MalformedTree(loc.clone())));
+                        return VisitResult::Recurse;
+                    }
+                    for child in &node.children {
+                        if child.is_none() {
+                            errors.push(From::from(MalformedTree(loc.clone())));
+                        }
+                    }
+                }
             }
             VisitResult::Recurse
         });

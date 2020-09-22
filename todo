@@ -29,6 +29,7 @@ TODO: comments
 TODO: intrinsics
 TODO: reader macros
 TODO: support for floating point numbers
+TODO: effects and handlers
 
 ir passes order:
 analyze_verify
