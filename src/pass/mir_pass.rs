@@ -147,6 +147,7 @@ pub fn mir_update(
         }
 
         let root = root_node.0;
+        let thread = nodes.get(root).unwrap().thread;
 
         let mut quasiquote = Node::new(Kind::Nil, Handle::nil(), iter::empty());
 
@@ -190,7 +191,8 @@ pub fn mir_update(
 
         block.push(Some(fid));
 
-        let program = Node::new(Kind::Block, Handle::nil(), block);
+        let mut program = Node::new(Kind::Block, Handle::nil(), block);
+        program.thread = thread;
         let root = program.id();
         lazy.insert(program.id(), program);
 
