@@ -1,31 +1,184 @@
-use either::Either;
 use failure::Fallible;
-use hashbrown::{HashMap, HashSet};
-use smallvec::SmallVec;
+use hashbrown::HashMap;
 
 use crate::assets::{Handle, LazyUpdate, Resources};
-use crate::ast::{Kind, Node, NodeId, RootNode};
+use crate::ast::{Kind, Node, NodeId, RootNode, Visit, VisitResult};
 use crate::values::Payload;
-
-#[derive(Debug, Clone)]
-struct UniversePrototype {
-    dependencies: SmallVec<[NodeId; 4]>,
-    inner: Either<i32, i32>,
-}
-
-struct Binding {
-    is_param: bool,
-    node: NodeId,
-}
 
 struct Context {
     lowest: i32,
-    universes: HashMap<NodeId, UniversePrototype>,
-    bindings: Vec<HashMap<Handle<String>, Binding>>,
-    params: HashSet<NodeId>,
+    universes: HashMap<NodeId, i32>,
+    bindings: Vec<HashMap<Handle<String>, NodeId>>,
+    rev: HashMap<Handle<String>, NodeId>,
 }
 
-fn visit_bind(
+fn types(
+    _lazy: &mut LazyUpdate,
+    nodes: &Resources<&mut Node>,
+    handle: NodeId,
+    _parent: Option<NodeId>,
+    ctx: &mut Context,
+) -> Fallible<()> {
+    let node = nodes.get(handle).unwrap();
+
+    if matches!(node.kind, Kind::Function) {
+        for child in node.children.iter().rev() {
+            if let Some(&child) = child.as_ref() {
+                types(_lazy, nodes, child, Some(handle), ctx)?;
+            }
+        }
+    } else {
+        for child in &node.children {
+            if let Some(&child) = child.as_ref() {
+                types(_lazy, nodes, child, Some(handle), ctx)?;
+            }
+        }
+    }
+
+    match node.kind {
+        Kind::Binding | Kind::Declaration => {
+            if let Some(child) = node.children[1] {
+                ctx.lowest -= 1;
+                let level = ctx.lowest;
+                ctx.universes.insert(child, level);
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn non_nil(
+    _lazy: &mut LazyUpdate,
+    nodes: &Resources<&mut Node>,
+    handle: NodeId,
+    _parent: Option<NodeId>,
+    ctx: &mut Context,
+) -> Fallible<()> {
+    let node = nodes.get(handle).unwrap();
+
+    for child in &node.children {
+        if let Some(&child) = child.as_ref() {
+            non_nil(_lazy, nodes, child, Some(handle), ctx)?;
+        }
+    }
+
+    let universe = match node.kind {
+        Kind::Nil => ctx.universes[&node.id()],
+        Kind::Function => {
+            node.children.iter().map(Option::as_ref).flatten().map(|child| ctx.universes[child]).min().unwrap()
+        }
+        _ => {
+            node.children.iter().map(Option::as_ref).flatten().map(|child| ctx.universes[child]).max().unwrap()
+        }
+    };
+    ctx.universes.insert(node.id(), universe);
+
+    Ok(())
+}
+
+fn reverse_dependencies(
+    _lazy: &mut LazyUpdate,
+    nodes: &Resources<&mut Node>,
+    handle: NodeId,
+    _parent: Option<NodeId>,
+    ctx: &mut Context,
+) -> Fallible<()> {
+    let node = nodes.get(handle).unwrap();
+    
+    for child in &node.children {
+        if let Some(&child) = child.as_ref() {
+            reverse_dependencies(_lazy, nodes, child, Some(handle), ctx)?;
+        }
+    }
+
+    match node.kind {
+        Kind::Binding | Kind::Declaration => {
+            if let Some(handle) = node.children[1] {
+                let node = nodes.get(handle).unwrap();
+                match node.payload.unwrap() {
+                    Payload::Identifier(ident) => {
+                        ctx.rev.insert(ident, node.id());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+
+    match node.kind {
+        Kind::Function => {
+            let tuple = nodes.get(node.children[0].unwrap()).unwrap();
+            match tuple.kind {
+                Kind::Nil => {
+                    let ident = tuple;
+                    let ident = match ident.payload.unwrap() {
+                        Payload::Identifier(ident) => ident,
+                        _ => todo!(),
+                    };
+                    if let Some(&rev_dep) = ctx.rev.get(&ident) {
+                        let rev_dep = *ctx.universes.get(&rev_dep).unwrap();
+                        ctx.universes.insert(node.id(), rev_dep);
+                        ctx.rev.remove(&ident);
+                    }
+                }
+                Kind::Tuple => {
+                    let tuple = nodes.get(node.children[0].unwrap()).unwrap();
+                    for node in &tuple.children {
+                        if let Some(handle) = node {
+                            let node = nodes.get(*handle).unwrap();
+                            match node.kind {
+                                Kind::Nil => {
+                                    let ident = match node.payload.unwrap() {
+                                        Payload::Identifier(ident) => ident,
+                                        _ => todo!(),
+                                    };
+                                    if let Some(&rev_dep) = ctx.rev.get(&ident) {
+                                        let rev_dep = *ctx.universes.get(&rev_dep).unwrap();
+                                        ctx.universes.insert(node.id(), rev_dep);
+                                        ctx.rev.remove(&ident);
+                                    }
+                                }
+                                Kind::Binding | Kind::Declaration => {
+                                    let node = nodes.get(node.children[0].unwrap()).unwrap();
+                                    let ident = match node.payload.unwrap() {
+                                        Payload::Identifier(ident) => ident,
+                                        _ => todo!(),
+                                    };
+                                    if let Some(&rev_dep) = ctx.rev.get(&ident) {
+                                        let rev_dep = *ctx.universes.get(&rev_dep).unwrap();
+                                        ctx.universes.insert(node.id(), rev_dep);
+                                        ctx.rev.remove(&ident);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Kind::Binding | Kind::Declaration => {
+            let node = nodes.get(node.children[0].unwrap()).unwrap();
+            let ident = match node.payload.unwrap() {
+                Payload::Identifier(ident) => ident,
+                _ => todo!(),
+            };
+            if let Some(&rev_dep) = ctx.rev.get(&ident) {
+                let rev_dep = *ctx.universes.get(&rev_dep).unwrap();
+                ctx.universes.insert(node.id(), rev_dep);
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn dependencies_bind(
     _lazy: &mut LazyUpdate,
     nodes: &Resources<&mut Node>,
     handle: NodeId,
@@ -38,7 +191,7 @@ fn visit_bind(
         Kind::Tuple => {
             for &child in &node.children {
                 if let Some(child) = child {
-                    visit_bind(_lazy, nodes, child, Some(handle), ctx)?;
+                    dependencies_bind(_lazy, nodes, child, Some(handle), ctx)?;
                 }
             }
         }
@@ -48,7 +201,7 @@ fn visit_bind(
                 Payload::Identifier(ident) => ident,
                 _ => todo!(),
             };
-            ctx.bindings.last_mut().unwrap().insert(ident, Binding { is_param: true, node: node.id() });
+            ctx.bindings.last_mut().unwrap().insert(ident, node.id());
         }
         _ => {}
     }
@@ -56,7 +209,7 @@ fn visit_bind(
     Ok(())
 }
 
-fn visit(
+fn dependencies(
     _lazy: &mut LazyUpdate,
     nodes: &Resources<&mut Node>,
     handle: NodeId,
@@ -74,79 +227,45 @@ fn visit(
 
     if matches!(node.kind, Kind::Function) {
         let child = node.children[0].unwrap();
-        visit_bind(_lazy, nodes, child, Some(handle), ctx)?;
+        dependencies_bind(_lazy, nodes, child, Some(handle), ctx)?;
         for child in node.children.iter().rev() {
             if let Some(&child) = child.as_ref() {
-                visit(_lazy, nodes, child, Some(handle), ctx)?;
+                dependencies(_lazy, nodes, child, Some(handle), ctx)?;
             }
         }
     } else {
         for child in &node.children {
             if let Some(&child) = child.as_ref() {
-                let lowest = if matches!(node.kind, Kind::Block) {
-                    Some(ctx.lowest)
-                } else {
-                    None
-                };
-                visit(_lazy, nodes, child, Some(handle), ctx)?;
-                if let Some(lowest) = lowest {
-                    ctx.lowest = lowest;
-                }
+                dependencies(_lazy, nodes, child, Some(handle), ctx)?;
             }
         }
     }
 
-    // both of those have the type in position 1, so this is fine
-    if matches!(node.kind, Kind::Binding | Kind::Declaration) {
-        let ident = nodes.get(node.children[0].unwrap()).unwrap();
-        let ident = match ident.payload.unwrap() {
-            Payload::Identifier(ident) => ident,
-            _ => todo!(),
-        };
-        ctx.bindings.last_mut().unwrap().insert(ident, Binding { is_param: false, node: node.id() });
-        if let Some(handle) = node.children[1] {
-            let u = ctx.universes.get(&handle).cloned().unwrap();
-            ctx.lowest += -1;
-            match u.inner {
-                Either::Left(_) => {}
-                Either::Right(_) => {
-                    ctx.universes.get_mut(&handle).unwrap().inner = Either::Left(ctx.lowest);
-                }
-            }
+    match node.kind {
+        // both of those have the type in position 1, so this is fine
+        Kind::Binding | Kind::Declaration => {
+            let ident = nodes.get(node.children[0].unwrap()).unwrap();
+            let ident = match ident.payload.unwrap() {
+                Payload::Identifier(ident) => ident,
+                _ => todo!(),
+            };
+            ctx.bindings.last_mut().unwrap().insert(ident, node.id());
         }
-    }
-    
-    let mut dependencies = SmallVec::new();
-    if let Some(payload) = node.payload {
-        match payload {
-            Payload::Identifier(ident) => {
-                for bindings in ctx.bindings.iter().rev() {
-                    if let Some(Binding { is_param, node: binding }) = bindings.get(&ident) {
-                        if *is_param {
-                            ctx.params.insert(node.id());
+        Kind::Nil => {
+            match node.payload.unwrap() {
+                Payload::Identifier(ident) => {
+                    for bindings in ctx.bindings.iter().rev() {
+                        if let Some(handle) = bindings.get(&ident) {
+                            let universe = *ctx.universes.get(handle).unwrap();
+                            ctx.universes.insert(*handle, universe);
                         }
-                        dependencies.push(*binding);
-                        break;
                     }
                 }
-            }
-            _ => {}
+                _ => {}
+            };
         }
+        _ => {}
     }
-    let mut highest = ctx.lowest;
-    for child in &node.children {
-        if let Some(child) = child {
-            highest = highest.max(ctx.universes[child].inner.into_inner());
-            dependencies.extend(ctx.universes[child].dependencies.iter().copied());
-        }
-    }
-    ctx.universes.insert(
-        node.id(),
-        UniversePrototype {
-            dependencies,
-            inner: Either::Right(highest),
-        },
-    );
     
     if matches!(node.kind, Kind::Block | Kind::Function) {
         ctx.bindings.pop();
@@ -161,6 +280,7 @@ pub fn universe_update(
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<Option<&'static str>> {
     for (_, root_node) in roots.iter::<RootNode>() {
+        let root = nodes.get(root_node.0).unwrap();
         let lowest = 0;
         // map of NodeId to Either<i32, i32>, where i32 represents the universe
         // Either::Left represents a universe that may be changed to a lower value
@@ -169,87 +289,28 @@ pub fn universe_update(
         // a map of ad-hoc bindings of identifiers to nodes
         // required for dependencies
         let bindings = vec![HashMap::new()];
-        let params = HashSet::new();
+        let rev = HashMap::new();
 
         let mut ctx = Context {
             lowest,
             universes,
             bindings,
-            params,
+            rev,
         };
 
-        visit(_lazy, &nodes, root_node.0, None, &mut ctx)?;
+        root.visit(Visit::Postorder, &nodes, |_res, node, _| {
+            ctx.universes.insert(node.id(), 0);
+            VisitResult::Recurse
+        });
 
-        // PERF: clone is bad
-        let u = ctx.universes.clone();
-
-        for (handle, _universe) in &u {
-            let node = nodes.get(*handle).unwrap();
-            match node.kind {
-                Kind::Nil | Kind::Binding | Kind::Declaration => {}
-                Kind::Function => {
-                    let mut lowest: Option<i32> = None;
-                    for child in &node.children {
-                        if let Some(child) = child {
-                            lowest = lowest.map(|l| l.min(ctx.universes[child].inner.into_inner()));
-                        }
-                    }
-                    ctx.universes.get_mut(handle).unwrap().inner = Either::Left(lowest.unwrap_or(ctx.lowest));
-                }
-                _ => {
-                    let mut highest: Option<i32> = None;
-                    for child in &node.children {
-                        if let Some(child) = child {
-                            highest = highest.map(|h| h.max(ctx.universes[child].inner.into_inner()));
-                        }
-                    }
-                    ctx.universes.get_mut(handle).unwrap().inner = Either::Right(highest.unwrap_or(ctx.lowest));
-                }
-            }
-        }
-
-        for (handle, _universe) in &u {
-            let node = nodes.get(*handle).unwrap();
-            if matches!(node.kind, Kind::Binding) {
-                let u = ctx.universes.get(&node.children[2].unwrap()).unwrap().inner;
-                ctx.universes.get_mut(&node.children[0].unwrap()).unwrap().inner = u;
-                ctx.universes.get_mut(handle).unwrap().inner = u;
-            }
-        }
-        
-        for (handle, universe) in &u {
-            let level = universe.inner.into_inner();
-            let mut lower: Option<i32> = None;
-            for &dep in &universe.dependencies {
-                match ctx.universes.get_mut(&dep) {
-                    Some(u) => {
-                        match u.inner {
-                            Either::Right(l) if level > l => u.inner = Either::Left(level),
-                            Either::Right(_) => {}
-                            Either::Left(l) if level < l => {
-                                lower = lower.map(|lower| lower.min(l)).or(Some(l));
-                                u.inner = Either::Left(level);
-                            }
-                            Either::Left(l) => {
-                                lower = lower.map(|lower| lower.min(l)).or(Some(l));
-                            }
-                        }
-                    }
-                    None => panic!("dependency not found"),
-                }
-            }
-            if let Some(lower) = lower {
-                ctx.universes.get_mut(handle).unwrap().inner = Either::Left(lower);
-            }
-        }
+        types(_lazy, &nodes, root_node.0, None, &mut ctx)?;
+        non_nil(_lazy, &nodes, root_node.0, None, &mut ctx)?;
+        reverse_dependencies(_lazy, &nodes, root_node.0, None, &mut ctx)?;
+        dependencies(_lazy, &nodes, root_node.0, None, &mut ctx)?;
+        non_nil(_lazy, &nodes, root_node.0, None, &mut ctx)?;
 
         for (handle, universe) in ctx.universes {
-            let level = universe.inner.into_inner();
-            nodes.get_mut::<Node>(handle).unwrap().universe = level;
-        }
-
-        for handle in ctx.params {
-            nodes.get_mut::<Node>(handle).unwrap().is_param = true;
+            nodes.get_mut::<Node>(handle).unwrap().universe = universe;
         }
     }
     Ok(None)

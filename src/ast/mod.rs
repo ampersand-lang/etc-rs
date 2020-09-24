@@ -238,8 +238,6 @@ enum PrivateVisitResult {
 pub struct Node {
     /// This node's handle.
     id: NodeId,
-    /// True if an identifier was statically determined to be a function parameter.
-    pub is_param: bool,
     /// The order in which nodes get compiled and optionally executed.
     pub universe: i32,
     /// The source code mapping.
@@ -275,7 +273,6 @@ impl Node {
     ) -> Self {
         Node {
             id: NodeId::new(),
-            is_param: false,
             universe: 0,
             location,
             alternative: false,
@@ -495,7 +492,6 @@ impl Clone for Node {
     fn clone(&self) -> Self {
         Self {
             id: NodeId::new(),
-            is_param: self.is_param,
             universe: self.universe,
             location: self.location,
             alternative: self.alternative,

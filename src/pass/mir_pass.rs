@@ -31,9 +31,6 @@ pub fn mir_update(
         let mut constants = Vec::new();
 
         root.visit(Visit::Preorder, &nodes, |_, node, _| {
-            if node.is_param {
-                return VisitResult::Recurse;
-            }
             match node.kind {
                 Kind::Argument | Kind::Binding | Kind::Declaration => VisitResult::Recurse,
                 _ => {
