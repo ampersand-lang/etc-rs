@@ -1,5 +1,6 @@
 use failure::Fallible;
 use smallvec::SmallVec;
+use hashbrown::HashMap;
 
 use crate::assets::{Asset, Handle, Resources};
 use crate::ast::{Kind, Node};
@@ -159,6 +160,43 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 (result, builder.0)
             }
             Kind::Function => {
+                let mut param_types = SmallVec::<[_; 6]>::new();
+                let params = this.children[0].unwrap();
+                let params = res.get(params).unwrap();
+                let mut transaction = HashMap::new();
+                match params.kind {
+                    Kind::Tuple => {
+                        for (idx, &param) in params.children.iter().enumerate() {
+                            let param = &*res.get::<Node>(param.unwrap()).unwrap();
+                            match param.kind {
+                                Kind::Declaration => {
+                                    param_types.push(param.type_of.unwrap());
+                                    let v = Value::Arg(idx as _);
+
+                                    let ident = res.get::<Node>(param.children[0].unwrap()).unwrap();
+                                    let ident = match ident.payload.unwrap() {
+                                        Payload::Identifier(ident) => ident,
+                                        // TODO: other bindings
+                                        _ => todo!(),
+                                    };
+                                    let name = res.get(ident).unwrap();
+
+                                    let scope = this.scope.unwrap();
+                                    let handle = Handle::from_name(scope, name.as_bytes());
+                                    transaction.insert(handle, v);
+                                }
+                                // other patterns
+                                _ => todo!(),
+                            }
+                        }
+                    }
+                    _ => todo!()
+                }
+
+                for (k, v) in transaction {
+                    res.insert(k, v);
+                }
+                
                 let handle = this.children[1].unwrap();
                 let body = res.get::<Node>(this.children[1].unwrap()).unwrap();
                 let mut name = String::new();
@@ -166,12 +204,16 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     name.push((b'a' + rand::random::<u8>() % 26) as char);
                 }
                 let mut start = BasicBlock::new(0);
-                let f = builder
+                let mut f = builder
                     .0
                     .builder
                     .function(name)
                     .add_basic_block(&mut start)
                     .result(body.type_of.unwrap());
+                for param in param_types {
+                    let mut v = Value::Unit;
+                    f = f.parameter(&mut v, param);
+                }
                 let (id, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
                 builder.0.builder = b;
                 let result = Value::Function(id);
@@ -269,7 +311,9 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 (Value::Struct(handle), builder.0)
             }
             Kind::Argument => todo!(),
-            Kind::Declaration => Node::compile(this.children[0].unwrap(), res, builder)?,
+            Kind::Declaration => {
+                Node::compile(this.children[0].unwrap(), res, builder)?
+            }
             Kind::Array => {
                 let mut result = Elems::new();
                 for expr in &this.children {

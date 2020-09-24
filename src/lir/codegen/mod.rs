@@ -313,6 +313,27 @@ pub enum Argument {
     BasicBlock(BasicBlock),
 }
 
+impl Argument {
+    pub fn is_register(&self) -> bool {
+        matches!(self, Argument::Register(..))
+    }
+    
+    pub fn is_literal(&self) -> bool {
+        matches!(
+            self,
+            Argument::Uint(..)
+                | Argument::Float32(..)
+                | Argument::Float64(..)
+                | Argument::Identifier(..)
+                | Argument::BasicBlock(..)
+        )
+    }
+    
+    pub fn is_address(&self) -> bool {
+        matches!(self, Argument::Memory { .. })
+    }
+}
+
 impl From<Register> for Argument {
     fn from(arg: Register) -> Self {
         Self::Register(arg)
@@ -493,6 +514,7 @@ impl BasicBlockBuilder {
 
 pub struct FunctionBuilder {
     name: String,
+    parameters: SmallVec<[TypeInfo; 6]>,
     basic_blocks: HashMap<BasicBlock, BasicBlockBuilder>,
     block_list: Vec<BasicBlock>,
     bb: BasicBlock,
@@ -504,9 +526,10 @@ pub struct FunctionBuilder {
 }
 
 impl FunctionBuilder {
-    pub fn new(name: String, pool: Vec<Register>, block_listing: Vec<BasicBlockPrototype>) -> Self {
+    pub fn new(name: String, parameters: SmallVec<[TypeInfo; 6]>, pool: Vec<Register>, block_listing: Vec<BasicBlockPrototype>) -> Self {
         Self {
             name,
+            parameters,
             basic_blocks: HashMap::new(),
             block_list: Vec::new(),
             bb: BasicBlock(0),
@@ -528,6 +551,10 @@ impl FunctionBuilder {
 
     pub fn is_naked(&mut self) -> bool {
         self.naked
+    }
+
+    pub fn parameters(&self) -> &[TypeInfo] {
+        &self.parameters
     }
 
     pub fn add_local(
@@ -756,7 +783,7 @@ impl CodeBuilder {
         let free = call_conv.free(param_types);
         self.functions
             .entry(name.clone())
-            .or_insert_with(|| FunctionBuilder::new(name, free, listing))
+            .or_insert_with(|| FunctionBuilder::new(name, param_types.iter().copied().collect(), free, listing))
     }
 
     pub fn function_mut(&mut self, name: &str) -> Option<&mut FunctionBuilder> {

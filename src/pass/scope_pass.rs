@@ -22,13 +22,19 @@ pub fn scope_update(
         root.visit(Visit::Preorder, &nodes, |_res, node, parent| {
             match node.kind {
                 Kind::Block | Kind::Function => {
+                    let handle = if let Some(parent) = parent {
+                        new_scopes[&parent.id()]
+                    } else {
+                        global
+                    };
+                    new_scopes.insert(node.id(), handle);
+                    
                     let handle = ScopeId::new();
                     let scope = if let Some(parent) = parent {
                         Scope::with_parent(new_scopes[&parent.id()])
                     } else {
                         Scope::with_parent(global)
                     };
-                    new_scopes.insert(node.id(), handle);
                     scopes.insert(handle, scope);
                 }
                 _ => {

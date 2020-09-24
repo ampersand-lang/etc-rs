@@ -126,6 +126,7 @@ pub struct ExecutionContext {
     pub(crate) heap: Vec<u8>,
     pub(crate) stack: Vec<u8>,
     pub(crate) registers: HashMap<Binding, Reg>,
+    pub(crate) arguments: HashMap<Argument, Reg>,
     pub(crate) stack_ptr: usize,
     pub(crate) data_addr: u64,
     pub(crate) heap_addr: u64,
@@ -145,6 +146,7 @@ impl ExecutionContext {
             stack: vec![0; DEFAULT_STACK_SPACE],
             heap: vec![0; DEFAULT_HEAP_SPACE],
             registers: HashMap::new(),
+            arguments: HashMap::new(),
             stack_ptr: 0,
             data_addr: 0x100000,
             heap_addr: 0x4000000,
@@ -165,6 +167,10 @@ impl ExecutionContext {
 
     pub fn display(&self) -> ContextDisplay<'_> {
         ContextDisplay { ctx: self }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Function> {
+        self.text.iter()
     }
 
     pub fn functions(self) -> impl Iterator<Item = Function> {
@@ -277,6 +283,7 @@ impl ExecutionContext {
         let result = match ir.instr {
             Instruction::Alloca => {
                 let t = match ir.args[0] {
+                    Value::Arg(r) => TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         TypeId::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -285,6 +292,7 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let n = match ir.args[1] {
+                    Value::Arg(r) => u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         u64::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -301,6 +309,7 @@ impl ExecutionContext {
             }
             Instruction::Store => {
                 let t = match ir.args[0] {
+                    Value::Arg(r) => TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         TypeId::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -309,6 +318,7 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
+                    Value::Arg(r) => VirtualAddress::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         VirtualAddress::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -318,6 +328,7 @@ impl ExecutionContext {
                 let mut value = vec![0_u8; t.size];
                 match ir.args[2] {
                     Value::Unit => {}
+                    Value::Arg(r) => value.copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                     }
@@ -340,6 +351,7 @@ impl ExecutionContext {
             }
             Instruction::Load => {
                 let t = match ir.args[0] {
+                    Value::Arg(r) => TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         TypeId::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -348,6 +360,7 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[1] {
+                    Value::Arg(r) => VirtualAddress::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         VirtualAddress::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -364,6 +377,7 @@ impl ExecutionContext {
             }
             Instruction::Call => {
                 let t = match ir.args[0] {
+                    Value::Arg(r) => TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         TypeId::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -372,6 +386,7 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let func = match ir.args[1] {
+                    Value::Arg(r) => Some(u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]) as usize),
                     Value::Register(r) => {
                         Some(u64::from_bytes(&self.registers[&r.build(self.invocation)]) as usize)
                     }
@@ -382,6 +397,7 @@ impl ExecutionContext {
                         let mut bytes = smallvec![0_u8; t.size];
                         match result {
                             Value::Unit => {}
+                            Value::Arg(r) => bytes.copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
                             Value::Register(r) => {
                                 bytes.copy_from_slice(&self.registers[&r.build(self.invocation)])
                             }
@@ -417,6 +433,7 @@ impl ExecutionContext {
             }
             Instruction::NewNode => {
                 let n = match ir.args[0] {
+                    Value::Arg(r) => u8::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         u8::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -424,6 +441,7 @@ impl ExecutionContext {
                     _ => return Err(From::from(TypeError)),
                 };
                 let typ = match ir.args[1] {
+                    Value::Arg(r) => TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                     Value::Register(r) => {
                         TypeId::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -431,6 +449,35 @@ impl ExecutionContext {
                     _ => return Err(From::from(TypeError)),
                 };
                 let payload = match ir.args[2] {
+                    Value::Arg(r) => {
+                        let value = &self.arguments[&Argument::new(r, self.invocation)];
+                        let payload = match typ.group {
+                            TypeGroup::None => Payload::Unit,
+                            TypeGroup::Type => Payload::Type(TypeId::from_bytes(value)),
+                            TypeGroup::Node => todo!(),
+                            TypeGroup::Int => match value.len() {
+                                1 => Payload::Integer(u8::from_bytes(value) as u64),
+                                2 => Payload::Integer(u16::from_bytes(value) as u64),
+                                4 => Payload::Integer(u32::from_bytes(value) as u64),
+                                8 => Payload::Integer(u64::from_bytes(value)),
+                                _ => panic!("invalid byte length"),
+                            },
+                            TypeGroup::Float => match value.len() {
+                                4 => Payload::Float(f32::from_bytes(value) as f64),
+                                8 => Payload::Float(f64::from_bytes(value)),
+                                _ => panic!("invalid byte length"),
+                            },
+                            TypeGroup::Struct => todo!(),
+                            TypeGroup::Tagged => todo!(),
+                            TypeGroup::Enum => todo!(),
+                            TypeGroup::Union => todo!(),
+                            TypeGroup::Function => todo!(),
+                            TypeGroup::Pointer => todo!(),
+                            TypeGroup::Array => todo!(),
+                            TypeGroup::Slice => todo!(),
+                        };
+                        Some(payload)
+                    }
                     Value::Register(r) => {
                         let value = &self.registers[&r.build(self.invocation)];
                         let payload = match typ.group {
@@ -471,6 +518,7 @@ impl ExecutionContext {
                 let mut children: SmallVec<[Option<NodeId>; 4]> = SmallVec::new();
                 for child in &ir.args[3..] {
                     match child {
+                        Value::Arg(r) => children.push(Some(NodeId::from_bytes(&self.arguments[&Argument::new(*r, self.invocation)]))),
                         Value::Register(r) => children.push(Some(NodeId::from_bytes(
                             &self.registers[&r.build(self.invocation)],
                         ))),
@@ -489,6 +537,7 @@ impl ExecutionContext {
             Instruction::Return => {
                 if self.call_stack.len() == 1 {
                     let t = match ir.args[0] {
+                        Value::Arg(r) => TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                         Value::Register(r) => {
                             TypeId::from_bytes(&self.registers[&r.build(self.invocation)])
                         }
@@ -509,6 +558,7 @@ impl ExecutionContext {
                     self.invocation = inv;
 
                     let t = match ir.args[0] {
+                        Value::Arg(r) => TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
                         Value::Register(r) => {
                             TypeId::from_bytes(&self.registers[&r.build(self.invocation)])
                         }
@@ -521,6 +571,7 @@ impl ExecutionContext {
                     let mut value = smallvec![0_u8; t.size];
                     match ir.args[1] {
                         Value::Unit => {}
+                        Value::Arg(r) => value.copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
                         Value::Register(r) => {
                             value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                         }
@@ -556,6 +607,7 @@ impl ExecutionContext {
             Instruction::IfThenElse => {
                 let cond = match ir.args[0] {
                     Value::Bool(p) => p,
+                    Value::Arg(r) => u8::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]) == 1,
                     Value::Register(r) => {
                         u8::from_bytes(&self.registers[&r.build(self.invocation)]) == 1
                     }
@@ -618,12 +670,13 @@ impl ExecutionContext {
             .push((self.stack_ptr, self.invocation, self.instr_ptr));
         self.invocation = rand::random();
         self.instr_ptr = ExecAddress(f as _, 0, BindingPrototype::new(0, 0));
-        for TypedValue { typ, val } in args {
+        for (idx, TypedValue { typ, val }) in args.iter().enumerate() {
             let t = typ.type_info(res, &self.target);
 
-            let mut value = vec![0_u8; t.size];
+            let mut value = smallvec![0_u8; t.size];
             match val {
                 Value::Unit => {}
+                Value::Arg(r) => value.copy_from_slice(&self.arguments[&Argument::new(*r, self.invocation)]),
                 Value::Register(r) => {
                     value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                 }
@@ -641,9 +694,7 @@ impl ExecutionContext {
                 Value::Tagged(..) => todo!(),
                 Value::Ffi(foreign) => foreign.write_bytes(&mut value),
             }
-            self.write_physical(PhysicalAddress(Section::Stack, self.stack_ptr as _), &value)?;
-
-            self.stack_ptr += t.size;
+            self.arguments.insert(Argument::new(idx as _, self.invocation), value);
         }
         let result = self.run(lazy, foreign, res)?;
         let result = match result {
@@ -652,6 +703,37 @@ impl ExecutionContext {
                 val: Value::Register(r),
             } => {
                 let value = &self.registers[&r.build(self.invocation)];
+                match typ.group {
+                    TypeGroup::None => Value::Unit,
+                    TypeGroup::Type => Value::Type(TypeId::from_bytes(value)),
+                    TypeGroup::Node => Value::Node(NodeId::from_bytes(value)),
+                    TypeGroup::Int => match value.len() {
+                        1 => Value::Uint(u8::from_bytes(value) as u64),
+                        2 => Value::Uint(u16::from_bytes(value) as u64),
+                        4 => Value::Uint(u32::from_bytes(value) as u64),
+                        8 => Value::Uint(u64::from_bytes(value)),
+                        _ => panic!("invalid byte length"),
+                    },
+                    TypeGroup::Float => match value.len() {
+                        4 => Value::Float(f32::from_bytes(value) as f64),
+                        8 => Value::Float(f64::from_bytes(value)),
+                        _ => panic!("invalid byte length"),
+                    },
+                    TypeGroup::Struct => todo!(),
+                    TypeGroup::Tagged => todo!(),
+                    TypeGroup::Enum => todo!(),
+                    TypeGroup::Union => todo!(),
+                    TypeGroup::Function => todo!(),
+                    TypeGroup::Pointer => todo!(),
+                    TypeGroup::Array => todo!(),
+                    TypeGroup::Slice => todo!(),
+                }
+            }
+            TypedValue {
+                typ,
+                val: Value::Arg(r),
+            } => {
+                let value = &self.arguments[&Argument::new(r, self.invocation)];
                 match typ.group {
                     TypeGroup::None => Value::Unit,
                     TypeGroup::Type => Value::Type(TypeId::from_bytes(value)),

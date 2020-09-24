@@ -11,11 +11,12 @@ pub trait CallConv: 'static {
     fn free(&self, args: &[TypeInfo]) -> Vec<Register>;
     fn begin(&self, builder: &mut FunctionBuilder) -> Fallible<()>;
     fn end(&self, builder: &mut FunctionBuilder) -> Fallible<()>;
+    fn argument(&self, builder: &FunctionBuilder, arg: i32) -> Fallible<Argument>;
     fn build_call(
         &self,
         builder: &mut FunctionBuilder,
         bb: BasicBlock,
-        func: String,
+        func: Argument,
         result: TypeInfo,
         args: &[TypedArgument],
     ) -> Fallible<()>;
@@ -114,12 +115,44 @@ impl CallConv for AmpCall64 {
         }
         Ok(())
     }
+    
+    fn argument(&self, builder: &FunctionBuilder, arg: i32) -> Fallible<Argument> {
+        let arg = arg as usize;
+        let params = builder.parameters();
+        if arg >= params.len() {
+            Err(failure::err_msg("invalid arity"))
+        } else {
+            let target = &[
+                Register::rdi(),
+                Register::rsi(),
+                Register::rdx(),
+                Register::rcx(),
+                Register::r8(),
+                Register::r9(),
+            ];
+            let mut register = 0;
+            let mut offset = 0;
+            for param in &params[..arg] {
+                let size = param.size.max(8);
+                offset = offset.align_up(param.align);
+                offset += size;
+                if size <= 8 {
+                    register += 1;
+                }
+            }
+            if register < target.len() {
+                Ok(target[register].into())
+            } else {
+                Ok((Register::rbp() - offset as u64).into())
+            }
+        }
+    }
 
     fn build_call(
         &self,
         builder: &mut FunctionBuilder,
         bb: BasicBlock,
-        func: String,
+        func: Argument,
         result: TypeInfo,
         args: &[TypedArgument],
     ) -> Fallible<()> {

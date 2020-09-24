@@ -75,7 +75,8 @@ impl<'a> FunctionBuilder<'a> {
         builder
     }
 
-    pub fn parameter(mut self, t: TypeId) -> Self {
+    pub fn parameter(mut self, out: &mut Value, t: TypeId) -> Self {
+        *out = Value::Arg(self.param_types.len() as _);
         self.param_types.push(t);
         self
     }

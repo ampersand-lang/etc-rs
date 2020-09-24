@@ -179,6 +179,11 @@ pub fn infer_update(
                                                 _ => todo!(),
                                             }
                                         }
+                                        Kind::Declaration => {
+                                            param.type_of.or_else(|| {
+                                                types.get(&param.id()).copied()
+                                            }).unwrap()
+                                        }
                                         // other patterns
                                         _ => todo!(),
                                     }
@@ -409,7 +414,13 @@ pub fn infer_update(
                     let fields = node
                         .children
                         .iter()
-                        .map(|param| nodes.get::<Node>(param.unwrap()).unwrap().type_of.unwrap())
+                        .map(|param| {
+                            nodes.get::<Node>(param.unwrap()).unwrap().type_of
+                                .or_else(|| {
+                                    types.get(&param.unwrap()).copied()
+                                })
+                                .unwrap()
+                        })
                         .collect();
                     let named = Handle::new();
                     named_types.insert(
@@ -426,7 +437,43 @@ pub fn infer_update(
                     types.insert(node.id(), typ);
                 }
                 Kind::Argument => todo!(),
-                Kind::Declaration => todo!(),
+                Kind::Declaration => {
+                    let ident = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
+                    let ident = match ident.kind {
+                        Kind::Nil => {
+                            match ident.payload.unwrap() {
+                                Payload::Identifier(ident) => ident,
+                                // TODO: other bindings
+                                _ => todo!(),
+                            }
+                        }
+                        // TODO: other bindings
+                        _ => todo!(),
+                    };
+                    let name = strings.get(ident).unwrap();
+                    let scope = node.scope.unwrap();
+                    let handle = DispatchId::from_name(scope, name.as_bytes());
+                    let type_of = nodes
+                        .get::<Node>(node.children[1].unwrap())
+                        .and_then(|node| node.payload)
+                        .unwrap();
+                    let type_of = match type_of {
+                        Payload::Type(t) => t,
+                        _ => todo!(),
+                    };
+                    let d = if let Some(mut d) = dispatch.remove(handle) {
+                        d.push(Definition::new_variable(node.universe, type_of));
+                        d
+                    } else {
+                        let name = Name(scope, ident);
+                        Dispatcher::with_definitions(
+                            name,
+                            iter::once(Definition::new_variable(node.universe, type_of)),
+                        )
+                    };
+                    types.insert(node.id(), type_of);
+                    dispatch.insert(handle, d);
+                }
                 Kind::Array => todo!(),
                 Kind::Index => todo!(),
                 Kind::Dotted => todo!(),

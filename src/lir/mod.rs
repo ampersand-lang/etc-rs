@@ -43,6 +43,7 @@ pub mod foreign {
     ) -> Fallible<Value> {
         let pointee = match args[0] {
             Value::Type(t) => t,
+            Value::Arg(r) => TypeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
             Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
             _ => return Err(From::from(TypeError)),
         };
@@ -66,6 +67,7 @@ pub mod foreign {
     ) -> Fallible<Value> {
         let result_type = match args[0] {
             Value::Type(t) => t,
+            Value::Arg(r) => TypeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
             Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
             _ => return Err(From::from(TypeError)),
         };
@@ -74,6 +76,7 @@ pub mod foreign {
         for arg in args.iter().skip(1) {
             let param = match arg {
                 Value::Type(t) => *t,
+                Value::Arg(r) => TypeId::from_bytes(&ctx.arguments[&Argument::new(*r, ctx.invocation)]),
                 Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
                 _ => return Err(From::from(TypeError)),
             };
@@ -103,6 +106,7 @@ pub mod foreign {
     ) -> Fallible<Value> {
         let node = match args[0] {
             Value::Node(node) => node,
+            Value::Arg(r) => NodeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
             Value::Register(r) => NodeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
             _ => return Err(From::from(TypeError)),
         };
@@ -140,15 +144,14 @@ pub mod foreign {
                         };
                         if let Some(num) = ident {
                             let id = match args[1 + num] {
+                                Value::Arg(r) => NodeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
                                 Value::Register(r) => {
                                     NodeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)])
                                 }
                                 Value::Node(node) => node,
                                 _ => panic!("not a node"),
                             };
-                            let mut new = res.get(id).unwrap().as_ref().clone();
-                            new.universe += 1;
-                            return new;
+                            return res.get(id).unwrap().as_ref().clone();
                         }
                     }
                 }
@@ -214,6 +217,26 @@ impl Binding {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Argument {
+    prot: i32,
+    invocation: u64,
+}
+
+impl Argument {
+    pub fn new(prot: i32, invocation: u64) -> Self {
+        Self { prot, invocation }
+    }
+    
+    pub fn get(&self) -> i32 {
+        self.prot
+    }
+
+    pub fn invocation(&self) -> u64 {
+        self.invocation
+    }
+}
+
 pub type FuncId = usize;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -240,6 +263,7 @@ pub type Foreign = Box<
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
     Unit,
+    Arg(i32),
     Register(BindingPrototype),
     Address(context::VirtualAddress),
     Bool(bool),
@@ -260,6 +284,7 @@ impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Value::Unit => write!(f, "()"),
+            Value::Arg(i) => write!(f, "%-{}", i),
             Value::Register(b) => write!(f, "%{}/{}", b.scope(), b.number()),
             Value::Address(addr) => write!(f, "0x{:016x}", addr.0),
             Value::Bool(p) => write!(f, "{}", p),

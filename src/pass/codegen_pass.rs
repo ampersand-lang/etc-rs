@@ -1,4 +1,5 @@
 use failure::Fallible;
+use smallvec::SmallVec;
 
 use crate::assets::{LazyUpdate, Resources, Static};
 use crate::ast::{Node, RootNode};
@@ -19,11 +20,13 @@ pub fn codegen_update(
         let ctx = threads
             .remove::<ExecutionContext>(root.thread.unwrap())
             .unwrap();
+        let functions = ctx.iter().map(|func| func.name.to_string()).collect::<Vec<_>>();
         for func in ctx.functions() {
+            let params = func.param_types.iter().map(|t| t.type_info(&named_types, target)).collect::<SmallVec<[_; 6]>>();
             let builder = program.codegen.add_function(
                 &*program.call_conv,
-                "main".to_string(),
-                &[],
+                func.name.to_string(),
+                &params,
                 func.blocks.clone(),
             );
             for ir in &func.body {
@@ -47,6 +50,15 @@ pub fn codegen_update(
                         }
                     }
                     Instruction::Load => {
+                        let t = match ir.args[0] {
+                            Value::Type(t) => t,
+                            _ => todo!(),
+                        };
+                        let t = t.type_info(&named_types, &target);
+                        let (start, end) = func.lifetime(ir.binding.unwrap());
+                        builder.add_local(ir.binding.unwrap(), t, start, end);
+                    }
+                    Instruction::Call => {
                         let t = match ir.args[0] {
                             Value::Type(t) => t,
                             _ => todo!(),
@@ -86,6 +98,29 @@ pub fn codegen_update(
                                         .argument(int)
                                         .build()?;
                                 }
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    if target.reg.is_spilled() && source.is_address() {
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("push")
+                                            .size(Size::from_bytes(t.size).unwrap())
+                                            .argument(source)
+                                            .build()?;
+                                        bb.instruction()
+                                            .opcode("pop")
+                                            .size(Size::from_bytes(t.size).unwrap())
+                                            .argument(target.reg)
+                                            .build()?;
+                                    } else {
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(target.reg)
+                                            .argument(source)
+                                            .build()?;
+                                    }
+                                }
                                 Value::Register(r) => {
                                     let source = *builder.local(r).unwrap();
                                     if target.reg.is_spilled() && source.reg.is_spilled() {
@@ -108,6 +143,15 @@ pub fn codegen_update(
                                             .argument(source.reg)
                                             .build()?;
                                     }
+                                }
+                                Value::Function(i) => {
+                                    let source = functions[i].to_string();
+                                    let bb = builder.basic_block_mut(bb);
+                                    bb.instruction()
+                                        .opcode("mov")
+                                        .argument(target.reg)
+                                        .argument(source)
+                                        .build()?;
                                 }
                                 _ => todo!(),
                             }
@@ -151,6 +195,48 @@ pub fn codegen_update(
                             }
                         }
                     }
+                    Instruction::Call => {
+                        let t = match ir.args[0] {
+                            Value::Type(t) => t,
+                            _ => todo!(),
+                        };
+                        let t = t.type_info(&named_types, &target);
+                        let func_ref = match ir.args[1] {
+                            Value::Arg(r) => {
+                                program.call_conv.argument(builder, r)?
+                            }
+                            Value::Register(r) => {
+                                builder.local(r).unwrap().reg.into()
+                            }
+                            Value::Function(i) => {
+                                functions[i].to_string().into()
+                            }
+                            _ => todo!(),
+                        };
+                        let mut arguments = SmallVec::<[_; 6]>::new();
+                        for (idx, &arg) in ir.args[2..].iter().enumerate() {
+                            // FIXME: refine lir types
+                            // let info = func.param_types[idx].type_info(&named_types, target);
+                            let info = TypeInfo::new(8, 8);
+                            let arg = match arg {
+                                Value::Uint(i) => {
+                                    i.into()
+                                }
+                                Value::Arg(r) => {
+                                    program.call_conv.argument(builder, r)?
+                                }
+                                Value::Register(r) => {
+                                    builder.local(r).unwrap().reg.into()
+                                }
+                                Value::Function(i) => {
+                                    functions[i].to_string().into()
+                                }
+                                _ => todo!(),
+                            };
+                            arguments.push(TypedArgument { info, arg });
+                        }
+                        program.call_conv.build_call(builder, bb, func_ref, t, &arguments)?;
+                    }
                     Instruction::Return => {
                         let t = match ir.args[0] {
                             Value::Type(t) => t,
@@ -162,6 +248,13 @@ pub fn codegen_update(
                                 info: t,
                                 arg: u.into(),
                             },
+                            Value::Arg(r) => {
+                                let source = program.call_conv.argument(builder, r)?;
+                                TypedArgument {
+                                    info: t,
+                                    arg: source,
+                                }
+                            }
                             Value::Register(r) => {
                                 let source = builder.local(r).unwrap();
                                 TypedArgument {

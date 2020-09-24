@@ -1,7 +1,4 @@
-get_sint := () => sint;
+id := (a: sint) => a;
 
-x := {
-  y: get_sint () = 42;
-  y
-};
+x := id 42;
 x

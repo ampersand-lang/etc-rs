@@ -617,11 +617,13 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Nil => f
                 .debug_struct("Nil")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field("value", node.payload.as_ref().unwrap())
                 .finish(),
             Kind::Block => f
                 .debug_struct("Block")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "stmts",
                     &node
@@ -657,6 +659,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Function => f
                 .debug_struct("Function")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "parameters",
                     &node.children[0]
@@ -689,6 +692,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Application => f
                 .debug_struct("Application")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "function",
                     &node
@@ -728,6 +732,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Binding => f
                 .debug_struct("Binding")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "pattern",
                     &node.children[0]
@@ -766,6 +771,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Argument => f
                 .debug_struct("Argument")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "name",
                     &node.children[0]
@@ -798,6 +804,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Declaration => f
                 .debug_struct("Declaration")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "pattern",
                     &node.children[0]
@@ -830,6 +837,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Tuple => f
                 .debug_struct("Tuple")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "fields",
                     &node
@@ -850,6 +858,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Index => f
                 .debug_struct("Index")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "value",
                     &node.children[0]
@@ -882,6 +891,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Dotted => f
                 .debug_struct("Dotted")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "value",
                     &node.children[0]
@@ -914,6 +924,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::Array => f
                 .debug_struct("Array")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "elements",
                     &node
@@ -934,6 +945,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
             Kind::With => f
                 .debug_struct("With")
                 .field("universe", &node.universe)
+                .field("scope", &node.scope)
                 .field(
                     "application",
                     &node
