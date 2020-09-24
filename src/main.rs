@@ -100,7 +100,7 @@ fn main() {
 
             let mut min_universe = i32::MAX;
             let mut max_universe = i32::MIN;
-            root.visit(Visit::Postorder, &nodes, |_, node| {
+            root.visit(Visit::Postorder, &nodes, |_, node, _| {
                 min_universe = min_universe.min(node.universe);
                 max_universe = max_universe.max(node.universe);
                 VisitResult::Recurse

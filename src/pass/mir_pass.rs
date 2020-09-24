@@ -18,7 +18,7 @@ pub fn mir_update(
 
         let mut min_universe = i32::MAX;
         let mut max_universe = i32::MIN;
-        root.visit(Visit::Postorder, &nodes, |_, node| {
+        root.visit(Visit::Postorder, &nodes, |_, node, _| {
             min_universe = min_universe.min(node.universe);
             max_universe = max_universe.max(node.universe);
             VisitResult::Recurse
@@ -30,12 +30,20 @@ pub fn mir_update(
 
         let mut constants = Vec::new();
 
-        root.visit(Visit::Preorder, &nodes, |_, node| {
-            if node.universe == min_universe {
-                constants.push(node.id());
-                VisitResult::Continue
-            } else {
-                VisitResult::Recurse
+        root.visit(Visit::Preorder, &nodes, |_, node, _| {
+            if node.is_param {
+                return VisitResult::Recurse;
+            }
+            match node.kind {
+                Kind::Argument | Kind::Binding | Kind::Declaration => VisitResult::Recurse,
+                _ => {
+                    if node.universe == min_universe {
+                        constants.push(node.id());
+                        VisitResult::Continue
+                    } else {
+                        VisitResult::Recurse
+                    }
+                }
             }
         });
 

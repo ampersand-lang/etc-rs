@@ -24,7 +24,7 @@ pub fn exec_update(
 
         let mut min_universe = i32::MAX;
         let mut max_universe = i32::MIN;
-        root.visit(Visit::Postorder, &res, |_, node| {
+        root.visit(Visit::Postorder, &res, |_, node, _| {
             min_universe = min_universe.min(node.universe);
             max_universe = max_universe.max(node.universe);
             VisitResult::Recurse

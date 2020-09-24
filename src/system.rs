@@ -120,7 +120,7 @@ macro_rules! impl_into_for_all {
                         let root = world.resources::<&crate::ast::RootNode>();
                         for (_, root_node) in root.iter::<crate::ast::RootNode>() {
                             let node = root_node.0;
-                            println!("{}", crate::ast::PrettyPrinter::with_default(world.resources(), world.resources(), world.resources(), node));
+                            println!("{:#?}", crate::ast::PrettyPrinter::with_default(world.resources(), world.resources(), world.resources(), node));
                         }
                         result
                     },

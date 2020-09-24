@@ -49,7 +49,7 @@ pub fn infer_update(
         let root = nodes.get::<Node>(root_node.0).unwrap();
         let mut skip = HashSet::new();
         let mut types = HashMap::new();
-        root.visit(Visit::Preorder, &nodes, |res, node| match node.kind {
+        root.visit(Visit::Preorder, &nodes, |res, node, _| match node.kind {
             Kind::Application => {
                 let func = node.children[0].unwrap();
                 let func = res.get(func).unwrap();
@@ -61,7 +61,7 @@ pub fn infer_update(
                         Payload::Identifier(string) => {
                             match strings.get::<String>(string).unwrap().as_str() {
                                 "quasiquote" => {
-                                    node.visit(Visit::Postorder, res, |_, node| {
+                                    node.visit(Visit::Postorder, res, |_, node, _| {
                                         skip.insert(node.id());
                                         VisitResult::Recurse
                                     });
@@ -79,7 +79,7 @@ pub fn infer_update(
             }
             _ => VisitResult::Recurse,
         });
-        root.visit(Visit::Postorder, &nodes, |_res, node| {
+        root.visit(Visit::Postorder, &nodes, |_res, node, _| {
             if skip.contains(&node.id()) {
                 return VisitResult::Recurse;
             }

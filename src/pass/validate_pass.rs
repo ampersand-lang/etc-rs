@@ -18,7 +18,7 @@ pub fn validate_update(
     let mut errors = Vec::new();
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
-        root.visit(Visit::Postorder, &nodes, |_, node| {
+        root.visit(Visit::Postorder, &nodes, |_, node, _| {
             let loc = res.get::<Location>(node.location).unwrap().as_ref().clone();
             match node.kind {
                 Kind::Nil => {}

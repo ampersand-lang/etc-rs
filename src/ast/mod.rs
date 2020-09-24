@@ -188,6 +188,15 @@ pub enum Visit {
     Postorder,
 }
 
+/// Shows whether the visitor was run before or after children.
+#[derive(Debug, Clone, Copy)]
+pub enum Which {
+    /// The visitor was run before any children.
+    Before,
+    /// The visitor was run after all children.
+    After,
+}
+
 /// Defines the next step in visiting.
 #[derive(Debug, Clone, Copy)]
 pub enum VisitResult {
@@ -227,10 +236,10 @@ enum PrivateVisitResult {
 /// All nodes are homogeneous.
 #[derive(Debug)]
 pub struct Node {
-    /// Parent node handle, if any.
-    parent: Option<NodeId>,
     /// This node's handle.
     id: NodeId,
+    /// True if an identifier was statically determined to be a function parameter.
+    pub is_param: bool,
     /// The order in which nodes get compiled and optionally executed.
     pub universe: i32,
     /// The source code mapping.
@@ -265,57 +274,8 @@ impl Node {
         children: I,
     ) -> Self {
         Node {
-            parent: None,
             id: NodeId::new(),
-            universe: 0,
-            location,
-            alternative: false,
-            kind,
-            scope: None,
-            thread: None,
-            value: None,
-            payload: None,
-            type_of: None,
-            children: children.into_iter().collect(),
-        }
-    }
-
-    /// Creates a new node with a `Kind` and some children.
-    ///
-    /// The node id gets set to an id based on the name.
-    pub fn with_name<I: IntoIterator<Item = Option<NodeId>>, T: AsRef<[u8]> + ?Sized>(
-        kind: Kind,
-        location: Handle<Location>,
-        children: I,
-        name: &T,
-    ) -> Self {
-        let id = NodeId::from_hash(name);
-        Node {
-            parent: None,
-            id,
-            universe: 0,
-            location,
-            alternative: false,
-            kind,
-            scope: None,
-            thread: None,
-            value: None,
-            payload: None,
-            type_of: None,
-            children: children.into_iter().collect(),
-        }
-    }
-
-    /// Creates a new node with a parent, a `Kind` and some children.
-    pub fn with_parent<I: IntoIterator<Item = Option<NodeId>>>(
-        parent: NodeId,
-        kind: Kind,
-        location: Handle<Location>,
-        children: I,
-    ) -> Self {
-        Node {
-            parent: Some(parent),
-            id: NodeId::new(),
+            is_param: false,
             universe: 0,
             location,
             alternative: false,
@@ -330,10 +290,8 @@ impl Node {
     }
 
     pub fn clone_from(&mut self, other: Self) {
-        let parent = self.parent;
         let id = self.id;
         *self = Self {
-            parent,
             id,
             ..other
         }
@@ -344,20 +302,16 @@ impl Node {
         self.id
     }
 
-    /// Gives the parent of this node, if any.
-    pub fn parent(&self) -> Option<NodeId> {
-        self.parent
-    }
-
     /// Visits immutably every child in this node and self.
     fn private_visit<A: AssetBundle, F>(
         &self,
+        parent: Option<&Self>,
         visit: Visit,
         res: &Resources<A>,
         f: &mut F,
     ) -> PrivateVisitResult
     where
-        F: FnMut(&Resources<A>, &Self) -> VisitResult,
+        F: FnMut(&Resources<A>, &Self, Option<&Self>) -> VisitResult,
     {
         let mut skip = HashSet::new();
         let mut first = true;
@@ -365,7 +319,7 @@ impl Node {
         while first || do_loop {
             first = false;
             if let Visit::Preorder = visit {
-                match f(res, self) {
+                match f(res, self, parent) {
                     VisitResult::Recurse => {}
                     VisitResult::Continue => return PrivateVisitResult::Recurse,
                     VisitResult::Break => return PrivateVisitResult::Break,
@@ -379,7 +333,7 @@ impl Node {
                     }
 
                     let node = res.get(handle).unwrap();
-                    match node.private_visit(visit, res, f) {
+                    match node.private_visit(Some(self), visit, res, f) {
                         PrivateVisitResult::Recurse => {}
                         PrivateVisitResult::Break => return PrivateVisitResult::Break,
                         PrivateVisitResult::Repeat(node) => {
@@ -390,7 +344,7 @@ impl Node {
                 }
             }
             if let Visit::Postorder = visit {
-                match f(res, self) {
+                match f(res, self, parent) {
                     VisitResult::Recurse => return PrivateVisitResult::Recurse,
                     VisitResult::Continue => return PrivateVisitResult::Recurse,
                     VisitResult::Break => return PrivateVisitResult::Break,
@@ -404,9 +358,106 @@ impl Node {
     /// Visits immutably every child in this node and self.
     pub fn visit<A: AssetBundle, F>(&self, visit: Visit, res: &Resources<A>, mut f: F)
     where
-        F: FnMut(&Resources<A>, &Self) -> VisitResult,
+        F: FnMut(&Resources<A>, &Self, Option<&Self>) -> VisitResult,
     {
-        self.private_visit(visit, res, &mut f);
+        self.private_visit(None, visit, res, &mut f);
+    }
+
+    /// Visits immutably every child in this node and self.
+    fn private_visit_twice<A: AssetBundle, F>(
+        &self,
+        parent: Option<&Self>,
+        res: &Resources<A>,
+        f: &mut F,
+    ) -> PrivateVisitResult
+    where
+        F: FnMut(&Resources<A>, &Self, Option<&Self>, Which) -> VisitResult,
+    {
+        match f(res, self, parent, Which::Before) {
+            VisitResult::Recurse => {}
+            VisitResult::Continue => return PrivateVisitResult::Recurse,
+            VisitResult::Break => return PrivateVisitResult::Break,
+            VisitResult::Repeat(_) => {}
+        }
+        for child in &self.children {
+            if let Some(&handle) = child.as_ref() {
+                let node = res.get(handle).unwrap();
+                match node.private_visit_twice(Some(self), res, f) {
+                    PrivateVisitResult::Recurse => {}
+                    PrivateVisitResult::Break => return PrivateVisitResult::Break,
+                    PrivateVisitResult::Repeat(_) => {}
+                }
+            }
+        }
+        match f(res, self, parent, Which::After) {
+            VisitResult::Recurse => PrivateVisitResult::Recurse,
+            VisitResult::Continue => PrivateVisitResult::Recurse,
+            VisitResult::Break => PrivateVisitResult::Break,
+            VisitResult::Repeat(node) => PrivateVisitResult::Repeat(node),
+        }
+    }
+
+    /// Visits immutably every child in this node and self.
+    pub fn visit_twice<A: AssetBundle, F>(&self, res: &Resources<A>, mut f: F)
+    where
+        F: FnMut(&Resources<A>, &Self, Option<&Self>, Which) -> VisitResult,
+    {
+        self.private_visit_twice(None, res, &mut f);
+    }
+
+    /// Visits immutably every child in this node and self.
+    fn private_visit_twice_with_rev<A: AssetBundle, F>(
+        &self,
+        parent: Option<&Self>,
+        res: &Resources<A>,
+        f: &mut F,
+    ) -> PrivateVisitResult
+    where
+        F: FnMut(&Resources<A>, &Self, Option<&Self>, Which) -> (VisitResult, bool),
+    {
+        let do_rev = match f(res, self, parent, Which::Before) {
+            (VisitResult::Recurse, r) => r,
+            (VisitResult::Continue, _) => return PrivateVisitResult::Recurse,
+            (VisitResult::Break, _) => return PrivateVisitResult::Break,
+            (VisitResult::Repeat(_), r) => r,
+        };
+        if do_rev {
+            for child in self.children.iter().rev() {
+                if let Some(&handle) = child.as_ref() {
+                    let node = res.get(handle).unwrap();
+                    match node.private_visit_twice_with_rev(Some(self), res, f) {
+                        PrivateVisitResult::Recurse => {}
+                        PrivateVisitResult::Break => return PrivateVisitResult::Break,
+                        PrivateVisitResult::Repeat(_) => {}
+                    }
+                }
+            }
+        } else {
+            for child in &self.children {
+                if let Some(&handle) = child.as_ref() {
+                    let node = res.get(handle).unwrap();
+                    match node.private_visit_twice_with_rev(Some(self), res, f) {
+                        PrivateVisitResult::Recurse => {}
+                        PrivateVisitResult::Break => return PrivateVisitResult::Break,
+                        PrivateVisitResult::Repeat(_) => {}
+                    }
+                }
+            }
+        }
+        match f(res, self, parent, Which::After).0 {
+            VisitResult::Recurse => PrivateVisitResult::Recurse,
+            VisitResult::Continue => PrivateVisitResult::Recurse,
+            VisitResult::Break => PrivateVisitResult::Break,
+            VisitResult::Repeat(node) => PrivateVisitResult::Repeat(node),
+        }
+    }
+
+    /// Visits immutably every child in this node and self.
+    pub fn visit_twice_with_rev<A: AssetBundle, F>(&self, res: &Resources<A>, mut f: F)
+    where
+        F: FnMut(&Resources<A>, &Self, Option<&Self>, Which) -> (VisitResult, bool),
+    {
+        self.private_visit_twice_with_rev(None, res, &mut f);
     }
 
     /// Clones self with a closure.
@@ -443,8 +494,8 @@ impl Clone for Node {
     /// Clones a node and assigns it a new unique identifier.
     fn clone(&self) -> Self {
         Self {
-            parent: None,
             id: NodeId::new(),
+            is_param: self.is_param,
             universe: self.universe,
             location: self.location,
             alternative: self.alternative,
@@ -569,10 +620,12 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
         match node.kind {
             Kind::Nil => f
                 .debug_struct("Nil")
+                .field("universe", &node.universe)
                 .field("value", node.payload.as_ref().unwrap())
                 .finish(),
             Kind::Block => f
                 .debug_struct("Block")
+                .field("universe", &node.universe)
                 .field(
                     "stmts",
                     &node
@@ -607,6 +660,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Function => f
                 .debug_struct("Function")
+                .field("universe", &node.universe)
                 .field(
                     "parameters",
                     &node.children[0]
@@ -638,6 +692,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Application => f
                 .debug_struct("Application")
+                .field("universe", &node.universe)
                 .field(
                     "function",
                     &node
@@ -676,6 +731,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Binding => f
                 .debug_struct("Binding")
+                .field("universe", &node.universe)
                 .field(
                     "pattern",
                     &node.children[0]
@@ -713,6 +769,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Argument => f
                 .debug_struct("Argument")
+                .field("universe", &node.universe)
                 .field(
                     "name",
                     &node.children[0]
@@ -744,6 +801,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Declaration => f
                 .debug_struct("Declaration")
+                .field("universe", &node.universe)
                 .field(
                     "pattern",
                     &node.children[0]
@@ -775,6 +833,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Tuple => f
                 .debug_struct("Tuple")
+                .field("universe", &node.universe)
                 .field(
                     "fields",
                     &node
@@ -794,6 +853,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Index => f
                 .debug_struct("Index")
+                .field("universe", &node.universe)
                 .field(
                     "value",
                     &node.children[0]
@@ -825,6 +885,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Dotted => f
                 .debug_struct("Dotted")
+                .field("universe", &node.universe)
                 .field(
                     "value",
                     &node.children[0]
@@ -856,6 +917,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Array => f
                 .debug_struct("Array")
+                .field("universe", &node.universe)
                 .field(
                     "elements",
                     &node
@@ -875,6 +937,7 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::With => f
                 .debug_struct("With")
+                .field("universe", &node.universe)
                 .field(
                     "application",
                     &node

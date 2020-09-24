@@ -6,7 +6,8 @@ use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
 use crate::scope::{Scope, ScopeId};
 
 pub fn scope_update(
-    lazy: &mut LazyUpdate,
+    _lazy: &mut LazyUpdate,
+    mut scopes: Resources<&mut Scope>,
     roots: Resources<&RootNode>,
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<Option<&'static str>> {
@@ -14,35 +15,35 @@ pub fn scope_update(
         let root = nodes.get::<Node>(root_node.0).unwrap();
         let global = Scope::new();
         let handle = ScopeId::new();
-        lazy.insert(handle, global);
+        scopes.insert(handle, global);
         let global = handle;
-        let mut scopes = HashMap::new();
+        let mut new_scopes = HashMap::new();
 
-        root.visit(Visit::Preorder, &nodes, |_res, node| {
+        root.visit(Visit::Preorder, &nodes, |_res, node, parent| {
             match node.kind {
                 Kind::Block | Kind::Function => {
                     let handle = ScopeId::new();
-                    let scope = if let Some(parent) = node.parent() {
-                        Scope::with_parent(scopes[&parent])
+                    let scope = if let Some(parent) = parent {
+                        Scope::with_parent(new_scopes[&parent.id()])
                     } else {
-                        Scope::with_parent(ScopeId::new())
+                        Scope::with_parent(global)
                     };
-                    scopes.insert(node.id(), handle);
-                    lazy.insert(handle, scope);
+                    new_scopes.insert(node.id(), handle);
+                    scopes.insert(handle, scope);
                 }
                 _ => {
-                    let handle = if let Some(parent) = node.parent() {
-                        scopes[&parent]
+                    let handle = if let Some(parent) = parent {
+                        new_scopes[&parent.id()]
                     } else {
                         global
                     };
-                    scopes.insert(node.id(), handle);
+                    new_scopes.insert(node.id(), handle);
                 }
             }
             VisitResult::Recurse
         });
 
-        for (handle, scope) in scopes {
+        for (handle, scope) in new_scopes {
             nodes.get_mut::<Node>(handle).unwrap().scope = Some(scope);
         }
     }

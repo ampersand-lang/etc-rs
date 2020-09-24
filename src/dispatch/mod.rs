@@ -22,6 +22,20 @@ pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut Value)>) {
     let v_sint = Value::Type(*primitive::SINT);
     let h_sint = Handle::from_name(name.0, "sint".as_bytes());
     res.insert(h_sint, v_sint);
+
+    let i_type = Handle::new();
+    res.insert(i_type, "type".to_string());
+    let name = Name(ScopeId::nil(), i_type);
+    let t_type = Definition::new_variable(i32::MIN, *primitive::TYPE);
+    let h_type = Handle::from_name(name.0, "type".as_bytes());
+    res.insert(
+        h_type,
+        Dispatcher::with_definitions(name, iter::once(t_type)),
+    );
+
+    let v_type = Value::Type(*primitive::TYPE);
+    let h_type = Handle::from_name(name.0, "type".as_bytes());
+    res.insert(h_type, v_type);
 }
 
 /// Handle to a dispatcher.
