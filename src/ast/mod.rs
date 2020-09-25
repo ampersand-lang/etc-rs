@@ -1001,7 +1001,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                 ),
             ),
             Kind::Block => {
-                write!(f, "{{ ")?;
+                write!(f, "( ")?;
                 for stmt in node
                     .children
                     .iter()
@@ -1033,7 +1033,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                         )
                     )?;
                 }
-                write!(f, "}}")
+                write!(f, ")")
             }
             Kind::Function => write!(
                 f,
@@ -1159,7 +1159,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                     .unwrap(),
             ),
             Kind::Tuple => {
-                write!(f, "(")?;
+                write!(f, "{{")?;
                 for stmt in node
                     .children
                     .iter()
@@ -1191,7 +1191,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                         )
                     )?;
                 }
-                write!(f, ")")
+                write!(f, "}}")
             }
             Kind::Index => todo!(),
             Kind::Dotted => todo!(),
