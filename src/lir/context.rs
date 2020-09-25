@@ -163,6 +163,13 @@ impl ExecutionContext {
         }
     }
 
+    pub fn builder_with(ctx: Self, res: Resources<&mut NamedType>) -> Builder {
+        Builder {
+            res,
+            ctx,
+        }
+    }
+
     pub fn main(&self) -> usize {
         self.main
     }
@@ -181,6 +188,24 @@ impl ExecutionContext {
 
     pub fn function(&self, id: usize) -> &Function {
         &self.text[id]
+    }
+
+    pub fn named_function(&self, name: &str) -> Option<&Function> {
+        for func in &self.text {
+            if func.name == name {
+                return Some(func);
+            }
+        }
+        None
+    }
+
+    pub fn named_function_mut(&mut self, name: &str) -> Option<&mut Function> {
+        for func in &mut self.text {
+            if func.name == name {
+                return Some(func);
+            }
+        }
+        None
     }
 
     pub fn to_physical(&self, addr: VirtualAddress) -> Option<PhysicalAddress> {
@@ -418,7 +443,39 @@ impl ExecutionContext {
                     self.call_stack
                         .push((self.stack_ptr, self.invocation, self.instr_ptr));
                     self.instr_ptr = ExecAddress(func as _, 0, ir.binding.unwrap());
-                    self.invocation = rand::random();
+                    let new_invocation = rand::random();
+
+                    for (idx, TypedValue { typ, val }) in ir.args[1..].iter().enumerate() {
+                        let t = typ.type_info(res, &self.target);
+
+                        let mut value = smallvec![0_u8; t.size];
+                        match val {
+                            Value::Unit => {}
+                            Value::Arg(r) => {
+                                value.copy_from_slice(&self.arguments[&Argument::new(*r, self.invocation)])
+                            }
+                            Value::Register(r) => {
+                                value.copy_from_slice(&self.registers[&r.build(self.invocation)])
+                            }
+                            Value::Function(id) => (*id as u64).write_bytes(&mut value),
+                            Value::Label(_b) => todo!(),
+                            Value::Bool(p) => u8::from(*p).write_bytes(&mut value),
+                            Value::Uint(int) => int.write_bytes(&mut value),
+                            Value::Float(flt) => flt.write_bytes(&mut value),
+                            Value::Address(addr) => addr.write_bytes(&mut value),
+                            Value::Type(typ) => typ.write_bytes(&mut value),
+                            Value::Node(node) => node.write_bytes(&mut value),
+                            Value::Array(_) => todo!(),
+                            Value::Struct(_) => todo!(),
+                            Value::Union(_) => todo!(),
+                            Value::Tagged(..) => todo!(),
+                            Value::Ffi(foreign) => foreign.write_bytes(&mut value),
+                        }
+                        self.arguments
+                            .insert(Argument::new(idx as _, new_invocation), value);
+                    }
+                    self.invocation = new_invocation;
+                    
                     Ok(Result::Continue(0))
                 } else {
                     Ok(Result::Continue(1))
@@ -528,24 +585,25 @@ impl ExecutionContext {
                 if self.call_stack.len() == 1 {
                     Ok(Result::Return(ir.args[0].clone()))
                 } else {
-                    let r = self.instr_ptr.2;
-                    let (sp, inv, ip) = self.call_stack.pop().unwrap();
-                    self.stack_ptr = sp;
-                    self.instr_ptr = ip;
-                    self.invocation = inv;
-
                     let t = self.text[self.instr_ptr.0 as usize]
                         .result_type
                         .type_info(res, &self.target);
+                    
+                    let r = self.instr_ptr.2;
+                    let (sp, inv, ip) = self.call_stack.pop().unwrap();
+                    let old_invocation = self.invocation;
+                    self.stack_ptr = sp;
+                    self.instr_ptr = ip;
+                    self.invocation = inv;
 
                     let binding = r.build(self.invocation);
                     let mut value = smallvec![0_u8; t.size];
                     match ir.args[0].val {
                         Value::Unit => {}
                         Value::Arg(r) => value
-                            .copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
+                            .copy_from_slice(&self.arguments[&Argument::new(r, old_invocation)]),
                         Value::Register(r) => {
-                            value.copy_from_slice(&self.registers[&r.build(self.invocation)])
+                            value.copy_from_slice(&self.registers[&r.build(old_invocation)])
                         }
                         Value::Function(id) => (id as u64).write_bytes(&mut value),
                         Value::Label(_b) => todo!(),

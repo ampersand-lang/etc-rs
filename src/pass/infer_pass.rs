@@ -459,6 +459,10 @@ pub fn infer_update(
                         .unwrap();
                     let type_of = match type_of {
                         Payload::Type(t) => t,
+                        Payload::Identifier(string) => TypeId {
+                            group: TypeGroup::None,
+                            concrete: TypeOrPlaceholder::Dispatch(node.scope.unwrap(), string),
+                        },
                         _ => todo!(),
                     };
                     let d = if let Some(mut d) = dispatch.remove(handle) {

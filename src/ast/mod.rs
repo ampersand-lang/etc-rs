@@ -238,6 +238,21 @@ enum PrivateVisitResult {
 pub struct Node {
     /// This node's handle.
     id: NodeId,
+    /// A flag that shows if a newnode should be created.
+    pub no_newnode: bool,
+    /// A flag for nodes that are generic over some number of compile-time variables,
+    ///  i.e. variables that get `replace`d in using `format-ast`.
+    ///
+    /// Example:
+    /// ```text
+    /// # Here id is a -1 non-explicit function,
+    /// #  but because it returns a higher-universe (0) value,
+    //  #  its body, i.e. `{a: t} => a`, is set to generic over "t".
+    /// id := {t: type} => {a: t} => a;
+    /// ```
+    pub generic: Option<SmallVec<[Handle<String>; 4]>>,
+    /// A flag that represents if this application is a call to a generic function and if it is, which one
+    pub generic_call: Option<NodeId>,
     /// The order in which nodes get compiled and optionally executed.
     pub universe: i32,
     /// The source code mapping.
@@ -273,6 +288,9 @@ impl Node {
     ) -> Self {
         Node {
             id: NodeId::new(),
+            no_newnode: false,
+            generic: None,
+            generic_call: None,
             universe: 0,
             location,
             alternative: false,
@@ -455,9 +473,9 @@ impl Node {
     }
 
     /// Clones self with a closure.
-    fn private_clone_with<A: AssetBundle, F>(&self, res: &mut Resources<A>, f: &F) -> Self
+    fn private_clone_with<A: AssetBundle, F>(&self, res: &mut Resources<A>, f: &mut F) -> Self
     where
-        F: Fn(&mut Resources<A>, &Self, SmallVec<[Option<NodeId>; 4]>) -> Self,
+        F: FnMut(&mut Resources<A>, &Self, SmallVec<[Option<NodeId>; 4]>) -> Self,
     {
         let mut children = SmallVec::new();
         for child in &self.children {
@@ -476,11 +494,11 @@ impl Node {
     }
 
     /// Clones self with a closure.
-    pub fn clone_with<A: AssetBundle, F>(&self, res: &mut Resources<A>, f: F) -> Self
+    pub fn clone_with<A: AssetBundle, F>(&self, res: &mut Resources<A>, mut f: F) -> Self
     where
-        F: Fn(&mut Resources<A>, &Self, SmallVec<[Option<NodeId>; 4]>) -> Self,
+        F: FnMut(&mut Resources<A>, &Self, SmallVec<[Option<NodeId>; 4]>) -> Self,
     {
-        self.private_clone_with(res, &f)
+        self.private_clone_with(res, &mut f)
     }
 }
 
@@ -489,6 +507,9 @@ impl Clone for Node {
     fn clone(&self) -> Self {
         Self {
             id: NodeId::new(),
+            no_newnode: self.no_newnode,
+            generic: self.generic.clone(),
+            generic_call: self.generic_call.clone(),
             universe: self.universe,
             location: self.location,
             alternative: self.alternative,

@@ -530,7 +530,14 @@ impl Function {
 
 impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "%{} := (...) => {{", self.name)?;
+        write!(f, "%{} := (", self.name)?;
+        if let Some(t) = self.param_types.get(0) {
+            write!(f, "type {:?}", t.group)?;
+        }
+        for t in self.param_types.iter().skip(1) {
+            write!(f, "; type {:?}", t.group)?;
+        }
+        writeln!(f, ") => {{")?;
         for ir in &self.body {
             writeln!(f, "  {}", ir)?;
         }
