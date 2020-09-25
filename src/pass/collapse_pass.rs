@@ -120,9 +120,9 @@ pub fn collapse_update(
             }
             VisitResult::Recurse
         });
-        for (handle, scope) in new_scopes {
-            nodes.get_mut::<Node>(handle).unwrap().scope = Some(scope);
-        }
+        //for (handle, scope) in new_scopes {
+        //    nodes.get_mut::<Node>(handle).unwrap().scope = Some(scope);
+        //}
         for (handle, payload) in payloads {
             nodes.get_mut::<Node>(handle).unwrap().payload = Some(payload);
         }

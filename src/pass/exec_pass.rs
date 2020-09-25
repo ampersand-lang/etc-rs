@@ -38,7 +38,7 @@ pub fn exec_update(
 
         let main = ctx.main();
         let result = ctx.call(lazy, &foreign, &mut res, main, &[])?;
-        match result {
+        match result.val {
             Value::Node(handle) => {
                 let node = res.get(root_node.0).unwrap();
                 let thread = node.thread.unwrap();

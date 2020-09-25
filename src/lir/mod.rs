@@ -7,7 +7,7 @@ use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
 use crate::ast::{Kind, Node, NodeId};
-use crate::types::{NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
+use crate::types::{primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
 
 use self::codegen::Lifetime;
@@ -39,9 +39,9 @@ pub mod foreign {
     fn type_ptr(
         ctx: &mut ExecutionContext,
         res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
-        args: &[Value],
-    ) -> Fallible<Value> {
-        let pointee = match args[0] {
+        args: &[TypedValue],
+    ) -> Fallible<TypedValue> {
+        let pointee = match args[0].val {
             Value::Type(t) => t,
             Value::Arg(r) => TypeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
             Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
@@ -57,15 +57,15 @@ pub mod foreign {
             group: TypeGroup::Pointer,
             concrete: TypeOrPlaceholder::Type(handle),
         };
-        Ok(Value::Type(t))
+        Ok(TypedValue::new(*primitive::TYPE, Value::Type(t)))
     }
 
     fn type_fn(
         ctx: &mut ExecutionContext,
         res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
-        args: &[Value],
-    ) -> Fallible<Value> {
-        let result_type = match args[0] {
+        args: &[TypedValue],
+    ) -> Fallible<TypedValue> {
+        let result_type = match args[0].val {
             Value::Type(t) => t,
             Value::Arg(r) => TypeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
             Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
@@ -74,9 +74,9 @@ pub mod foreign {
 
         let mut param_types = SmallVec::new();
         for arg in args.iter().skip(1) {
-            let param = match arg {
-                Value::Type(t) => *t,
-                Value::Arg(r) => TypeId::from_bytes(&ctx.arguments[&Argument::new(*r, ctx.invocation)]),
+            let param = match arg.val {
+                Value::Type(t) => t,
+                Value::Arg(r) => TypeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
                 Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
                 _ => return Err(From::from(TypeError)),
             };
@@ -96,15 +96,15 @@ pub mod foreign {
             group: TypeGroup::Function,
             concrete: TypeOrPlaceholder::Type(handle),
         };
-        Ok(Value::Type(t))
+        Ok(TypedValue::new(*primitive::TYPE, Value::Type(t)))
     }
 
     fn format_ast(
         ctx: &mut ExecutionContext,
         res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
-        args: &[Value],
-    ) -> Fallible<Value> {
-        let node = match args[0] {
+        args: &[TypedValue],
+    ) -> Fallible<TypedValue> {
+        let node = match args[0].val {
             Value::Node(node) => node,
             Value::Arg(r) => NodeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
             Value::Register(r) => NodeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
@@ -143,7 +143,7 @@ pub mod foreign {
                             _ => None,
                         };
                         if let Some(num) = ident {
-                            let id = match args[1 + num] {
+                            let id = match args[1 + num].val {
                                 Value::Arg(r) => NodeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
                                 Value::Register(r) => {
                                     NodeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)])
@@ -164,7 +164,7 @@ pub mod foreign {
 
         let handle = node.id();
         res.insert(node.id(), node);
-        Ok(Value::Node(handle))
+        Ok(TypedValue::new(*primitive::NODE, Value::Node(handle)))
     }
 }
 
@@ -239,22 +239,27 @@ impl Argument {
 
 pub type FuncId = usize;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TypedValue {
     pub typ: TypeId,
     pub val: Value,
 }
 
-pub type Elems = SmallVec<[Value; 4]>;
-pub type Fields = SmallVec<[TypedValue; 4]>;
-pub type Variants = SmallVec<[Fields; 4]>;
+impl TypedValue {
+    pub fn new(typ: TypeId, val: Value) -> Self {
+        Self { typ, val }
+    }
+}
+
+pub type Elems = SmallVec<[TypedValue; 4]>;
+pub type Variants = SmallVec<[Elems; 4]>;
 pub type Bytes = SmallVec<[u8; 32]>;
 pub type Foreign = Box<
     dyn Fn(
             &mut ExecutionContext,
             &mut Resources<(&String, &mut NamedType, &mut Node)>,
-            &[Value],
-        ) -> Fallible<Value>
+            &[TypedValue],
+        ) -> Fallible<TypedValue>
         + Send
         + Sync
         + 'static,
@@ -272,8 +277,8 @@ pub enum Value {
     Type(TypeId),
     Node(NodeId),
     Array(Handle<Elems>),
-    Struct(Handle<Fields>),
-    Tagged(Handle<Value>, Handle<Fields>, Handle<Variants>),
+    Struct(Handle<Elems>),
+    Tagged(Handle<TypedValue>, Handle<Elems>, Handle<Variants>),
     Union(Handle<Bytes>),
     Function(FuncId),
     Label(BasicBlock),
@@ -306,13 +311,13 @@ impl Display for Value {
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
-    /// Two arguments: a type and a u64
+    /// One argument: u64
     Alloca,
-    /// Three arguments: a type, an address and anything
+    /// Two arguments: an address and anything
     Store,
-    /// Two argument: a type and an address
+    /// One argument: an address
     Load,
-    /// At least one argument: a global
+    /// At least one argument: a function or fn reference
     Call,
     /// At least one argument: a u64 (node kind)
     NewNode,
@@ -320,7 +325,7 @@ pub enum Instruction {
     Return,
     /// One argument: a basic block
     Jmp,
-    /// Three arguments: a boolean or register and two basic blocks
+    /// Three arguments: any boolean value and two basic blocks
     IfThenElse,
 }
 
@@ -329,7 +334,8 @@ pub struct Ir {
     pub(crate) binding: Option<BindingPrototype>,
     pub(crate) life: Lifetime,
     pub(crate) instr: Instruction,
-    pub(crate) args: SmallVec<[Value; 4]>,
+    pub(crate) args: SmallVec<[TypedValue; 4]>,
+    pub(crate) typ: TypeId,
 }
 
 impl Display for Ir {
@@ -339,10 +345,10 @@ impl Display for Ir {
         }
         write!(f, "{:?}", self.instr)?;
         if let Some(arg) = self.args.first() {
-            write!(f, " {}", arg)?;
+            write!(f, " {}", arg.val)?;
         }
         for arg in self.args.iter().skip(1) {
-            write!(f, ", {}", arg)?;
+            write!(f, ", {}", arg.val)?;
         }
         Ok(())
     }
@@ -416,6 +422,14 @@ impl BasicBlockExt for &[BasicBlockPrototype] {
 }
 
 #[derive(Debug, Clone)]
+pub struct Global {
+    pub(crate) name: String,
+    pub(crate) typ: TypeId,
+    pub(crate) offset: usize,
+    pub(crate) is_const: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Function {
     pub(crate) name: String,
     pub(crate) param_types: SmallVec<[TypeId; 4]>,
@@ -464,7 +478,7 @@ impl Function {
             }
             match ir.instr {
                 Instruction::Jmp => {
-                    match ir.args[0] {
+                    match ir.args[0].val {
                         Value::Label(bb) => {
                             let bb = &self.blocks[bb.number() as usize];
                             self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
@@ -474,14 +488,14 @@ impl Function {
                     break;
                 }
                 Instruction::IfThenElse => {
-                    match ir.args[1] {
+                    match ir.args[1].val {
                         Value::Label(bb) => {
                             let bb = &self.blocks[bb.number() as usize];
                             self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
                         }
                         _ => {}
                     }
-                    match ir.args[2] {
+                    match ir.args[2].val {
                         Value::Label(bb) => {
                             let bb = &self.blocks[bb.number() as usize];
                             self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
@@ -541,10 +555,10 @@ mod tests {
 
         let mut main = 0;
         let (_, mut ctx) =
-            ExecutionContext::builder(world.resources::<&NamedType>(), Target::default())
+            ExecutionContext::builder(world.resources>(), Target::default())
                 .function("main")
                 .result(*primitive::SINT)
-                .build_return(*primitive::SINT, Value::Uint(5))
+                .build_return(TypedValue::new(*primitive::SINT, Value::Uint(5)))
                 .build(&mut main)
                 .build();
         assert_eq!(

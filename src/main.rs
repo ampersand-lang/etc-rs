@@ -7,8 +7,8 @@ use ast::{Node, RootNode, Visit, VisitResult};
 use dispatch::Dispatcher;
 use lexer::{Lexer, Location};
 use lir::{
-    context::ExecutionContext, foreign, target::Target, Binding, Bytes, Elems, Fields, Foreign,
-    Value, Variants,
+    context::ExecutionContext, foreign, target::Target, Binding, Bytes, Elems, Foreign,
+    TypedValue, Variants,
 };
 use parser::{grammar, State};
 use pipeline::*;
@@ -44,14 +44,13 @@ fn main() {
     world.init_asset::<NamedType>();
     world.init_asset::<Payload>();
     world.init_asset::<ExecutionContext>();
-    world.init_asset::<Value>();
+    world.init_asset::<TypedValue>();
     world.init_asset::<Dispatcher>();
     world.init_asset::<Scope>();
     world.init_asset::<String>();
     world.init_asset::<Binding>();
     world.init_asset::<Location>();
     world.init_asset::<Elems>();
-    world.init_asset::<Fields>();
     world.init_asset::<Variants>();
     world.init_asset::<Bytes>();
     world.init_asset::<Foreign>();

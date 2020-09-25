@@ -2,7 +2,7 @@ use failure::Fallible;
 use hashbrown::HashMap;
 
 use crate::assets::{LazyUpdate, Resources};
-use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
+use crate::ast::{Kind, Node, RootNode, VisitResult, Which};
 use crate::scope::{Scope, ScopeId};
 
 pub fn scope_update(
@@ -18,32 +18,34 @@ pub fn scope_update(
         scopes.insert(handle, global);
         let global = handle;
         let mut new_scopes = HashMap::new();
+        let mut scope_list = vec![global];
 
-        root.visit(Visit::Preorder, &nodes, |_res, node, parent| {
-            match node.kind {
-                Kind::Block | Kind::Function => {
-                    let handle = if let Some(parent) = parent {
-                        new_scopes[&parent.id()]
-                    } else {
-                        global
-                    };
-                    new_scopes.insert(node.id(), handle);
-                    
-                    let handle = ScopeId::new();
-                    let scope = if let Some(parent) = parent {
-                        Scope::with_parent(new_scopes[&parent.id()])
-                    } else {
-                        Scope::with_parent(global)
-                    };
-                    scopes.insert(handle, scope);
+        root.visit_twice(&nodes, |_res, node, _, which| {
+            match which {
+                Which::Before => {
+                    match node.kind {
+                        Kind::Block | Kind::Function => {
+                            let handle = scope_list.last().copied().unwrap();
+                            new_scopes.insert(node.id(), handle);
+                            
+                            let scope = Scope::with_parent(handle);
+                            let handle = ScopeId::new();
+                            scopes.insert(handle, scope);
+                            scope_list.push(handle);
+                        }
+                        _ => {
+                            let handle = scope_list.last().copied().unwrap();
+                            new_scopes.insert(node.id(), handle);
+                        }
+                    }
                 }
-                _ => {
-                    let handle = if let Some(parent) = parent {
-                        new_scopes[&parent.id()]
-                    } else {
-                        global
-                    };
-                    new_scopes.insert(node.id(), handle);
+                Which::After => {
+                    match node.kind {
+                        Kind::Block | Kind::Function => {
+                            scope_list.pop();
+                        }
+                        _ => {}
+                    }
                 }
             }
             VisitResult::Recurse

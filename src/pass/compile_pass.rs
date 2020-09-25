@@ -3,9 +3,10 @@ use failure::Fallible;
 use crate::assets::{LazyUpdate, Resources, Static};
 use crate::ast::{Node, RootNode};
 use crate::lir::{
-    compile::Compile, context::ExecutionContext, target::Target, Bytes, Elems, Fields, ThreadId,
-    Value, Variants,
+    compile::Compile, context::ExecutionContext, target::Target, Bytes, Elems, ThreadId,
+    TypedValue, Variants,
 };
+use crate::scope::Scope;
 use crate::types::NamedType;
 use crate::values::Payload;
 
@@ -14,14 +15,14 @@ pub fn compile_update(
     target: &Static<Target>,
     roots: Resources<&RootNode>,
     _threads: Resources<&ExecutionContext>,
-    mut types: Resources<&NamedType>,
+    mut types: Resources<&mut NamedType>,
     mut nodes: Resources<(
         &mut Node,
+        &Scope,
         &Payload,
         &String,
-        &mut Value,
+        &mut TypedValue,
         &mut Elems,
-        &mut Fields,
         &mut Variants,
         &mut Bytes,
     )>,

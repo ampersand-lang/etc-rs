@@ -5,19 +5,19 @@ use crate::assets::Resources;
 use crate::lir::codegen::Lifetime;
 use crate::lir::context::*;
 use crate::lir::repr::*;
-use crate::types::NamedType;
+use crate::types::{primitive, NamedType};
 
 use super::*;
 
 pub struct ValueBuilder<'a>(pub(crate) FunctionBuilder<'a>);
 
 pub struct Builder<'a> {
-    pub(crate) res: Resources<&'a NamedType>,
+    pub(crate) res: Resources<&'a mut NamedType>,
     pub(crate) ctx: ExecutionContext,
 }
 
 impl<'a> Builder<'a> {
-    pub fn build(self) -> (Resources<&'a NamedType>, ExecutionContext) {
+    pub fn build(self) -> (Resources<&'a mut NamedType>, ExecutionContext) {
         (self.res, self.ctx)
     }
 
@@ -75,8 +75,8 @@ impl<'a> FunctionBuilder<'a> {
         builder
     }
 
-    pub fn parameter(mut self, out: &mut Value, t: TypeId) -> Self {
-        *out = Value::Arg(self.param_types.len() as _);
+    pub fn parameter(mut self, out: &mut TypedValue, t: TypeId) -> Self {
+        *out = TypedValue::new(t, Value::Arg(self.param_types.len() as _));
         self.param_types.push(t);
         self
     }
@@ -95,22 +95,37 @@ impl<'a> FunctionBuilder<'a> {
         self
     }
 
-    pub fn build_alloca(mut self, out: &mut Value, t: TypeId, n: u64) -> Self {
+    pub fn build_alloca(mut self, out: &mut TypedValue, t: TypeId, n: u64) -> Self {
         let counter = &mut self.counter;
         let binding = *counter;
         counter.inc();
+
+        let ptr_t = {
+            let handle = Handle::new();
+            let t = NamedType {
+                name: None,
+                t: Type::Pointer(t),
+            };
+            self.builder.res.insert(handle, t);
+            TypeId {
+                group: TypeGroup::Pointer,
+                concrete: TypeOrPlaceholder::Type(handle),
+            }
+        };
+        
         self.body.push(Ir {
             binding: Some(binding),
             life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Alloca,
-            args: smallvec![Value::Type(t), Value::Uint(n)],
+            args: smallvec![TypedValue::new(*primitive::TYPE, Value::Type(t)), TypedValue::new(t, Value::Uint(n))],
+            typ: ptr_t,
         });
-        *out = Value::Register(binding);
+        *out = TypedValue::new(ptr_t, Value::Register(binding));
         self
     }
 
-    pub fn build_store(mut self, t: TypeId, addr: Value, v: Value) -> Self {
-        match addr {
+    pub fn build_store(mut self, addr: TypedValue, v: TypedValue) -> Self {
+        match addr.val {
             Value::Register(r) => {
                 self.is_ref.insert(r);
             }
@@ -120,26 +135,39 @@ impl<'a> FunctionBuilder<'a> {
             binding: None,
             life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Store,
-            args: smallvec![Value::Type(t), addr, v],
+            args: smallvec![addr, v],
+            typ: *primitive::UNIT,
         });
         self
     }
 
-    pub fn build_load(mut self, out: &mut Value, t: TypeId, v: Value) -> Self {
+    pub fn build_load(mut self, out: &mut TypedValue, v: TypedValue) -> Self {
         let counter = &mut self.counter;
         let binding = *counter;
         counter.inc();
+
+        let unptr_t = match v.typ.concrete {
+            TypeOrPlaceholder::Type(handle) => {
+                match self.builder.res.get(handle).unwrap().t {
+                    Type::Pointer(t) => t,
+                    _ => todo!(),
+                }
+            }
+            _ => todo!(),
+        };
+        
         self.body.push(Ir {
             binding: Some(binding),
             life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Load,
-            args: smallvec![Value::Type(t), v],
+            args: smallvec![v],
+            typ: unptr_t,
         });
-        *out = Value::Register(binding);
+        *out = TypedValue::new(unptr_t, Value::Register(binding));
         self
     }
 
-    pub fn build_newnode(mut self, out: &mut Value, args: SmallVec<[Value; 4]>) -> Self {
+    pub fn build_newnode(mut self, out: &mut TypedValue, args: SmallVec<[TypedValue; 4]>) -> Self {
         let counter = &mut self.counter;
         let binding = *counter;
         counter.inc();
@@ -148,37 +176,49 @@ impl<'a> FunctionBuilder<'a> {
             life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::NewNode,
             args,
+            typ: *primitive::NODE,
         });
-        *out = Value::Register(binding);
+        *out = TypedValue::new(*primitive::NODE, Value::Register(binding));
         self
     }
 
     pub fn build_call(
         mut self,
-        out: &mut Value,
-        t: TypeId,
-        mut args: SmallVec<[Value; 4]>,
+        out: &mut TypedValue,
+        args: SmallVec<[TypedValue; 4]>,
     ) -> Self {
         let counter = &mut self.counter;
         let binding = *counter;
         counter.inc();
-        args.insert(0, Value::Type(t));
+
+        let t = match args[0].typ.concrete {
+            TypeOrPlaceholder::Type(handle) => {
+                match self.builder.res.get(handle).unwrap().t {
+                    Type::Function { result_type: t, .. } => t,
+                    _ => todo!(),
+                }
+            }
+            _ => todo!(),
+        };
+
         self.body.push(Ir {
             binding: Some(binding),
             life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Call,
             args,
+            typ: t,
         });
-        *out = Value::Register(binding);
+        *out = TypedValue::new(t, Value::Register(binding));
         self
     }
 
-    pub fn build_return(mut self, t: TypeId, v: Value) -> Self {
+    pub fn build_return(mut self, v: TypedValue) -> Self {
         self.body.push(Ir {
             binding: None,
             life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Return,
-            args: smallvec![Value::Type(t), v],
+            args: smallvec![v],
+            typ: *primitive::UNIT,
         });
         self
     }

@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use crate::assets::{LazyUpdate, Resources, Static};
 use crate::ast::{Node, RootNode};
 use crate::lir::{codegen::*, context::ExecutionContext, target::Target, Instruction, Value};
-use crate::types::{NamedType, TypeInfo};
+use crate::types::{NamedType, Type, TypeInfo, TypeOrPlaceholder};
 
 pub fn codegen_update(
     _lazy: &mut LazyUpdate,
@@ -32,12 +32,12 @@ pub fn codegen_update(
             for ir in &func.body {
                 match ir.instr {
                     Instruction::Alloca => {
-                        let t = match ir.args[0] {
+                        let t = match ir.args[0].val {
                             Value::Type(t) => t,
                             _ => todo!(),
                         };
                         let t = t.type_info(&named_types, &target);
-                        let n = match ir.args[1] {
+                        let n = match ir.args[1].val {
                             Value::Uint(i) => i as usize,
                             _ => todo!(),
                         };
@@ -50,20 +50,12 @@ pub fn codegen_update(
                         }
                     }
                     Instruction::Load => {
-                        let t = match ir.args[0] {
-                            Value::Type(t) => t,
-                            _ => todo!(),
-                        };
-                        let t = t.type_info(&named_types, &target);
+                        let t = ir.typ.type_info(&named_types, &target);
                         let (start, end) = func.lifetime(ir.binding.unwrap());
                         builder.add_local(ir.binding.unwrap(), t, start, end);
                     }
                     Instruction::Call => {
-                        let t = match ir.args[0] {
-                            Value::Type(t) => t,
-                            _ => todo!(),
-                        };
-                        let t = t.type_info(&named_types, &target);
+                        let t = ir.typ.type_info(&named_types, &target);
                         let (start, end) = func.lifetime(ir.binding.unwrap());
                         builder.add_local(ir.binding.unwrap(), t, start, end);
                     }
@@ -76,19 +68,16 @@ pub fn codegen_update(
                 match ir.instr {
                     Instruction::Alloca => {}
                     Instruction::Store => {
-                        let t = match ir.args[0] {
-                            Value::Type(t) => t,
-                            _ => todo!(),
-                        };
+                        let t = ir.args[1].typ;
                         let t = t.type_info(&named_types, &target);
                         if t.size > 8 {
                             todo!()
                         } else {
-                            let target = match ir.args[1] {
+                            let target = match ir.args[0].val {
                                 Value::Register(r) => *builder.local(r).unwrap(),
                                 _ => todo!(),
                             };
-                            match ir.args[2] {
+                            match ir.args[1].val {
                                 Value::Uint(int) => {
                                     let bb = builder.basic_block_mut(bb);
                                     bb.instruction()
@@ -158,16 +147,12 @@ pub fn codegen_update(
                         }
                     }
                     Instruction::Load => {
-                        let t = match ir.args[0] {
-                            Value::Type(t) => t,
-                            _ => todo!(),
-                        };
-                        let t = t.type_info(&named_types, &target);
+                        let t = ir.typ.type_info(&named_types, &target);
                         if t.size > 8 {
                             todo!()
                         } else {
                             let target = *builder.local(ir.binding.unwrap()).unwrap();
-                            match ir.args[1] {
+                            match ir.args[0].val {
                                 Value::Register(r) => {
                                     let source = *builder.local(r).unwrap();
                                     if target.reg.is_spilled() && source.reg.is_spilled() {
@@ -196,12 +181,20 @@ pub fn codegen_update(
                         }
                     }
                     Instruction::Call => {
-                        let t = match ir.args[0] {
-                            Value::Type(t) => t,
+                        let t = ir.typ.type_info(&named_types, &target);
+
+                        let param_types = match ir.args[0].typ.concrete {
+                            TypeOrPlaceholder::Type(handle) => {
+                                named_types.get(handle).unwrap()
+                            }
                             _ => todo!(),
                         };
-                        let t = t.type_info(&named_types, &target);
-                        let func_ref = match ir.args[1] {
+                        let param_types = match param_types.t {
+                            Type::Function { ref param_types, .. } => param_types,
+                            _ => todo!(),
+                        };
+                        
+                        let func_ref = match ir.args[0].val {
                             Value::Arg(r) => {
                                 program.call_conv.argument(builder, r)?
                             }
@@ -215,10 +208,8 @@ pub fn codegen_update(
                         };
                         let mut arguments = SmallVec::<[_; 6]>::new();
                         for (idx, &arg) in ir.args[2..].iter().enumerate() {
-                            // FIXME: refine lir types
-                            // let info = func.param_types[idx].type_info(&named_types, target);
-                            let info = TypeInfo::new(8, 8);
-                            let arg = match arg {
+                            let info = param_types[idx].type_info(&named_types, target);
+                            let arg = match arg.val {
                                 Value::Uint(i) => {
                                     i.into()
                                 }
@@ -238,12 +229,9 @@ pub fn codegen_update(
                         program.call_conv.build_call(builder, bb, func_ref, t, &arguments)?;
                     }
                     Instruction::Return => {
-                        let t = match ir.args[0] {
-                            Value::Type(t) => t,
-                            _ => todo!(),
-                        };
+                        let t = ir.args[0].typ;
                         let t = t.type_info(&named_types, &target);
-                        let result = match ir.args[1] {
+                        let result = match ir.args[0].val {
                             Value::Uint(u) => TypedArgument {
                                 info: t,
                                 arg: u.into(),

@@ -248,7 +248,6 @@ pub fn infer_update(
                         }
                         TypeOrPlaceholder::Dispatch(scope, handle) => {
                             let ident = strings.get(handle).unwrap();
-                            let name = Name(scope, handle);
                             let args: SmallVec<_> = node.children[1..]
                                 .iter()
                                 .map(|param| {
@@ -264,6 +263,7 @@ pub fn infer_update(
                             let mut iter = Some(scope);
                             let mut result = None;
                             while let Some(scope) = iter {
+                                let name = Name(scope, handle);
                                 let dispatch = dispatch.get::<Dispatcher>(DispatchId::from_name(
                                     name.0,
                                     ident.as_bytes(),

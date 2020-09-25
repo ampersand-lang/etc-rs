@@ -4,11 +4,11 @@ use std::iter;
 use smallvec::SmallVec;
 
 use crate::assets::{AssetBundle, Handle, Resources};
-use crate::lir::Value;
+use crate::lir::{TypedValue, Value};
 use crate::scope::ScopeId;
 use crate::types::{primitive, TypeId};
 
-pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut Value)>) {
+pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut TypedValue)>) {
     let i_sint = Handle::new();
     res.insert(i_sint, "sint".to_string());
     let name = Name(ScopeId::nil(), i_sint);
@@ -19,7 +19,7 @@ pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut Value)>) {
         Dispatcher::with_definitions(name, iter::once(t_sint)),
     );
 
-    let v_sint = Value::Type(*primitive::SINT);
+    let v_sint = TypedValue::new(*primitive::TYPE, Value::Type(*primitive::SINT));
     let h_sint = Handle::from_name(name.0, "sint".as_bytes());
     res.insert(h_sint, v_sint);
 
@@ -33,7 +33,7 @@ pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut Value)>) {
         Dispatcher::with_definitions(name, iter::once(t_type)),
     );
 
-    let v_type = Value::Type(*primitive::TYPE);
+    let v_type = TypedValue::new(*primitive::TYPE, Value::Type(*primitive::TYPE));
     let h_type = Handle::from_name(name.0, "type".as_bytes());
     res.insert(h_type, v_type);
 }
@@ -193,7 +193,6 @@ impl Definition {
         match (self.is_func, q.is_func) {
             (_, IsFunction::Maybe) => {}
             (true, IsFunction::Yes) => {}
-            (true, IsFunction::No) => {}
             (false, IsFunction::No) => {}
             _ => return false,
         }

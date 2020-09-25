@@ -5,7 +5,6 @@ use failure::Fallible;
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
 
-use crate::types::{TypeGroup, TypeId, TypeOrPlaceholder};
 use crate::values::Payload;
 
 pub fn mir_update(
@@ -52,10 +51,6 @@ pub fn mir_update(
         for handle in constants {
             let constant = nodes.get_mut::<Node>(handle).unwrap();
             let clone = constant.as_ref().clone();
-            let constant_type = TypeId {
-                group: TypeGroup::None,
-                concrete: TypeOrPlaceholder::Typeof(clone.id()),
-            };
 
             let h = clone.id();
             lazy.insert(clone.id(), clone);
@@ -69,12 +64,6 @@ pub fn mir_update(
             let h = kind.id();
             lazy.insert(h, kind);
             let kind = h;
-
-            let mut typ = Node::new(Kind::Nil, Handle::nil(), iter::empty());
-            typ.payload = Some(Payload::Type(constant_type));
-            let h = typ.id();
-            lazy.insert(h, typ);
-            let typ = h;
 
             let mut new_node = Node::new(Kind::Nil, Handle::nil(), iter::empty());
             let identifier = "new-node".to_string();
@@ -91,7 +80,6 @@ pub fn mir_update(
                 Handle::nil(),
                 iter::once(Some(new_node))
                     .chain(iter::once(Some(kind)))
-                    .chain(iter::once(Some(typ)))
                     .chain(iter::once(Some(constant))),
             );
             let h = new_node.id();
