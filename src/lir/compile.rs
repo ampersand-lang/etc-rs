@@ -1,14 +1,14 @@
 use failure::Fallible;
-use smallvec::SmallVec;
 use hashbrown::HashMap;
+use smallvec::SmallVec;
 
 use crate::assets::{Asset, Handle, Resources};
 use crate::ast::{Kind, Node};
 use crate::lir::builder::*;
 use crate::lir::context::{ExecutionContext, VirtualAddress};
 
-use crate::types::{primitive, NamedType};
 use crate::scope::Scope;
+use crate::types::{primitive, NamedType};
 use crate::values::Payload;
 
 use super::*;
@@ -107,21 +107,48 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
         let this = res.get::<Node>(handle).unwrap().as_ref().clone();
         let value = match this.kind {
             Kind::Nil => match this.payload.unwrap() {
-                Payload::Unit => (TypedValue::new(this.type_of.unwrap(), Value::Unit), builder.0),
-                Payload::Integer(i) => (TypedValue::new(this.type_of.unwrap(), Value::Uint(i)), builder.0),
-                Payload::Float(f) => (TypedValue::new(this.type_of.unwrap(), Value::Float(f)), builder.0),
-                Payload::Type(t) => (TypedValue::new(this.type_of.unwrap(), Value::Type(t)), builder.0),
+                Payload::Unit => (
+                    TypedValue::new(this.type_of.unwrap(), Value::Unit),
+                    builder.0,
+                ),
+                Payload::Integer(i) => (
+                    TypedValue::new(this.type_of.unwrap(), Value::Uint(i)),
+                    builder.0,
+                ),
+                Payload::Float(f) => (
+                    TypedValue::new(this.type_of.unwrap(), Value::Float(f)),
+                    builder.0,
+                ),
+                Payload::Type(t) => (
+                    TypedValue::new(this.type_of.unwrap(), Value::Type(t)),
+                    builder.0,
+                ),
                 Payload::String(string) => {
                     let string = res.get::<String>(string).unwrap();
                     let mut addr = VirtualAddress(0);
                     builder.0.builder = builder.0.builder.add_global(&mut addr, string.as_str());
-                    (TypedValue::new(this.type_of.unwrap(), Value::Address(addr)), builder.0)
+                    (
+                        TypedValue::new(this.type_of.unwrap(), Value::Address(addr)),
+                        builder.0,
+                    )
                 }
                 Payload::Identifier(ident) if this.alternative => {
                     match res.get::<String>(ident).unwrap().as_str() {
-                        "ptr" => (TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::PTR)), builder.0),
-                        "fn" => (TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::FN)), builder.0),
-                        "format-ast" => (TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::FORMAT_AST)), builder.0),
+                        "ptr" => (
+                            TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::PTR)),
+                            builder.0,
+                        ),
+                        "fn" => (
+                            TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::FN)),
+                            builder.0,
+                        ),
+                        "format-ast" => (
+                            TypedValue::new(
+                                this.type_of.unwrap(),
+                                Value::Ffi(*foreign::FORMAT_AST),
+                            ),
+                            builder.0,
+                        ),
                         _ => todo!(),
                     }
                 }
@@ -142,21 +169,20 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                             iter = None;
                         }
                     }
-                    let addr = addr
-                            .expect(&format!("binding not found: {}", name.as_str()));
+                    let addr = addr.expect(&format!("binding not found: {}", name.as_str()));
                     let mut value = TypedValue::new(*primitive::UNIT, Value::Unit);
                     match addr.val {
                         Value::Address(_) | Value::Register(_) => {
-                            builder.0 =
-                                builder
-                                    .0
-                                    .build_load(&mut value, addr);
+                            builder.0 = builder.0.build_load(&mut value, addr);
                         }
                         _ => value = addr,
                     }
                     (value, builder.0)
                 }
-                Payload::Function(id) => (TypedValue::new(this.type_of.unwrap(), Value::Function(id)), builder.0),
+                Payload::Function(id) => (
+                    TypedValue::new(this.type_of.unwrap(), Value::Function(id)),
+                    builder.0,
+                ),
             },
             Kind::Block => {
                 let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
@@ -185,7 +211,8 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                                     param_types.push(param.type_of.unwrap());
                                     let v = Value::Arg(idx as _);
 
-                                    let ident = res.get::<Node>(param.children[0].unwrap()).unwrap();
+                                    let ident =
+                                        res.get::<Node>(param.children[0].unwrap()).unwrap();
                                     let ident = match ident.payload.unwrap() {
                                         Payload::Identifier(ident) => ident,
                                         // TODO: other bindings
@@ -195,20 +222,21 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
 
                                     let scope = param.scope.unwrap();
                                     let handle = Handle::from_name(scope, name.as_bytes());
-                                    transaction.insert(handle, TypedValue::new(param.type_of.unwrap(), v));
+                                    transaction
+                                        .insert(handle, TypedValue::new(param.type_of.unwrap(), v));
                                 }
                                 // other patterns
                                 _ => todo!(),
                             }
                         }
                     }
-                    _ => todo!()
+                    _ => todo!(),
                 }
 
                 for (k, v) in transaction {
                     res.insert(k, v);
                 }
-                
+
                 let handle = this.children[1].unwrap();
                 let body = res.get::<Node>(handle).unwrap();
                 let mut name = String::new();
@@ -240,7 +268,10 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     Kind::Nil => match func.payload.unwrap() {
                         Payload::Identifier(ident) if func.alternative => {
                             match res.get::<String>(ident).unwrap().as_str() {
-                                "quasiquote" => Some(TypedValue::new(*primitive::NODE, Value::Node(this.children[1].unwrap()))),
+                                "quasiquote" => Some(TypedValue::new(
+                                    *primitive::NODE,
+                                    Value::Node(this.children[1].unwrap()),
+                                )),
                                 "new-node" => {
                                     let mut args = SmallVec::new();
                                     for expr in &this.children[1..] {
@@ -273,9 +304,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                         }
                     }
                     let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
-                    let b = builder
-                        .0
-                        .build_call(&mut result, args);
+                    let b = builder.0.build_call(&mut result, args);
                     (result, b)
                 }
             }
@@ -316,12 +345,13 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 }
                 let handle = Handle::new();
                 res.insert::<Elems>(handle, result);
-                (TypedValue::new(this.type_of.unwrap(), Value::Struct(handle)), builder.0)
+                (
+                    TypedValue::new(this.type_of.unwrap(), Value::Struct(handle)),
+                    builder.0,
+                )
             }
             Kind::Argument => todo!(),
-            Kind::Declaration => {
-                Node::compile(this.children[0].unwrap(), res, builder)?
-            }
+            Kind::Declaration => Node::compile(this.children[0].unwrap(), res, builder)?,
             Kind::Array => {
                 let mut result = Elems::new();
                 for expr in &this.children {
@@ -331,7 +361,10 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 }
                 let handle = Handle::new();
                 res.insert::<Elems>(handle, result);
-                (TypedValue::new(this.type_of.unwrap(), Value::Array(handle)), builder.0)
+                (
+                    TypedValue::new(this.type_of.unwrap(), Value::Array(handle)),
+                    builder.0,
+                )
             }
             Kind::Index => todo!(),
             Kind::Dotted => todo!(),

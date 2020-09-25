@@ -66,12 +66,22 @@ fn non_nil(
 
     let universe = match node.kind {
         Kind::Nil => ctx.universes[&node.id()],
-        Kind::Function => {
-            node.children.iter().map(Option::as_ref).flatten().map(|child| ctx.universes[child]).min().unwrap()
-        }
-        _ => {
-            node.children.iter().map(Option::as_ref).flatten().map(|child| ctx.universes[child]).max().unwrap()
-        }
+        Kind::Function => node
+            .children
+            .iter()
+            .map(Option::as_ref)
+            .flatten()
+            .map(|child| ctx.universes[child])
+            .min()
+            .unwrap(),
+        _ => node
+            .children
+            .iter()
+            .map(Option::as_ref)
+            .flatten()
+            .map(|child| ctx.universes[child])
+            .max()
+            .unwrap(),
     };
     ctx.universes.insert(node.id(), universe);
 
@@ -86,7 +96,7 @@ fn reverse_dependencies(
     ctx: &mut Context,
 ) -> Fallible<()> {
     let node = nodes.get(handle).unwrap();
-    
+
     for child in &node.children {
         if let Some(&child) = child.as_ref() {
             reverse_dependencies(_lazy, nodes, child, Some(handle), ctx)?;
@@ -217,7 +227,7 @@ fn dependencies(
     ctx: &mut Context,
 ) -> Fallible<()> {
     let node = nodes.get(handle).unwrap();
-    
+
     match node.kind {
         Kind::Block | Kind::Function => {
             ctx.bindings.push(HashMap::new());
@@ -266,7 +276,7 @@ fn dependencies(
         }
         _ => {}
     }
-    
+
     if matches!(node.kind, Kind::Block | Kind::Function) {
         ctx.bindings.pop();
     }

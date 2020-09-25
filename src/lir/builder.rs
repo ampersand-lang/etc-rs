@@ -112,12 +112,15 @@ impl<'a> FunctionBuilder<'a> {
                 concrete: TypeOrPlaceholder::Type(handle),
             }
         };
-        
+
         self.body.push(Ir {
             binding: Some(binding),
             life: Lifetime::empty(self.current_block.expect("no current block started")),
             instr: Instruction::Alloca,
-            args: smallvec![TypedValue::new(*primitive::TYPE, Value::Type(t)), TypedValue::new(t, Value::Uint(n))],
+            args: smallvec![
+                TypedValue::new(*primitive::TYPE, Value::Type(t)),
+                TypedValue::new(t, Value::Uint(n))
+            ],
             typ: ptr_t,
         });
         *out = TypedValue::new(ptr_t, Value::Register(binding));
@@ -147,15 +150,13 @@ impl<'a> FunctionBuilder<'a> {
         counter.inc();
 
         let unptr_t = match v.typ.concrete {
-            TypeOrPlaceholder::Type(handle) => {
-                match self.builder.res.get(handle).unwrap().t {
-                    Type::Pointer(t) => t,
-                    _ => todo!(),
-                }
-            }
+            TypeOrPlaceholder::Type(handle) => match self.builder.res.get(handle).unwrap().t {
+                Type::Pointer(t) => t,
+                _ => todo!(),
+            },
             _ => todo!(),
         };
-        
+
         self.body.push(Ir {
             binding: Some(binding),
             life: Lifetime::empty(self.current_block.expect("no current block started")),
@@ -182,22 +183,16 @@ impl<'a> FunctionBuilder<'a> {
         self
     }
 
-    pub fn build_call(
-        mut self,
-        out: &mut TypedValue,
-        args: SmallVec<[TypedValue; 4]>,
-    ) -> Self {
+    pub fn build_call(mut self, out: &mut TypedValue, args: SmallVec<[TypedValue; 4]>) -> Self {
         let counter = &mut self.counter;
         let binding = *counter;
         counter.inc();
 
         let t = match args[0].typ.concrete {
-            TypeOrPlaceholder::Type(handle) => {
-                match self.builder.res.get(handle).unwrap().t {
-                    Type::Function { result_type: t, .. } => t,
-                    _ => todo!(),
-                }
-            }
+            TypeOrPlaceholder::Type(handle) => match self.builder.res.get(handle).unwrap().t {
+                Type::Function { result_type: t, .. } => t,
+                _ => todo!(),
+            },
             _ => todo!(),
         };
 

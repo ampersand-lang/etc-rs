@@ -115,7 +115,7 @@ impl CallConv for AmpCall64 {
         }
         Ok(())
     }
-    
+
     fn argument(&self, builder: &FunctionBuilder, arg: i32) -> Fallible<Argument> {
         let arg = arg as usize;
         let params = builder.parameters();

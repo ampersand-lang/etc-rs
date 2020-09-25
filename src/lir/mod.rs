@@ -76,7 +76,9 @@ pub mod foreign {
         for arg in args.iter().skip(1) {
             let param = match arg.val {
                 Value::Type(t) => t,
-                Value::Arg(r) => TypeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
+                Value::Arg(r) => {
+                    TypeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)])
+                }
                 Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
                 _ => return Err(From::from(TypeError)),
             };
@@ -144,7 +146,9 @@ pub mod foreign {
                         };
                         if let Some(num) = ident {
                             let id = match args[1 + num].val {
-                                Value::Arg(r) => NodeId::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)]),
+                                Value::Arg(r) => NodeId::from_bytes(
+                                    &ctx.arguments[&Argument::new(r, ctx.invocation)],
+                                ),
                                 Value::Register(r) => {
                                     NodeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)])
                                 }
@@ -227,7 +231,7 @@ impl Argument {
     pub fn new(prot: i32, invocation: u64) -> Self {
         Self { prot, invocation }
     }
-    
+
     pub fn get(&self) -> i32 {
         self.prot
     }
@@ -554,13 +558,12 @@ mod tests {
         let mut lazy = LazyUpdate::new();
 
         let mut main = 0;
-        let (_, mut ctx) =
-            ExecutionContext::builder(world.resources>(), Target::default())
-                .function("main")
-                .result(*primitive::SINT)
-                .build_return(TypedValue::new(*primitive::SINT, Value::Uint(5)))
-                .build(&mut main)
-                .build();
+        let (_, mut ctx) = ExecutionContext::builder(world.resources > (), Target::default())
+            .function("main")
+            .result(*primitive::SINT)
+            .build_return(TypedValue::new(*primitive::SINT, Value::Uint(5)))
+            .build(&mut main)
+            .build();
         assert_eq!(
             ctx.call(
                 &mut lazy,

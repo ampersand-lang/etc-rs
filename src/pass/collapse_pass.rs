@@ -37,8 +37,7 @@ pub fn collapse(
                     }
                     continue;
                 };
-                let query =
-                    Query::new(Name(scope, name), IsFunction::Maybe, None, None);
+                let query = Query::new(Name(scope, name), IsFunction::Maybe, None, None);
                 let results = dispatcher.query(&query, &named_types);
                 let t = match results.len() {
                     0 => {
@@ -56,11 +55,19 @@ pub fn collapse(
                 return Ok((t, Some(scope)));
             }
             // TODO: a proper error type
-            Err(failure::err_msg(format!("binding not found: {}", string.as_str())))
+            Err(failure::err_msg(format!(
+                "binding not found: {}",
+                string.as_str()
+            )))
         }
-        TypeOrPlaceholder::Typeof(id) => {
-            collapse(nodes.get(id).unwrap().type_of.unwrap(), scopes, strings, dispatch, named_types, nodes)
-        }
+        TypeOrPlaceholder::Typeof(id) => collapse(
+            nodes.get(id).unwrap().type_of.unwrap(),
+            scopes,
+            strings,
+            dispatch,
+            named_types,
+            nodes,
+        ),
     }
 }
 
@@ -81,7 +88,8 @@ pub fn collapse_update(
         let mut types = HashMap::new();
         root.visit(Visit::Postorder, &nodes, |_res, node, _| {
             if let Some(typ) = node.type_of {
-                let (t, s) = match collapse(typ, &scopes, &strings, &dispatch, &named_types, &nodes) {
+                let (t, s) = match collapse(typ, &scopes, &strings, &dispatch, &named_types, &nodes)
+                {
                     Ok(tuple) => tuple,
                     Err(err) => {
                         errors.push(err);
@@ -103,13 +111,15 @@ pub fn collapse_update(
             if let Some(payload) = node.payload {
                 match payload {
                     Payload::Type(typ) => {
-                        let (t, s) = match collapse(typ, &scopes, &strings, &dispatch, &named_types, &nodes) {
-                            Ok(tuple) => tuple,
-                            Err(err) => {
-                                errors.push(err);
-                                return VisitResult::Recurse;
-                            }
-                        };
+                        let (t, s) =
+                            match collapse(typ, &scopes, &strings, &dispatch, &named_types, &nodes)
+                            {
+                                Ok(tuple) => tuple,
+                                Err(err) => {
+                                    errors.push(err);
+                                    return VisitResult::Recurse;
+                                }
+                            };
                         payloads.insert(node.id(), Payload::Type(t));
                         if let Some(s) = s {
                             new_scopes.insert(node.id(), s);

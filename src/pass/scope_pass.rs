@@ -22,31 +22,27 @@ pub fn scope_update(
 
         root.visit_twice(&nodes, |_res, node, _, which| {
             match which {
-                Which::Before => {
-                    match node.kind {
-                        Kind::Block | Kind::Function => {
-                            let handle = scope_list.last().copied().unwrap();
-                            new_scopes.insert(node.id(), handle);
-                            
-                            let scope = Scope::with_parent(handle);
-                            let handle = ScopeId::new();
-                            scopes.insert(handle, scope);
-                            scope_list.push(handle);
-                        }
-                        _ => {
-                            let handle = scope_list.last().copied().unwrap();
-                            new_scopes.insert(node.id(), handle);
-                        }
+                Which::Before => match node.kind {
+                    Kind::Block | Kind::Function => {
+                        let handle = scope_list.last().copied().unwrap();
+                        new_scopes.insert(node.id(), handle);
+
+                        let scope = Scope::with_parent(handle);
+                        let handle = ScopeId::new();
+                        scopes.insert(handle, scope);
+                        scope_list.push(handle);
                     }
-                }
-                Which::After => {
-                    match node.kind {
-                        Kind::Block | Kind::Function => {
-                            scope_list.pop();
-                        }
-                        _ => {}
+                    _ => {
+                        let handle = scope_list.last().copied().unwrap();
+                        new_scopes.insert(node.id(), handle);
                     }
-                }
+                },
+                Which::After => match node.kind {
+                    Kind::Block | Kind::Function => {
+                        scope_list.pop();
+                    }
+                    _ => {}
+                },
             }
             VisitResult::Recurse
         });

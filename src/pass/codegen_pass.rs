@@ -20,9 +20,16 @@ pub fn codegen_update(
         let ctx = threads
             .remove::<ExecutionContext>(root.thread.unwrap())
             .unwrap();
-        let functions = ctx.iter().map(|func| func.name.to_string()).collect::<Vec<_>>();
+        let functions = ctx
+            .iter()
+            .map(|func| func.name.to_string())
+            .collect::<Vec<_>>();
         for func in ctx.functions() {
-            let params = func.param_types.iter().map(|t| t.type_info(&named_types, target)).collect::<SmallVec<[_; 6]>>();
+            let params = func
+                .param_types
+                .iter()
+                .map(|t| t.type_info(&named_types, target))
+                .collect::<SmallVec<[_; 6]>>();
             let builder = program.codegen.add_function(
                 &*program.call_conv,
                 func.name.to_string(),
@@ -184,49 +191,37 @@ pub fn codegen_update(
                         let t = ir.typ.type_info(&named_types, &target);
 
                         let param_types = match ir.args[0].typ.concrete {
-                            TypeOrPlaceholder::Type(handle) => {
-                                named_types.get(handle).unwrap()
-                            }
+                            TypeOrPlaceholder::Type(handle) => named_types.get(handle).unwrap(),
                             _ => todo!(),
                         };
                         let param_types = match param_types.t {
-                            Type::Function { ref param_types, .. } => param_types,
+                            Type::Function {
+                                ref param_types, ..
+                            } => param_types,
                             _ => todo!(),
                         };
-                        
+
                         let func_ref = match ir.args[0].val {
-                            Value::Arg(r) => {
-                                program.call_conv.argument(builder, r)?
-                            }
-                            Value::Register(r) => {
-                                builder.local(r).unwrap().reg.into()
-                            }
-                            Value::Function(i) => {
-                                functions[i].to_string().into()
-                            }
+                            Value::Arg(r) => program.call_conv.argument(builder, r)?,
+                            Value::Register(r) => builder.local(r).unwrap().reg.into(),
+                            Value::Function(i) => functions[i].to_string().into(),
                             _ => todo!(),
                         };
                         let mut arguments = SmallVec::<[_; 6]>::new();
                         for (idx, &arg) in ir.args[2..].iter().enumerate() {
                             let info = param_types[idx].type_info(&named_types, target);
                             let arg = match arg.val {
-                                Value::Uint(i) => {
-                                    i.into()
-                                }
-                                Value::Arg(r) => {
-                                    program.call_conv.argument(builder, r)?
-                                }
-                                Value::Register(r) => {
-                                    builder.local(r).unwrap().reg.into()
-                                }
-                                Value::Function(i) => {
-                                    functions[i].to_string().into()
-                                }
+                                Value::Uint(i) => i.into(),
+                                Value::Arg(r) => program.call_conv.argument(builder, r)?,
+                                Value::Register(r) => builder.local(r).unwrap().reg.into(),
+                                Value::Function(i) => functions[i].to_string().into(),
                                 _ => todo!(),
                             };
                             arguments.push(TypedArgument { info, arg });
                         }
-                        program.call_conv.build_call(builder, bb, func_ref, t, &arguments)?;
+                        program
+                            .call_conv
+                            .build_call(builder, bb, func_ref, t, &arguments)?;
                     }
                     Instruction::Return => {
                         let t = ir.args[0].typ;

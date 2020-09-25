@@ -288,10 +288,7 @@ impl Node {
 
     pub fn clone_from(&mut self, other: Self) {
         let id = self.id;
-        *self = Self {
-            id,
-            ..other
-        }
+        *self = Self { id, ..other }
     }
 
     /// Gives the unique identifier (handle) to this node.

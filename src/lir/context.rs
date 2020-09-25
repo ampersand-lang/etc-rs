@@ -285,7 +285,9 @@ impl ExecutionContext {
         let result = match ir.instr {
             Instruction::Alloca => {
                 let t = match ir.args[0].val {
-                    Value::Arg(r) => TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
+                    Value::Arg(r) => {
+                        TypeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                    }
                     Value::Register(r) => {
                         TypeId::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -294,7 +296,9 @@ impl ExecutionContext {
                 };
                 let t = t.type_info(res, &self.target);
                 let n = match ir.args[1].val {
-                    Value::Arg(r) => u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
+                    Value::Arg(r) => {
+                        u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                    }
                     Value::Register(r) => {
                         u64::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -313,7 +317,9 @@ impl ExecutionContext {
                 let t = ir.args[1].typ;
                 let t = t.type_info(res, &self.target);
                 let ptr = match ir.args[0].val {
-                    Value::Arg(r) => VirtualAddress::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
+                    Value::Arg(r) => VirtualAddress::from_bytes(
+                        &self.arguments[&Argument::new(r, self.invocation)],
+                    ),
                     Value::Register(r) => {
                         VirtualAddress::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -323,7 +329,9 @@ impl ExecutionContext {
                 let mut value = vec![0_u8; t.size];
                 match ir.args[1].val {
                     Value::Unit => {}
-                    Value::Arg(r) => value.copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
+                    Value::Arg(r) => {
+                        value.copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)])
+                    }
                     Value::Register(r) => {
                         value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                     }
@@ -347,7 +355,9 @@ impl ExecutionContext {
             Instruction::Load => {
                 let t = ir.typ.type_info(res, &self.target);
                 let ptr = match ir.args[0].val {
-                    Value::Arg(r) => VirtualAddress::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
+                    Value::Arg(r) => VirtualAddress::from_bytes(
+                        &self.arguments[&Argument::new(r, self.invocation)],
+                    ),
                     Value::Register(r) => {
                         VirtualAddress::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -365,7 +375,9 @@ impl ExecutionContext {
             Instruction::Call => {
                 let t = ir.typ.type_info(res, &self.target);
                 let func = match ir.args[0].val {
-                    Value::Arg(r) => Some(u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]) as usize),
+                    Value::Arg(r) => Some(u64::from_bytes(
+                        &self.arguments[&Argument::new(r, self.invocation)],
+                    ) as usize),
                     Value::Register(r) => {
                         Some(u64::from_bytes(&self.registers[&r.build(self.invocation)]) as usize)
                     }
@@ -376,7 +388,9 @@ impl ExecutionContext {
                         let mut bytes = smallvec![0_u8; t.size];
                         match result.val {
                             Value::Unit => {}
-                            Value::Arg(r) => bytes.copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
+                            Value::Arg(r) => bytes.copy_from_slice(
+                                &self.arguments[&Argument::new(r, self.invocation)],
+                            ),
                             Value::Register(r) => {
                                 bytes.copy_from_slice(&self.registers[&r.build(self.invocation)])
                             }
@@ -412,7 +426,9 @@ impl ExecutionContext {
             }
             Instruction::NewNode => {
                 let n = match ir.args[0].val {
-                    Value::Arg(r) => u8::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]),
+                    Value::Arg(r) => {
+                        u8::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                    }
                     Value::Register(r) => {
                         u8::from_bytes(&self.registers[&r.build(self.invocation)])
                     }
@@ -490,7 +506,9 @@ impl ExecutionContext {
                 let mut children: SmallVec<[Option<NodeId>; 4]> = SmallVec::new();
                 for child in &ir.args[2..] {
                     match child.val {
-                        Value::Arg(r) => children.push(Some(NodeId::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]))),
+                        Value::Arg(r) => children.push(Some(NodeId::from_bytes(
+                            &self.arguments[&Argument::new(r, self.invocation)],
+                        ))),
                         Value::Register(r) => children.push(Some(NodeId::from_bytes(
                             &self.registers[&r.build(self.invocation)],
                         ))),
@@ -516,13 +534,16 @@ impl ExecutionContext {
                     self.instr_ptr = ip;
                     self.invocation = inv;
 
-                    let t = self.text[self.instr_ptr.0 as usize].result_type.type_info(res, &self.target);
+                    let t = self.text[self.instr_ptr.0 as usize]
+                        .result_type
+                        .type_info(res, &self.target);
 
                     let binding = r.build(self.invocation);
                     let mut value = smallvec![0_u8; t.size];
                     match ir.args[0].val {
                         Value::Unit => {}
-                        Value::Arg(r) => value.copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
+                        Value::Arg(r) => value
+                            .copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
                         Value::Register(r) => {
                             value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                         }
@@ -558,7 +579,9 @@ impl ExecutionContext {
             Instruction::IfThenElse => {
                 let cond = match ir.args[0].val {
                     Value::Bool(p) => p,
-                    Value::Arg(r) => u8::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]) == 1,
+                    Value::Arg(r) => {
+                        u8::from_bytes(&self.arguments[&Argument::new(r, self.invocation)]) == 1
+                    }
                     Value::Register(r) => {
                         u8::from_bytes(&self.registers[&r.build(self.invocation)]) == 1
                     }
@@ -627,7 +650,9 @@ impl ExecutionContext {
             let mut value = smallvec![0_u8; t.size];
             match val {
                 Value::Unit => {}
-                Value::Arg(r) => value.copy_from_slice(&self.arguments[&Argument::new(*r, self.invocation)]),
+                Value::Arg(r) => {
+                    value.copy_from_slice(&self.arguments[&Argument::new(*r, self.invocation)])
+                }
                 Value::Register(r) => {
                     value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                 }
@@ -645,7 +670,8 @@ impl ExecutionContext {
                 Value::Tagged(..) => todo!(),
                 Value::Ffi(foreign) => foreign.write_bytes(&mut value),
             }
-            self.arguments.insert(Argument::new(idx as _, self.invocation), value);
+            self.arguments
+                .insert(Argument::new(idx as _, self.invocation), value);
         }
         let result = self.run(lazy, foreign, res)?;
         let result_value = match result {

@@ -7,8 +7,8 @@ use ast::{Node, RootNode, Visit, VisitResult};
 use dispatch::Dispatcher;
 use lexer::{Lexer, Location};
 use lir::{
-    context::ExecutionContext, foreign, target::Target, Binding, Bytes, Elems, Foreign,
-    TypedValue, Variants,
+    context::ExecutionContext, foreign, target::Target, Binding, Bytes, Elems, Foreign, TypedValue,
+    Variants,
 };
 use parser::{grammar, State};
 use pipeline::*;

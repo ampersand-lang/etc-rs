@@ -317,7 +317,7 @@ impl Argument {
     pub fn is_register(&self) -> bool {
         matches!(self, Argument::Register(..))
     }
-    
+
     pub fn is_literal(&self) -> bool {
         matches!(
             self,
@@ -328,7 +328,7 @@ impl Argument {
                 | Argument::BasicBlock(..)
         )
     }
-    
+
     pub fn is_address(&self) -> bool {
         matches!(self, Argument::Memory { .. })
     }
@@ -526,7 +526,12 @@ pub struct FunctionBuilder {
 }
 
 impl FunctionBuilder {
-    pub fn new(name: String, parameters: SmallVec<[TypeInfo; 6]>, pool: Vec<Register>, block_listing: Vec<BasicBlockPrototype>) -> Self {
+    pub fn new(
+        name: String,
+        parameters: SmallVec<[TypeInfo; 6]>,
+        pool: Vec<Register>,
+        block_listing: Vec<BasicBlockPrototype>,
+    ) -> Self {
         Self {
             name,
             parameters,
@@ -781,9 +786,9 @@ impl CodeBuilder {
         listing: Vec<BasicBlockPrototype>,
     ) -> &mut FunctionBuilder {
         let free = call_conv.free(param_types);
-        self.functions
-            .entry(name.clone())
-            .or_insert_with(|| FunctionBuilder::new(name, param_types.iter().copied().collect(), free, listing))
+        self.functions.entry(name.clone()).or_insert_with(|| {
+            FunctionBuilder::new(name, param_types.iter().copied().collect(), free, listing)
+        })
     }
 
     pub fn function_mut(&mut self, name: &str) -> Option<&mut FunctionBuilder> {

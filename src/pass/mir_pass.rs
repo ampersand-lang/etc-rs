@@ -29,16 +29,14 @@ pub fn mir_update(
 
         let mut constants = Vec::new();
 
-        root.visit(Visit::Preorder, &nodes, |_, node, _| {
-            match node.kind {
-                Kind::Argument | Kind::Binding | Kind::Declaration => VisitResult::Recurse,
-                _ => {
-                    if node.universe == min_universe {
-                        constants.push(node.id());
-                        VisitResult::Continue
-                    } else {
-                        VisitResult::Recurse
-                    }
+        root.visit(Visit::Preorder, &nodes, |_, node, _| match node.kind {
+            Kind::Argument | Kind::Binding | Kind::Declaration => VisitResult::Recurse,
+            _ => {
+                if node.universe == min_universe {
+                    constants.push(node.id());
+                    VisitResult::Continue
+                } else {
+                    VisitResult::Recurse
                 }
             }
         });

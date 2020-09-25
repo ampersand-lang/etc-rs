@@ -179,11 +179,10 @@ pub fn infer_update(
                                                 _ => todo!(),
                                             }
                                         }
-                                        Kind::Declaration => {
-                                            param.type_of.or_else(|| {
-                                                types.get(&param.id()).copied()
-                                            }).unwrap()
-                                        }
+                                        Kind::Declaration => param
+                                            .type_of
+                                            .or_else(|| types.get(&param.id()).copied())
+                                            .unwrap(),
                                         // other patterns
                                         _ => todo!(),
                                     }
@@ -415,10 +414,11 @@ pub fn infer_update(
                         .children
                         .iter()
                         .map(|param| {
-                            nodes.get::<Node>(param.unwrap()).unwrap().type_of
-                                .or_else(|| {
-                                    types.get(&param.unwrap()).copied()
-                                })
+                            nodes
+                                .get::<Node>(param.unwrap())
+                                .unwrap()
+                                .type_of
+                                .or_else(|| types.get(&param.unwrap()).copied())
                                 .unwrap()
                         })
                         .collect();
