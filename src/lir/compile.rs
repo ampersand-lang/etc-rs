@@ -308,7 +308,8 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     (result, b)
                 }
             }
-            Kind::Binding => {
+            // XXX: is this correct?
+            Kind::Binding | Kind::Global => {
                 let v = if let Some(expr) = this.children[2] {
                     let (v, f) = Node::compile(expr, res, builder)?;
                     builder = ValueBuilder(f);

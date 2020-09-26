@@ -1,6 +1,7 @@
 use std::iter;
 
 use failure::Fallible;
+use hashbrown::{HashMap, HashSet};
 
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
@@ -9,6 +10,7 @@ use crate::values::Payload;
 pub fn mir_update(
     lazy: &mut LazyUpdate,
     roots: Resources<&mut RootNode>,
+    mut strings: Resources<&mut String>,
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<Option<&'static str>> {
     for (_, mut root_node) in roots.iter_mut::<RootNode>() {
@@ -26,44 +28,36 @@ pub fn mir_update(
             continue;
         }
 
-        let mut generic_calls = Vec::new();
+        let mut transaction = HashSet::new();
+        let mut new_nodes = HashMap::new();
+        let mut insert = Vec::new();
 
-        root.visit(Visit::Postorder, &nodes, |_, node, parent| {
-            if node.generic_call.is_some() {
-                generic_calls.push((node.id(), parent.unwrap().id()));
-            }
-            VisitResult::Recurse
-        });
-
-        for &(gen, handle) in &generic_calls {
-            let mut gen = nodes.get_mut(gen).unwrap();
-            gen.generic_call = None;
-            gen.no_newnode = true;
-            let node = nodes.get(handle).unwrap();
-            let mut node = node.as_ref().clone();
-            for child in &mut node.children[1..] {
-                let child_handle = child.as_mut().unwrap();
-                let child = nodes.get(*child_handle).unwrap();
-                let new = child.as_ref().clone();
+        root.visit(Visit::Postorder, &nodes, |_, node, _parent| {
+            if node.mark_newnode {
+                let orig_handle = node.id();
+                transaction.insert(node.id());
+                let mut new = node.clone();
+                new.mark_newnode = false;
+                new.no_newnode = true;
                 let handle = new.id();
-                nodes.insert(new.id(), new);
+                insert.push((new.id(), new));
                 let new = handle;
 
                 let mut kind = Node::new(Kind::Nil, Handle::nil(), iter::empty());
                 let k: u8 = Kind::Nil.into();
                 kind.payload = Some(Payload::Integer(k as _));
                 let h = kind.id();
-                nodes.insert(h, kind);
+                insert.push((h, kind));
                 let kind = h;
 
                 let mut new_node = Node::new(Kind::Nil, Handle::nil(), iter::empty());
                 let identifier = "new-node".to_string();
                 let handle = Handle::from_hash(identifier.as_bytes());
-                nodes.insert(handle, identifier);
+                strings.insert(handle, identifier);
                 new_node.payload = Some(Payload::Identifier(handle));
                 new_node.alternative = true;
                 let h = new_node.id();
-                nodes.insert(h, new_node);
+                insert.push((h, new_node));
                 let new_node = h;
 
                 let new_node = Node::new(
@@ -73,13 +67,58 @@ pub fn mir_update(
                         .chain(iter::once(Some(kind)))
                         .chain(iter::once(Some(new))),
                 );
-                let h = new_node.id();
-                nodes.insert(h, new_node);
-                let new_node = h;
                 
-                *child_handle = new_node;
+                new_nodes.insert(orig_handle, new_node);
             }
-            nodes.get_mut(handle).unwrap().clone_from(node);
+            VisitResult::Recurse
+        });
+
+        for (handle, node) in insert {
+            nodes.insert(handle, node);
+        }
+
+        for (handle, prototype) in new_nodes {
+            let mut node = nodes.get_mut(handle).unwrap();
+            node.clone_from(prototype);
+        }
+
+        for handle in transaction {
+            let mut node = nodes.get_mut(handle).unwrap();
+            node.mark_newnode = false;
+            node.no_newnode = true;
+        }
+
+        let mut transaction = HashSet::new();
+        let mut types = HashMap::new();
+        
+        let root = nodes.get::<Node>(root_node.0).unwrap();
+
+        root.visit(Visit::Postorder, &nodes, |_, node, _parent| {
+            if node.old_reify.is_some() {
+                let func = node.children[0].unwrap();
+                let func = nodes.get(func).unwrap();
+                types.insert(node.id(), node.type_of);
+                types.insert(func.id(), func.type_of);
+            } else if node.reify.is_some() {
+                let func = node.children[0].unwrap();
+                let func = nodes.get(func).unwrap();
+                types.insert(node.id(), node.type_of);
+                types.insert(func.id(), func.type_of);
+                transaction.insert(node.id());
+                transaction.insert(func.id());
+            }
+            VisitResult::Recurse
+        });
+
+        for (handle, t) in types {
+            nodes.get_mut(handle).unwrap().unquote_type = t;
+        }
+
+        for handle in transaction {
+            let mut node = nodes.get_mut(handle).unwrap();
+            if let Some(reify) = node.reify.take() {
+                node.old_reify = Some(reify);
+            }
         }
 
         let mut constants = Vec::new();
@@ -90,15 +129,7 @@ pub fn mir_update(
             Kind::Argument | Kind::Binding | Kind::Declaration => VisitResult::Recurse,
             _ => {
                 if node.universe == min_universe {
-                    let mut dont = false;
-                    node.visit(Visit::Postorder, &nodes, |_, node, _| {
-                        if node.no_newnode {
-                            dont = true;
-                            return VisitResult::Break;
-                        }
-                        VisitResult::Recurse
-                    });
-                    constants.push((node.id(), parent.map(|p| p.id()), dont));
+                    constants.push((node.id(), parent.map(|p| p.id())));
                     VisitResult::Continue
                 } else {
                     VisitResult::Recurse
@@ -111,8 +142,9 @@ pub fn mir_update(
 
         let mut replacements = Vec::new();
 
-        for (handle, parent, no_newnode) in constants {
+        for (handle, parent) in constants {
             let constant = nodes.get::<Node>(handle).unwrap();
+            let no_newnode = constant.no_newnode;
             let clone = constant.as_ref().clone();
 
             let clone = match clone.kind {
@@ -132,7 +164,8 @@ pub fn mir_update(
                                 replacements.push(replacement);
                             }
                             // PERF: clone is bad
-                            let body = body.as_ref().clone();
+                            let mut body = body.as_ref().clone();
+                            body.unquote_type = body.type_of;
                             let body = body.clone_with(&mut nodes, |_, this, children| {
                                 match this.kind {
                                     Kind::Nil => match this.payload.as_ref().unwrap() {
@@ -224,7 +257,7 @@ pub fn mir_update(
 
                             if let Some(parent) = parent {
                                 let parent = nodes.get(parent).unwrap();
-                                if matches!(parent.kind, Kind::Binding) {
+                                if matches!(parent.kind, Kind::Binding | Kind::Global) {
                                     let binding = parent.children[0].unwrap();
                                     let binding = nodes.get(binding).unwrap();
                                     let binding = binding.as_ref().clone();

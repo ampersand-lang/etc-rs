@@ -294,7 +294,7 @@ fn dependencies(
 
     match node.kind {
         // both of those have the type in position 1, so this is fine
-        Kind::Binding => {
+        Kind::Binding | Kind::Global => {
             let ident = nodes.get(node.children[0].unwrap()).unwrap();
             let ident = match ident.payload.unwrap() {
                 Payload::Identifier(ident) => ident,
@@ -469,10 +469,6 @@ pub fn universe_update(
         
         non_nil(_lazy, &nodes, root_node.0, None, &mut ctx)?;
         dependencies(_lazy, &nodes, root_node.0, None, &mut ctx)?;
-
-        for (handle, gen) in &ctx.generic_call {
-            nodes.get_mut::<Node>(*handle).unwrap().generic_call = Some(*gen);
-        }
         
         non_nil(_lazy, &nodes, root_node.0, None, &mut ctx)?;
 

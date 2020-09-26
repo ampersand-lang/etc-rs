@@ -1,4 +1,4 @@
-id := {t: type} => {a: t} => a;
+id :: {t: type; a: t} => a;
 
-x := (id sint) 42;
+x := id sint, 42;
 x

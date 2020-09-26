@@ -63,7 +63,7 @@ pub fn validate_update(
                         }
                     }
                 }
-                Kind::Binding => {
+                Kind::Binding | Kind::Global => {
                     if node.children.len() != 3 {
                         errors.push(From::from(MalformedTree(loc.clone())));
                         return VisitResult::Recurse;

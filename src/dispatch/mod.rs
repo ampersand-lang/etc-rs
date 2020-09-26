@@ -200,7 +200,8 @@ impl Definition {
         if self.is_func {
             if let Some(b) = q.arg_types.as_ref() {
                 let a = self.arg_types.as_ref().unwrap();
-                // NOTE: auto-currying
+                // NOTE: too-many-args auto-currying
+                // NOTE: too-few-args auto-currying is unimplemented yet
                 if a.len() > b.len() {
                     return false;
                 }

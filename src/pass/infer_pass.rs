@@ -79,6 +79,7 @@ pub fn infer_update(
             }
             _ => VisitResult::Recurse,
         });
+
         root.visit(Visit::Postorder, &nodes, |_res, node, _| {
             if skip.contains(&node.id()) {
                 return VisitResult::Recurse;
@@ -143,16 +144,16 @@ pub fn infer_update(
                     types.insert(node.id(), typ);
                 }
                 Kind::Block => {
-                    let typ = node.children.last().and_then(|last| {
-                        last.and_then(|last| {
-                            nodes
-                                .get::<Node>(last)
-                                .and_then(|last| last.type_of.clone())
-                                .or_else(|| types.get(&last).copied())
-                        })
-                    });
-                    if let Some(typ) = typ {
+                    let last = node.children.last().map(Option::as_ref).flatten();
+                    if let Some(&last) = last {
+                        let typ = nodes
+                            .get::<Node>(last)
+                            .and_then(|last| last.type_of.clone())
+                            .or_else(|| types.get(&last).copied())
+                            .unwrap();
                         types.insert(node.id(), typ);
+                    } else {
+                        types.insert(node.id(), *primitive::UNIT);
                     }
                 }
                 Kind::Function => {
@@ -222,9 +223,11 @@ pub fn infer_update(
                 Kind::Application => {
                     let func = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
                     let typ = func
-                        .type_of
+                        .unquote_type
+                        .or_else(|| func.type_of)
                         .or_else(|| types.get(&node.children[0].unwrap()).copied())
                         .unwrap();
+                    let args = node.children[1..].to_vec();
                     let typ = match typ.concrete {
                         TypeOrPlaceholder::Type(handle) => {
                             match &named_types.get::<NamedType>(handle).unwrap().t {
@@ -246,8 +249,7 @@ pub fn infer_update(
                             }
                         }
                         TypeOrPlaceholder::Dispatch(scope, handle) => {
-                            let ident = strings.get(handle).unwrap();
-                            let args: SmallVec<_> = node.children[1..]
+                            let args: SmallVec<_> = args
                                 .iter()
                                 .map(|param| {
                                     let id = param.unwrap();
@@ -259,6 +261,7 @@ pub fn infer_update(
                                         .unwrap()
                                 })
                                 .collect();
+                            let ident = strings.get(handle).unwrap();
                             let mut iter = Some(scope);
                             let mut result = None;
                             while let Some(scope) = iter {
@@ -320,27 +323,30 @@ pub fn infer_update(
                         _ => todo!(),
                     };
                     if let Some((result_type, param_types)) = typ {
-                        let named = Handle::new();
-                        named_types.insert(
-                            named,
-                            NamedType {
-                                name: None,
-                                t: Type::Function {
-                                    result_type,
-                                    param_types,
+                        if !func.alternative && args.len() < param_types.len() {
+                            todo!()
+                        } else {
+                            let named = Handle::new();
+                            named_types.insert(
+                                named,
+                                NamedType {
+                                    name: None,
+                                    t: Type::Function {
+                                        result_type,
+                                        param_types,
+                                    },
                                 },
-                            },
-                        );
-                        let typ = TypeId {
-                            group: TypeGroup::Function,
-                            concrete: TypeOrPlaceholder::Type(named),
-                        };
-                        types.insert(func.id(), typ);
-
-                        types.insert(node.id(), result_type);
+                            );
+                            let typ = TypeId {
+                                group: TypeGroup::Function,
+                                concrete: TypeOrPlaceholder::Type(named),
+                            };
+                            types.insert(func.id(), typ);
+                            types.insert(node.id(), result_type);
+                        }
                     }
                 }
-                Kind::Binding => {
+                Kind::Binding | Kind::Global => {
                     let ident = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
                     let ident = match ident.kind {
                         Kind::Nil => {
@@ -486,6 +492,7 @@ pub fn infer_update(
 
             VisitResult::Recurse
         });
+        
         for (handle, typ) in types {
             nodes.get_mut::<Node>(handle).unwrap().type_of = Some(typ);
         }

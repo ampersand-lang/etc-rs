@@ -83,6 +83,7 @@ fn main() {
 
     let mut pipeline = Pipeline::new();
     pipeline.add_stage(pass::VALIDATE_PASS);
+    pipeline.add_stage(pass::REIFY_PASS);
     pipeline.add_stage(pass::UNIVERSE_PASS);
     pipeline.add_stage(pass::MIR_PASS);
     pipeline.add_stage(pass::SCOPE_PASS);
@@ -113,6 +114,7 @@ fn main() {
         Some(pass::MIR_PASS)
     });
     pipeline.add_system_to_stage(pass::VALIDATE_PASS, pass::validate_update.system());
+    pipeline.add_system_to_stage(pass::REIFY_PASS, pass::reify_update.system());
     pipeline.add_system_to_stage(pass::UNIVERSE_PASS, pass::universe_update.system());
     pipeline.add_system_to_stage(pass::MIR_PASS, pass::mir_update.system());
     pipeline.add_system_to_stage(pass::SCOPE_PASS, pass::scope_update.system());

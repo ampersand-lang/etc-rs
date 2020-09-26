@@ -86,6 +86,24 @@ pub enum Kind {
     /// ];
     /// ```
     Binding,
+    /// A global binding of a value to a variable name.
+    ///
+    /// # Children
+    /// - 0: pattern
+    /// - 1: type (may be None)
+    /// - 2: value
+    ///
+    /// # Examples
+    /// ```text
+    /// x :: 1;
+    /// y: float32  1.0;
+    /// f :: (n) => match n, [
+    ///   0 => 0;
+    ///   1 => 1;
+    ///   n => (f (n - 1)) + (f (n - 2));
+    /// ];
+    /// ```
+    Global,
     /// Declaration of a type on another node.
     ///
     /// # Children
@@ -240,6 +258,12 @@ pub struct Node {
     id: NodeId,
     /// A flag that shows if a newnode should be created.
     pub no_newnode: bool,
+    /// A flag for marking nodes which should be transformed into `new-node`s in inference.
+    pub mark_newnode: bool,
+    /// A flag for marking that an application should be reified, but only with n of its m arguments, where m >= n.
+    pub reify: Option<usize>,
+    /// See reify.
+    pub old_reify: Option<usize>,
     /// A flag for nodes that are generic over some number of compile-time variables,
     ///  i.e. variables that get `replace`d in using `format-ast`.
     ///
@@ -251,8 +275,6 @@ pub struct Node {
     /// id := {t: type} => {a: t} => a;
     /// ```
     pub generic: Option<SmallVec<[Handle<String>; 4]>>,
-    /// A flag that represents if this application is a call to a generic function and if it is, which one
-    pub generic_call: Option<NodeId>,
     /// The order in which nodes get compiled and optionally executed.
     pub universe: i32,
     /// The source code mapping.
@@ -273,6 +295,8 @@ pub struct Node {
     pub payload: Option<Payload>,
     /// The high-level type of this node, if any.
     pub type_of: Option<TypeId>,
+    /// The unquoted type of this node, if any.
+    pub unquote_type: Option<TypeId>,
     /// Child nodes of this node.
     ///
     /// See the documentation of `Kind` for more details.
@@ -289,8 +313,10 @@ impl Node {
         Node {
             id: NodeId::new(),
             no_newnode: false,
+            mark_newnode: false,
+            reify: None,
+            old_reify: None,
             generic: None,
-            generic_call: None,
             universe: 0,
             location,
             alternative: false,
@@ -300,6 +326,7 @@ impl Node {
             value: None,
             payload: None,
             type_of: None,
+            unquote_type: None,
             children: children.into_iter().collect(),
         }
     }
@@ -508,8 +535,10 @@ impl Clone for Node {
         Self {
             id: NodeId::new(),
             no_newnode: self.no_newnode,
+            mark_newnode: self.mark_newnode,
+            reify: self.reify,
+            old_reify: self.old_reify,
             generic: self.generic.clone(),
-            generic_call: self.generic_call.clone(),
             universe: self.universe,
             location: self.location,
             alternative: self.alternative,
@@ -519,6 +548,7 @@ impl Clone for Node {
             value: self.value,
             payload: self.payload,
             type_of: self.type_of,
+            unquote_type: self.unquote_type,
             children: self.children.clone(),
         }
     }
@@ -749,6 +779,45 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                 .finish(),
             Kind::Binding => f
                 .debug_struct("Binding")
+                .field("universe", &node.universe)
+                .field("scope", &node.scope)
+                .field(
+                    "pattern",
+                    &node.children[0]
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
+                        .unwrap(),
+                )
+                .field(
+                    "type",
+                    &node.children[1].map(|node| {
+                        PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node)
+                    }),
+                )
+                .field(
+                    "value",
+                    &node.children[2]
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
+                        .unwrap(),
+                )
+                .finish(),
+            Kind::Global => f
+                .debug_struct("Global")
                 .field("universe", &node.universe)
                 .field("scope", &node.scope)
                 .field(
@@ -1116,6 +1185,28 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
             Kind::Binding => write!(
                 f,
                 "{} := {}",
+                node.children[0]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+                node.children[2]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+            ),
+            Kind::Global => write!(
+                f,
+                "{} :: {}",
                 node.children[0]
                     .map(|node| PrettyPrinterRef::new(
                         self.config,

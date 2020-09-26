@@ -30,7 +30,7 @@ pub fn parse(state: &mut State) -> Fallible<NodeId> {
                     .clone(),
             )));
 
-            let mut depth = 0_usize;
+            let mut depth = 0_isize;
             let mut tok = match state.lexer.next().unwrap() {
                 Ok(tok) => tok,
                 Err(err) => {
@@ -38,7 +38,7 @@ pub fn parse(state: &mut State) -> Fallible<NodeId> {
                     return None;
                 }
             };
-            while depth != 0 || tok.kind != TokenKind::Semicolon {
+            while depth > 0 || tok.kind != TokenKind::Semicolon {
                 match tok.kind {
                     TokenKind::Paren(Side::Left) => depth += 1,
                     TokenKind::Bracket(Side::Left) => depth += 1,
@@ -94,7 +94,11 @@ fn stmt(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn expr(state: &mut State) -> Fallible<NodeId> {
-    Ok(or(binding, declaration)(state)?.into_inner())
+    Ok(match or3(global, binding, declaration)(state)? {
+        Either::Left(Either::Left(node)) => node,
+        Either::Left(Either::Right(node)) => node,
+        Either::Right(node) => node,
+    })
 }
 
 fn binding(state: &mut State) -> Fallible<NodeId> {
@@ -108,6 +112,27 @@ fn binding(state: &mut State) -> Fallible<NodeId> {
     )(state)?;
     let node = Node::new(
         Kind::Binding,
+        location,
+        iter::once(Some(name))
+            .chain(iter::once(typ))
+            .chain(iter::once(Some(value))),
+    );
+    let handle = node.id();
+    state.nodes.insert(handle, node);
+    Ok(handle)
+}
+
+fn global(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
+    let (name, _, typ, _, value) = and5(
+        alternative,
+        literal(TokenKind::Colon),
+        optional(binary),
+        literal(TokenKind::Colon),
+        binary,
+    )(state)?;
+    let node = Node::new(
+        Kind::Global,
         location,
         iter::once(Some(name))
             .chain(iter::once(typ))
