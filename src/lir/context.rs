@@ -164,10 +164,7 @@ impl ExecutionContext {
     }
 
     pub fn builder_with(ctx: Self, res: Resources<&mut NamedType>) -> Builder {
-        Builder {
-            res,
-            ctx,
-        }
+        Builder { res, ctx }
     }
 
     pub fn main(&self) -> usize {
@@ -451,9 +448,9 @@ impl ExecutionContext {
                         let mut value = smallvec![0_u8; t.size];
                         match val {
                             Value::Unit => {}
-                            Value::Arg(r) => {
-                                value.copy_from_slice(&self.arguments[&Argument::new(*r, self.invocation)])
-                            }
+                            Value::Arg(r) => value.copy_from_slice(
+                                &self.arguments[&Argument::new(*r, self.invocation)],
+                            ),
                             Value::Register(r) => {
                                 value.copy_from_slice(&self.registers[&r.build(self.invocation)])
                             }
@@ -475,7 +472,7 @@ impl ExecutionContext {
                             .insert(Argument::new(idx as _, new_invocation), value);
                     }
                     self.invocation = new_invocation;
-                    
+
                     Ok(Result::Continue(0))
                 } else {
                     Ok(Result::Continue(1))
@@ -588,7 +585,7 @@ impl ExecutionContext {
                     let t = self.text[self.instr_ptr.0 as usize]
                         .result_type
                         .type_info(res, &self.target);
-                    
+
                     let r = self.instr_ptr.2;
                     let (sp, inv, ip) = self.call_stack.pop().unwrap();
                     let old_invocation = self.invocation;

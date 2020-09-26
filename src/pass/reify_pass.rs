@@ -50,9 +50,13 @@ pub fn reify_update(
                                                 let t = param.children[1].unwrap();
                                                 let t = nodes.get(t).unwrap();
                                                 match t.payload {
-                                                    Some(Payload::Identifier(ident)) => if types.contains(&ident) {
-                                                        is_generic = is_generic.map(|n| n + 1).or(Some(1));
-                                                    },
+                                                    Some(Payload::Identifier(ident)) => {
+                                                        if types.contains(&ident) {
+                                                            is_generic = is_generic
+                                                                .map(|n| n + 1)
+                                                                .or(Some(1));
+                                                        }
+                                                    }
                                                     _ => {}
                                                 }
                                             }
@@ -73,7 +77,7 @@ pub fn reify_update(
                             if types.contains(&binding) {
                                 types.insert(ident);
                             }
-                            
+
                             None
                         }
                         _ => None,
@@ -109,11 +113,13 @@ pub fn reify_update(
                                         let t = param.children[1].unwrap();
                                         let t = nodes.get(t).unwrap();
                                         match t.payload {
-                                            Some(Payload::Identifier(ident)) => if types.contains(&ident) {
-                                                args0.push(Some(param.id()));
-                                            } else {
-                                                args1.push(Some(param.id()));
-                                            },
+                                            Some(Payload::Identifier(ident)) => {
+                                                if types.contains(&ident) {
+                                                    args0.push(Some(param.id()));
+                                                } else {
+                                                    args1.push(Some(param.id()));
+                                                }
+                                            }
                                             _ => {}
                                         }
                                     }
@@ -121,23 +127,15 @@ pub fn reify_update(
                                 }
                             }
                         }
-                        _ => {},
+                        _ => {}
                     }
-                    
-                    let args0 = Node::new(
-                        Kind::Tuple,
-                        Handle::nil(),
-                        args0,
-                    );
+
+                    let args0 = Node::new(Kind::Tuple, Handle::nil(), args0);
                     let h = args0.id();
                     new_nodes.push(args0);
                     let args0 = h;
-                    
-                    let args1 = Node::new(
-                        Kind::Tuple,
-                        Handle::nil(),
-                        args1,
-                    );
+
+                    let args1 = Node::new(Kind::Tuple, Handle::nil(), args1);
                     let h = args1.id();
                     new_nodes.push(args1);
                     let args1 = h;
@@ -146,8 +144,7 @@ pub fn reify_update(
                     let func1 = Node::new(
                         Kind::Function,
                         Handle::nil(),
-                        iter::once(Some(args1))
-                            .chain(iter::once(Some(body)))
+                        iter::once(Some(args1)).chain(iter::once(Some(body))),
                     );
                     let h = func1.id();
                     new_nodes.push(func1);
@@ -156,12 +153,11 @@ pub fn reify_update(
                     let func0 = Node::new(
                         Kind::Function,
                         Handle::nil(),
-                        iter::once(Some(args0))
-                            .chain(iter::once(Some(func1)))
+                        iter::once(Some(args0)).chain(iter::once(Some(func1))),
                     );
                     replace.push((node.id(), func0));
                 }
-                _ => {},
+                _ => {}
             }
         }
 
@@ -209,11 +205,11 @@ pub fn reify_update(
 
         for handle in nomark {
             nodes.get_mut(handle).unwrap().no_newnode = true;
-        } 
+        }
 
         for handle in mark {
             nodes.get_mut(handle).unwrap().mark_newnode = true;
-        } 
+        }
 
         for (handle, n) in transaction {
             let node = nodes.get(handle).unwrap();
@@ -227,12 +223,11 @@ pub fn reify_update(
                 let func = func.id();
                 let args0 = args[..n].to_vec();
                 let args1 = args[n..].to_vec();
-                
+
                 let mut app0 = Node::new(
                     Kind::Application,
                     Handle::nil(),
-                    iter::once(Some(func))
-                        .chain(args0)
+                    iter::once(Some(func)).chain(args0),
                 );
                 app0.no_newnode = true;
                 let h = app0.id();
@@ -242,8 +237,7 @@ pub fn reify_update(
                 let mut app1 = Node::new(
                     Kind::Application,
                     Handle::nil(),
-                    iter::once(Some(app0))
-                        .chain(args1)
+                    iter::once(Some(app0)).chain(args1),
                 );
                 app1.old_reify = Some(n);
 

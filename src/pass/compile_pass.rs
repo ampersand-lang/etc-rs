@@ -38,7 +38,7 @@ pub fn compile_update(
             max_universe = max_universe.max(node.universe);
             VisitResult::Recurse
         });
-        
+
         let node = nodes.get_mut::<Node>(root).unwrap();
 
         let builder = if min_universe != max_universe {

@@ -92,8 +92,7 @@ fn non_nil(
                 let universe = ctx.universes[generic.children[2].as_ref().unwrap()];
                 universe
             } else {
-                node
-                    .children
+                node.children
                     .iter()
                     .map(Option::as_ref)
                     .flatten()
@@ -249,7 +248,10 @@ fn dependencies_bind(
             let ident = nodes.get(node.children[0].unwrap()).unwrap();
             match ident.payload.unwrap() {
                 Payload::Identifier(ident) => {
-                    ctx.bindings.last_mut().unwrap().insert(ident, (node.id(), node.children[0].unwrap()));
+                    ctx.bindings
+                        .last_mut()
+                        .unwrap()
+                        .insert(ident, (node.id(), node.children[0].unwrap()));
                 }
                 _ => {}
             }
@@ -300,13 +302,19 @@ fn dependencies(
                 Payload::Identifier(ident) => ident,
                 _ => todo!(),
             };
-            ctx.bindings.last_mut().unwrap().insert(ident, (node.id(), node.children[2].unwrap()));
+            ctx.bindings
+                .last_mut()
+                .unwrap()
+                .insert(ident, (node.id(), node.children[2].unwrap()));
         }
         Kind::Declaration => {
             let ident = nodes.get(node.children[0].unwrap()).unwrap();
             match ident.payload.unwrap() {
                 Payload::Identifier(ident) => {
-                    ctx.bindings.last_mut().unwrap().insert(ident, (node.id(), node.children[0].unwrap()));
+                    ctx.bindings
+                        .last_mut()
+                        .unwrap()
+                        .insert(ident, (node.id(), node.children[0].unwrap()));
                 }
                 _ => {}
             }
@@ -353,7 +361,7 @@ fn generic(
             transaction.extend(generic(_lazy, nodes, child, Some(handle), ctx)?);
         }
     }
-    
+
     let this = ctx.universes[&node.id()];
     let child = match node.kind {
         Kind::Function => {
@@ -378,10 +386,11 @@ fn generic(
                         let param = nodes.get(param.unwrap()).unwrap();
                         match param.kind {
                             Kind::Declaration => {
-                                let mut node_type = Node::new(Kind::Nil, Handle::nil(), iter::empty());
+                                let mut node_type =
+                                    Node::new(Kind::Nil, Handle::nil(), iter::empty());
                                 node_type.type_of = Some(*primitive::TYPE);
                                 node_type.payload = Some(Payload::Type(*primitive::NODE));
-                                    
+
                                 let typ = param.children[1].unwrap();
                                 transaction.insert(typ, node_type);
                             }
@@ -407,7 +416,7 @@ fn generic(
                             variables.push(*ident);
                         }
                         _ => {}
-                    }
+                    },
                     _ => {}
                 }
                 VisitResult::Recurse
@@ -460,16 +469,16 @@ pub fn universe_update(
         non_nil(_lazy, &nodes, root_node.0, None, &mut ctx)?;
         reverse_dependencies(_lazy, &nodes, root_node.0, None, &mut ctx)?;
         non_nil(_lazy, &nodes, root_node.0, None, &mut ctx)?;
-        
+
         let transaction = generic(_lazy, &mut nodes, root_node.0, None, &mut ctx)?;
 
         for (handle, node) in transaction {
             nodes.get_mut(handle).unwrap().clone_from(node);
         }
-        
+
         non_nil(_lazy, &nodes, root_node.0, None, &mut ctx)?;
         dependencies(_lazy, &nodes, root_node.0, None, &mut ctx)?;
-        
+
         non_nil(_lazy, &nodes, root_node.0, None, &mut ctx)?;
 
         for (handle, universe) in ctx.universes {

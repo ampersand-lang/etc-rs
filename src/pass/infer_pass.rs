@@ -492,7 +492,7 @@ pub fn infer_update(
 
             VisitResult::Recurse
         });
-        
+
         for (handle, typ) in types {
             nodes.get_mut::<Node>(handle).unwrap().type_of = Some(typ);
         }

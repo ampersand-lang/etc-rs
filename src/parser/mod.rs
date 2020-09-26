@@ -168,10 +168,13 @@ pub fn or3<T, U, V>(
 ) -> impl Fn(&mut State) -> Fallible<Either<Either<T, U>, V>> {
     move |state| {
         let lexer = state.lexer.data.clone();
-        a(state).map(Either::Left).or_else(|_| {
-            state.lexer.data = lexer.clone();
-            b(state).map(Either::Right)
-        }).map(Either::Left)
+        a(state)
+            .map(Either::Left)
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                b(state).map(Either::Right)
+            })
+            .map(Either::Left)
             .or_else(|_| {
                 state.lexer.data = lexer;
                 c(state).map(Either::Right)

@@ -67,7 +67,7 @@ pub fn mir_update(
                         .chain(iter::once(Some(kind)))
                         .chain(iter::once(Some(new))),
                 );
-                
+
                 new_nodes.insert(orig_handle, new_node);
             }
             VisitResult::Recurse
@@ -90,7 +90,7 @@ pub fn mir_update(
 
         let mut transaction = HashSet::new();
         let mut types = HashMap::new();
-        
+
         let root = nodes.get::<Node>(root_node.0).unwrap();
 
         root.visit(Visit::Postorder, &nodes, |_, node, _parent| {
@@ -122,7 +122,7 @@ pub fn mir_update(
         }
 
         let mut constants = Vec::new();
-        
+
         let root = nodes.get::<Node>(root_node.0).unwrap();
 
         root.visit(Visit::Preorder, &nodes, |_, node, parent| match node.kind {
@@ -156,7 +156,8 @@ pub fn mir_update(
                             let variables = variables.clone();
                             let mut replacements = Vec::new();
                             for &var in &variables {
-                                let mut replacement = Node::new(Kind::Nil, Handle::nil(), iter::empty());
+                                let mut replacement =
+                                    Node::new(Kind::Nil, Handle::nil(), iter::empty());
                                 replacement.payload = Some(Payload::Identifier(var));
                                 let handle = replacement.id();
                                 lazy.insert(replacement.id(), replacement);
@@ -170,22 +171,34 @@ pub fn mir_update(
                                 match this.kind {
                                     Kind::Nil => match this.payload.as_ref().unwrap() {
                                         Payload::Identifier(ident) => {
-                                            if let Some(pos) = variables.iter().position(|var| var == ident) {
-                                                let mut replace = Node::new(Kind::Nil, Handle::nil(), iter::empty());
+                                            if let Some(pos) =
+                                                variables.iter().position(|var| var == ident)
+                                            {
+                                                let mut replace = Node::new(
+                                                    Kind::Nil,
+                                                    Handle::nil(),
+                                                    iter::empty(),
+                                                );
 
                                                 let identifier = "replace".to_string();
-                                                let handle = Handle::from_hash(identifier.as_bytes());
+                                                let handle =
+                                                    Handle::from_hash(identifier.as_bytes());
                                                 lazy.insert(handle, identifier);
                                                 replace.alternative = true;
                                                 replace.payload = Some(Payload::Identifier(handle));
 
                                                 let rid = replace.id();
                                                 lazy.insert(replace.id(), replace);
-                                                
-                                                let mut var = Node::new(Kind::Nil, Handle::nil(), iter::empty());
+
+                                                let mut var = Node::new(
+                                                    Kind::Nil,
+                                                    Handle::nil(),
+                                                    iter::empty(),
+                                                );
 
                                                 let identifier = format!("%{}", pos);
-                                                let handle = Handle::from_hash(identifier.as_bytes());
+                                                let handle =
+                                                    Handle::from_hash(identifier.as_bytes());
                                                 lazy.insert(handle, identifier);
                                                 var.alternative = true;
                                                 var.payload = Some(Payload::Identifier(handle));
@@ -196,9 +209,9 @@ pub fn mir_update(
                                                 return Node::new(
                                                     Kind::Application,
                                                     Handle::nil(),
-                                                    iter::once(Some(rid)).chain(iter::once(Some(vid))),
+                                                    iter::once(Some(rid))
+                                                        .chain(iter::once(Some(vid))),
                                                 );
-                                                
                                             }
                                         }
                                         _ => {}
@@ -212,7 +225,7 @@ pub fn mir_update(
                             let handle = body.id();
                             lazy.insert(body.id(), body);
                             let body = handle;
-                            
+
                             let mut quasiquote = Node::new(Kind::Nil, Handle::nil(), iter::empty());
 
                             let identifier = "quasiquote".to_string();
@@ -242,7 +255,7 @@ pub fn mir_update(
 
                             let faid = format_ast.id();
                             lazy.insert(format_ast.id(), format_ast);
-                            
+
                             let format = Node::new(
                                 Kind::Application,
                                 Handle::nil(),
@@ -250,7 +263,7 @@ pub fn mir_update(
                                     .chain(iter::once(Some(qid)))
                                     .chain(replacements.into_iter().map(Some)),
                             );
-                            
+
                             let body = clone.children[1].unwrap();
                             let mut body = nodes.get_mut(body).unwrap();
                             body.clone_from(format);
@@ -285,12 +298,12 @@ pub fn mir_update(
                                 clone
                             }
                         }
-                        None => clone
+                        None => clone,
                     }
                 }
                 _ => clone,
             };
-            
+
             let constant = nodes.get_mut::<Node>(handle).unwrap();
 
             let h = clone.id();
