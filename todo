@@ -30,12 +30,26 @@ TODO: intrinsics
 TODO: reader macros
 TODO: support for floating point numbers
 TODO: effects and handlers
+TODO: modules
+TODO: imports and import aliases
+TODO: multiple dispatch
+TODO: multiple dispatch with constant pattern matching
+TODO: macros
+TODO: iterators
+TODO: std library
+* io
+* runtime
+TODO: on divide-by-zero: create a black hole to consume the universe
 
 ir passes order:
 analyze_verify
 analyze_loop
 optimize_loop_unroll
+optimize_cfg_simplify
 optimize_alloca_elim
 analyze_side_effect
+optimize_reassociate
+optimize_common_subexpr
+optimize_instr_combine
 optimize_dead_code
 optimize_const_fold
