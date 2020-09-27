@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use crate::assets::{LazyUpdate, Resources, Static};
 use crate::ast::{Node, RootNode};
 use crate::lir::{codegen::*, context::ExecutionContext, target::Target, Instruction, Value};
-use crate::types::{NamedType, Type, TypeInfo, TypeOrPlaceholder};
+use crate::types::{NamedType, NonConcrete, Type, TypeInfo};
 
 pub fn codegen_update(
     _lazy: &mut LazyUpdate,
@@ -191,7 +191,7 @@ pub fn codegen_update(
                         let t = ir.typ.type_info(&named_types, &target);
 
                         let param_types = match ir.args[0].typ.concrete {
-                            TypeOrPlaceholder::Type(handle) => named_types.get(handle).unwrap(),
+                            NonConcrete::Type(handle) => named_types.get(handle).unwrap(),
                             _ => todo!(),
                         };
                         let param_types = match param_types.t {

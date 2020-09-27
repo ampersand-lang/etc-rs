@@ -331,6 +331,13 @@ impl Node {
         }
     }
 
+    pub unsafe fn unsafe_clone(&self) -> Self {
+        Self {
+            id: self.id,
+            ..self.clone()
+        }
+    }
+
     pub fn clone_from(&mut self, other: Self) {
         let id = self.id;
         *self = Self { id, ..other }
@@ -508,9 +515,11 @@ impl Node {
         for child in &self.children {
             if let Some(&handle) = child.as_ref() {
                 // PERF: clone is inefficient?
-                let node = res.get(handle).unwrap().as_ref().clone();
+                let node = unsafe { res.get(handle).unwrap().as_ref().unsafe_clone() };
+                let old_handle = node.id();
                 let node = node.private_clone_with(res, f);
                 let handle = node.id();
+                assert_ne!(handle, old_handle, "handle and old handle must differ");
                 res.insert(node.id(), node);
                 children.push(Some(handle));
             } else {

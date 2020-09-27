@@ -19,6 +19,7 @@ pub fn scope_update(
         let global = handle;
         let mut new_scopes = HashMap::new();
         let mut scope_list = vec![global];
+        let mut valid_scopes = vec![global].into_iter().collect::<hashbrown::HashSet<_>>();
 
         root.visit_twice(&nodes, |_res, node, _, which| {
             match which {
@@ -31,6 +32,7 @@ pub fn scope_update(
                         let handle = ScopeId::new();
                         scopes.insert(handle, scope);
                         scope_list.push(handle);
+                        valid_scopes.insert(handle);
                     }
                     _ => {
                         let handle = scope_list.last().copied().unwrap();

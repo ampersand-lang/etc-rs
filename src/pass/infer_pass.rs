@@ -1,17 +1,17 @@
 use std::iter;
 
 use failure::{Fail, Fallible};
-use hashbrown::{HashMap, HashSet};
-use smallvec::{smallvec, SmallVec};
+use hashbrown::HashMap;
+use smallvec::SmallVec;
 
 use crate::assets::{Handle, LazyUpdate, Resources};
-use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
+use crate::ast::{Kind, Node, RootNode, VisitResult, Which};
 use crate::dispatch::*;
 use crate::error::MultiError;
 use crate::lexer::Location;
 use crate::lir::context::ExecutionContext;
 use crate::scope::Scope;
-use crate::types::{builtin, primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
+use crate::types::{builtin, primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId};
 use crate::values::Payload;
 
 #[derive(Debug, Fail)]
@@ -47,41 +47,25 @@ pub fn infer_update(
     let mut errors = Vec::new();
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
-        let mut skip = HashSet::new();
         let mut types = HashMap::new();
-        root.visit(Visit::Preorder, &nodes, |res, node, _| match node.kind {
-            Kind::Application => {
-                let func = node.children[0].unwrap();
-                let func = res.get(func).unwrap();
-                if !func.alternative {
-                    return VisitResult::Recurse;
-                }
-                match func.kind {
-                    Kind::Nil => match func.payload.unwrap() {
-                        Payload::Identifier(string) => {
-                            match strings.get::<String>(string).unwrap().as_str() {
-                                "quasiquote" => {
-                                    node.visit(Visit::Postorder, res, |_, node, _| {
-                                        skip.insert(node.id());
-                                        VisitResult::Recurse
-                                    });
-                                    skip.remove(&node.id());
-                                    skip.remove(&func.id());
-                                    VisitResult::Continue
-                                }
-                                _ => VisitResult::Recurse,
-                            }
-                        }
-                        _ => VisitResult::Recurse,
-                    },
-                    _ => VisitResult::Recurse,
-                }
-            }
-            _ => VisitResult::Recurse,
-        });
 
-        root.visit(Visit::Postorder, &nodes, |_res, node, _| {
-            if skip.contains(&node.id()) {
+        root.visit_twice(&nodes, |_res, node, _, which| {
+            if matches!(which, Which::Before) {
+                match node.kind {
+                    Kind::Application => {
+                        let func = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
+                        match func.payload {
+                            Some(Payload::Identifier(string)) if func.alternative => {
+                                match strings.get::<String>(string).unwrap().as_str() {
+                                    "replace" => return VisitResult::Continue,
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
                 return VisitResult::Recurse;
             }
             match node.kind {
@@ -100,7 +84,7 @@ pub fn infer_update(
                             named_types.insert(handle, t);
                             TypeId {
                                 group: TypeGroup::Pointer,
-                                concrete: TypeOrPlaceholder::Type(handle),
+                                concrete: NonConcrete::Type(handle),
                             }
                         }
                         Payload::Identifier(string) if node.alternative => {
@@ -114,10 +98,17 @@ pub fn infer_update(
                                 ident => panic!("not a builtin identifier: `${}`", ident),
                             }
                         }
-                        Payload::Identifier(string) => TypeId {
-                            group: TypeGroup::None,
-                            concrete: TypeOrPlaceholder::Dispatch(node.scope.unwrap(), string),
-                        },
+                        Payload::Identifier(string) => {
+                            println!(
+                                "{:?}: {:?}",
+                                strings.get(string).unwrap().as_str(),
+                                node.scope.unwrap(),
+                            );
+                            TypeId {
+                                group: TypeGroup::None,
+                                concrete: NonConcrete::Dispatch(node.scope.unwrap(), string),
+                            }
+                        }
                         Payload::Type(_) => primitive::TYPE.clone(),
                         Payload::Function(id) => {
                             let ctx = contexts.get(root.thread.unwrap()).unwrap();
@@ -137,7 +128,7 @@ pub fn infer_update(
                             );
                             TypeId {
                                 group: TypeGroup::Function,
-                                concrete: TypeOrPlaceholder::Type(named),
+                                concrete: NonConcrete::Type(named),
                             }
                         }
                     };
@@ -146,10 +137,11 @@ pub fn infer_update(
                 Kind::Block => {
                     let last = node.children.last().map(Option::as_ref).flatten();
                     if let Some(&last) = last {
-                        let typ = nodes
-                            .get::<Node>(last)
-                            .and_then(|last| last.type_of.clone())
-                            .or_else(|| types.get(&last).copied())
+                        let last = nodes.get::<Node>(last).unwrap();
+                        let typ = types
+                            .get(&last.id())
+                            .copied()
+                            .or_else(|| last.type_of)
                             .unwrap();
                         types.insert(node.id(), typ);
                     } else {
@@ -157,51 +149,39 @@ pub fn infer_update(
                     }
                 }
                 Kind::Function => {
+                    let mut none = false;
                     let param_tuple = &*nodes.get::<Node>(node.children[0].unwrap()).unwrap();
                     let param_types = match param_tuple.kind {
-                        Kind::Nil => {
-                            match param_tuple.payload.unwrap() {
-                                Payload::Identifier(_) => smallvec![TypeId::new_placeholder()],
-                                // other patterns
-                                _ => todo!(),
-                            }
-                        }
                         Kind::Tuple => {
-                            param_tuple
-                                .children
-                                .iter()
-                                .map(|param| {
-                                    let param = &*nodes.get::<Node>(param.unwrap()).unwrap();
-                                    match param.kind {
-                                        Kind::Nil => {
-                                            match param.payload.unwrap() {
-                                                Payload::Identifier(_) => TypeId::new_placeholder(),
-                                                // other patterns
-                                                _ => todo!(),
-                                            }
-                                        }
-                                        Kind::Declaration => param
-                                            .type_of
-                                            .or_else(|| types.get(&param.id()).copied())
-                                            .unwrap(),
-                                        // other patterns
-                                        _ => todo!(),
+                            let iter = param_tuple.children.iter().map(|param| {
+                                let param = &*nodes.get::<Node>(param.unwrap()).unwrap();
+                                match param.kind {
+                                    Kind::Declaration => {
+                                        param.type_of.or_else(|| types.get(&param.id()).copied())
                                     }
-                                })
-                                .collect()
+                                    // other patterns
+                                    _ => todo!(),
+                                }
+                            });
+                            let mut params = SmallVec::new();
+                            for param in iter {
+                                match param {
+                                    Some(param) => params.push(param),
+                                    None => none = true,
+                                }
+                            }
+                            params
                         }
                         _ => panic!("did the validation stage run?"),
                     };
-                    let result_type = node.children.get(1).and_then(|last| {
-                        last.and_then(|last| {
-                            nodes
-                                .get::<Node>(last)
-                                .unwrap()
-                                .type_of
-                                .or_else(|| types.get(&last).copied())
-                        })
-                    });
-                    if let Some(result_type) = result_type {
+                    if !none {
+                        let body = node.children[1].unwrap();
+                        let body = nodes.get(body).unwrap();
+                        let result_type = types
+                            .get(&body.id())
+                            .copied()
+                            .or_else(|| body.type_of)
+                            .unwrap();
                         let named = Handle::new();
                         named_types.insert(
                             named,
@@ -215,21 +195,21 @@ pub fn infer_update(
                         );
                         let typ = TypeId {
                             group: TypeGroup::Function,
-                            concrete: TypeOrPlaceholder::Type(named),
+                            concrete: NonConcrete::Type(named),
                         };
                         types.insert(node.id(), typ);
                     }
                 }
                 Kind::Application => {
                     let func = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
-                    let typ = func
-                        .unquote_type
-                        .or_else(|| func.type_of)
-                        .or_else(|| types.get(&node.children[0].unwrap()).copied())
-                        .unwrap();
+                    let typ = types
+                        .get(&func.id())
+                        .copied()
+                        .or_else(|| func.unquote_type)
+                        .or_else(|| func.type_of);
                     let args = node.children[1..].to_vec();
-                    let typ = match typ.concrete {
-                        TypeOrPlaceholder::Type(handle) => {
+                    let typ = typ.and_then(|typ| match typ.concrete {
+                        NonConcrete::Type(handle) => {
                             match &named_types.get::<NamedType>(handle).unwrap().t {
                                 Type::Function {
                                     result_type,
@@ -244,11 +224,11 @@ pub fn infer_update(
                                             .clone(),
                                         typ,
                                     }));
-                                    return VisitResult::Recurse;
+                                    return None;
                                 }
                             }
                         }
-                        TypeOrPlaceholder::Dispatch(scope, handle) => {
+                        NonConcrete::Dispatch(scope, handle) => {
                             let args: SmallVec<_> = args
                                 .iter()
                                 .map(|param| {
@@ -314,14 +294,14 @@ pub fn infer_update(
                                                 .as_ref()
                                                 .clone(),
                                         }));
-                                        return VisitResult::Recurse;
+                                        return None;
                                     }
                                 }
                             }
                             result
                         }
                         _ => todo!(),
-                    };
+                    });
                     if let Some((result_type, param_types)) = typ {
                         if !func.alternative && args.len() < param_types.len() {
                             todo!()
@@ -339,7 +319,7 @@ pub fn infer_update(
                             );
                             let typ = TypeId {
                                 group: TypeGroup::Function,
-                                concrete: TypeOrPlaceholder::Type(named),
+                                concrete: NonConcrete::Type(named),
                             };
                             types.insert(func.id(), typ);
                             types.insert(node.id(), result_type);
@@ -362,85 +342,96 @@ pub fn infer_update(
                     let name = strings.get(ident).unwrap();
                     let scope = node.scope.unwrap();
                     let handle = DispatchId::from_name(scope, name.as_bytes());
-                    let binding = nodes
-                        .get::<Node>(node.children[2].unwrap())
-                        .and_then(|node| node.type_of)
-                        .or_else(|| types.get(&node.children[2].unwrap()).copied())
-                        .unwrap();
-                    let (result_type, param_types) = match binding.concrete {
-                        TypeOrPlaceholder::Type(t) => {
-                            match named_types.get::<NamedType>(t).unwrap().t {
-                                Type::Function {
-                                    result_type,
-                                    ref param_types,
-                                } => (result_type, Some(param_types.clone())),
-                                _ => (binding, None),
+                    let binding = nodes.get::<Node>(node.children[2].unwrap()).unwrap();
+                    let binding = types
+                        .get(&binding.id())
+                        .copied()
+                        .or_else(|| binding.unquote_type)
+                        .or_else(|| binding.type_of);
+                    if let Some(binding) = binding {
+                        let (result_type, param_types) = match binding.concrete {
+                            NonConcrete::Type(t) => {
+                                match named_types.get::<NamedType>(t).unwrap().t {
+                                    Type::Function {
+                                        result_type,
+                                        ref param_types,
+                                    } => (result_type, Some(param_types.clone())),
+                                    _ => (binding, None),
+                                }
                             }
-                        }
-                        _ => (binding, None),
-                    };
-                    let d = if let Some(mut d) = dispatch.remove(handle) {
-                        if let Some(param_types) = param_types {
-                            d.push(Definition::new_function(
-                                node.universe,
-                                param_types,
-                                result_type,
-                            ));
-                        } else {
-                            d.push(Definition::new_variable(node.universe, result_type));
-                        }
-                        d
-                    } else {
-                        let name = Name(scope, ident);
-                        if let Some(param_types) = param_types {
-                            Dispatcher::with_definitions(
-                                name,
-                                iter::once(Definition::new_function(
+                            _ => (binding, None),
+                        };
+                        let d = if let Some(mut d) = dispatch.remove(handle) {
+                            if let Some(param_types) = param_types {
+                                d.push(Definition::new_function(
                                     node.universe,
                                     param_types,
                                     result_type,
-                                )),
-                            )
+                                ));
+                            } else {
+                                d.push(Definition::new_variable(node.universe, result_type));
+                            }
+                            d
                         } else {
-                            Dispatcher::with_definitions(
-                                name,
-                                iter::once(Definition::new_variable(node.universe, result_type)),
-                            )
-                        }
-                    };
-                    types.insert(node.id(), binding);
-                    dispatch.insert(handle, d);
+                            let name = Name(scope, ident);
+                            if let Some(param_types) = param_types {
+                                Dispatcher::with_definitions(
+                                    name,
+                                    iter::once(Definition::new_function(
+                                        node.universe,
+                                        param_types,
+                                        result_type,
+                                    )),
+                                )
+                            } else {
+                                Dispatcher::with_definitions(
+                                    name,
+                                    iter::once(Definition::new_variable(
+                                        node.universe,
+                                        result_type,
+                                    )),
+                                )
+                            }
+                        };
+                        types.insert(node.id(), binding);
+                        dispatch.insert(handle, d);
+                    }
                 }
                 Kind::Tuple => {
                     if node.alternative {
                         types.insert(node.id(), *primitive::TYPE);
                         return VisitResult::Recurse;
                     }
-                    let fields = node
-                        .children
-                        .iter()
-                        .map(|param| {
-                            nodes
-                                .get::<Node>(param.unwrap())
-                                .unwrap()
-                                .type_of
-                                .or_else(|| types.get(&param.unwrap()).copied())
-                                .unwrap()
-                        })
-                        .collect();
-                    let named = Handle::new();
-                    named_types.insert(
-                        named,
-                        NamedType {
-                            name: None,
-                            t: Type::Struct { fields },
-                        },
-                    );
-                    let typ = TypeId {
-                        group: TypeGroup::Struct,
-                        concrete: TypeOrPlaceholder::Type(named),
-                    };
-                    types.insert(node.id(), typ);
+                    let iter = node.children.iter().map(|param| {
+                        nodes
+                            .get::<Node>(param.unwrap())
+                            .unwrap()
+                            .type_of
+                            .or_else(|| types.get(&param.unwrap()).copied())
+                    });
+                    let mut none = false;
+                    let mut fields = SmallVec::new();
+                    for field in iter {
+                        match field {
+                            Some(field) => fields.push(field),
+                            None => none = true,
+                        }
+                    }
+                    if !none {
+                        let named = Handle::new();
+                        named_types.insert(
+                            named,
+                            NamedType {
+                                name: None,
+                                t: Type::Struct { fields },
+                            },
+                        );
+                        let typ = TypeId {
+                            group: TypeGroup::Struct,
+                            concrete: NonConcrete::Type(named),
+                        };
+                        types.insert(node.id(), typ);
+                    }
                 }
                 Kind::Argument => todo!(),
                 Kind::Declaration => {
@@ -461,28 +452,31 @@ pub fn infer_update(
                     let handle = DispatchId::from_name(scope, name.as_bytes());
                     let type_of = nodes
                         .get::<Node>(node.children[1].unwrap())
-                        .and_then(|node| node.payload)
-                        .unwrap();
-                    let type_of = match type_of {
-                        Payload::Type(t) => t,
-                        Payload::Identifier(string) => TypeId {
-                            group: TypeGroup::None,
-                            concrete: TypeOrPlaceholder::Dispatch(node.scope.unwrap(), string),
-                        },
-                        _ => todo!(),
-                    };
-                    let d = if let Some(mut d) = dispatch.remove(handle) {
-                        d.push(Definition::new_variable(node.universe, type_of));
-                        d
-                    } else {
-                        let name = Name(scope, ident);
-                        Dispatcher::with_definitions(
-                            name,
-                            iter::once(Definition::new_variable(node.universe, type_of)),
-                        )
-                    };
-                    types.insert(node.id(), type_of);
-                    dispatch.insert(handle, d);
+                        .unwrap()
+                        .payload;
+                    if let Some(type_of) = type_of {
+                        let type_of = match type_of {
+                            Payload::Type(t) => t,
+                            Payload::Identifier(string) => TypeId {
+                                group: TypeGroup::None,
+                                concrete: NonConcrete::Dispatch(node.scope.unwrap(), string),
+                            },
+                            _ => todo!(),
+                        };
+
+                        let d = if let Some(mut d) = dispatch.remove(handle) {
+                            d.push(Definition::new_variable(node.universe, type_of));
+                            d
+                        } else {
+                            let name = Name(scope, ident);
+                            Dispatcher::with_definitions(
+                                name,
+                                iter::once(Definition::new_variable(node.universe, type_of)),
+                            )
+                        };
+                        types.insert(node.id(), type_of);
+                        dispatch.insert(handle, d);
+                    }
                 }
                 Kind::Array => todo!(),
                 Kind::Index => todo!(),

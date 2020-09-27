@@ -1,13 +1,13 @@
 use std::fmt::{self, Display};
 
 use failure::Fallible;
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use lazy_static::lazy_static;
 use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
-use crate::ast::{Kind, Node, NodeId};
-use crate::types::{primitive, NamedType, Type, TypeGroup, TypeId, TypeOrPlaceholder};
+use crate::ast::{Kind, Node, NodeId, Visit, VisitResult};
+use crate::types::{primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId};
 use crate::values::Payload;
 
 use self::codegen::Lifetime;
@@ -55,7 +55,7 @@ pub mod foreign {
         res.insert(handle, named);
         let t = TypeId {
             group: TypeGroup::Pointer,
-            concrete: TypeOrPlaceholder::Type(handle),
+            concrete: NonConcrete::Type(handle),
         };
         Ok(TypedValue::new(*primitive::TYPE, Value::Type(t)))
     }
@@ -96,7 +96,7 @@ pub mod foreign {
         res.insert(handle, named);
         let t = TypeId {
             group: TypeGroup::Function,
-            concrete: TypeOrPlaceholder::Type(handle),
+            concrete: NonConcrete::Type(handle),
         };
         Ok(TypedValue::new(*primitive::TYPE, Value::Type(t)))
     }
@@ -113,8 +113,10 @@ pub mod foreign {
             _ => return Err(From::from(TypeError)),
         };
 
+        let mut mapping = HashMap::new();
+
         // PERF: clone is inefficient?
-        let node = res.get::<Node>(node).unwrap().as_ref().clone();
+        let node = unsafe { res.get::<Node>(node).unwrap().as_ref().unsafe_clone() };
         let node = node.clone_with(res, |res, this, children| {
             match this.kind {
                 Kind::Application => {
@@ -155,16 +157,42 @@ pub mod foreign {
                                 Value::Node(node) => node,
                                 _ => panic!("not a node"),
                             };
-                            return res.get(id).unwrap().as_ref().clone();
+                            let new = res.get(id).unwrap().as_ref().clone();
+                            mapping.insert(id, new.id());
+                            return new;
                         }
                     }
                 }
                 _ => {}
             }
             let mut new = this.clone();
+            mapping.insert(this.id(), new.id());
             new.children = children;
             new
         });
+
+        let mut payloads = HashMap::new();
+
+        node.visit(Visit::Postorder, res, |_, node, _| {
+            if let Some(mut payload) = node.payload {
+                match &mut payload {
+                    Payload::Type(TypeId {
+                        concrete: NonConcrete::Typeof(t),
+                        ..
+                    }) => {
+                        let handle = *t;
+                        *t = mapping[&handle];
+                    }
+                    _ => {}
+                }
+                payloads.insert(node.id(), payload);
+            }
+            VisitResult::Recurse
+        });
+
+        for (handle, payload) in payloads {
+            res.get_mut(handle).unwrap().payload = Some(payload);
+        }
 
         let handle = node.id();
         res.insert(node.id(), node);

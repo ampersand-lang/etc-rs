@@ -1,13 +1,12 @@
 use failure::Fallible;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 
 use crate::assets::{Handle, LazyUpdate, Resources};
-use crate::ast::{Node, RootNode, Visit, VisitResult};
+use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
 use crate::dispatch::*;
 use crate::error::MultiError;
 use crate::scope::{Scope, ScopeId};
-
-use crate::types::{NamedType, TypeId, TypeOrPlaceholder};
+use crate::types::{NamedType, NonConcrete, TypeId};
 use crate::values::Payload;
 
 pub fn collapse(
@@ -19,10 +18,10 @@ pub fn collapse(
     nodes: &Resources<&mut Node>,
 ) -> Fallible<(TypeId, Option<ScopeId>)> {
     match typ.concrete {
-        TypeOrPlaceholder::Type(_) => Ok((typ, None)),
-        TypeOrPlaceholder::Placeholder(_) => Ok((typ, None)),
-        TypeOrPlaceholder::Dispatch(scope, name) => {
+        NonConcrete::Type(_) => Ok((typ, None)),
+        NonConcrete::Dispatch(scope, name) => {
             let string = strings.get(name).unwrap();
+            println!("get {:?}: {:?}", string.as_str(), scope);
             let mut iter = Some(scope);
             while let Some(scope) = iter {
                 let id = Handle::from_name(scope, string.as_bytes());
@@ -60,7 +59,7 @@ pub fn collapse(
                 string.as_str()
             )))
         }
-        TypeOrPlaceholder::Typeof(id) => collapse(
+        NonConcrete::Typeof(id) => collapse(
             nodes.get(id).unwrap().type_of.unwrap(),
             scopes,
             strings,
@@ -86,8 +85,47 @@ pub fn collapse_update(
         let mut new_scopes = HashMap::new();
         let mut payloads = HashMap::new();
         let mut types = HashMap::new();
+
+        let mut skip = HashSet::new();
+
+        root.visit(Visit::Preorder, &nodes, |res, node, _| match node.kind {
+            Kind::Application => {
+                let func = node.children[0].unwrap();
+                let func = res.get(func).unwrap();
+                if !func.alternative {
+                    return VisitResult::Recurse;
+                }
+                match func.kind {
+                    Kind::Nil => match func.payload.unwrap() {
+                        Payload::Identifier(string) => {
+                            match strings.get::<String>(string).unwrap().as_str() {
+                                "quasiquote" => {
+                                    node.visit(Visit::Postorder, res, |_, node, _| {
+                                        skip.insert(node.id());
+                                        VisitResult::Recurse
+                                    });
+                                    skip.remove(&node.id());
+                                    skip.remove(&func.id());
+                                    VisitResult::Continue
+                                }
+                                _ => VisitResult::Recurse,
+                            }
+                        }
+                        _ => VisitResult::Recurse,
+                    },
+                    _ => VisitResult::Recurse,
+                }
+            }
+            _ => VisitResult::Recurse,
+        });
+
         root.visit(Visit::Postorder, &nodes, |_res, node, _| {
+            if skip.contains(&node.id()) {
+                return VisitResult::Continue;
+            }
+
             if let Some(typ) = node.type_of {
+                println!("{:?}, {:?}", node.id(), node.kind);
                 let (t, s) = match collapse(typ, &scopes, &strings, &dispatch, &named_types, &nodes)
                 {
                     Ok(tuple) => tuple,
@@ -108,6 +146,10 @@ pub fn collapse_update(
         }
         let root = nodes.get::<Node>(root_node.0).unwrap();
         root.visit(Visit::Postorder, &nodes, |_res, node, _| {
+            if skip.contains(&node.id()) {
+                return VisitResult::Continue;
+            }
+
             if let Some(payload) = node.payload {
                 match payload {
                     Payload::Type(typ) => {

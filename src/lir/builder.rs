@@ -109,7 +109,7 @@ impl<'a> FunctionBuilder<'a> {
             self.builder.res.insert(handle, t);
             TypeId {
                 group: TypeGroup::Pointer,
-                concrete: TypeOrPlaceholder::Type(handle),
+                concrete: NonConcrete::Type(handle),
             }
         };
 
@@ -150,7 +150,7 @@ impl<'a> FunctionBuilder<'a> {
         counter.inc();
 
         let unptr_t = match v.typ.concrete {
-            TypeOrPlaceholder::Type(handle) => match self.builder.res.get(handle).unwrap().t {
+            NonConcrete::Type(handle) => match self.builder.res.get(handle).unwrap().t {
                 Type::Pointer(t) => t,
                 _ => todo!(),
             },
@@ -189,7 +189,7 @@ impl<'a> FunctionBuilder<'a> {
         counter.inc();
 
         let t = match args[0].typ.concrete {
-            TypeOrPlaceholder::Type(handle) => match self.builder.res.get(handle).unwrap().t {
+            NonConcrete::Type(handle) => match self.builder.res.get(handle).unwrap().t {
                 Type::Function { result_type: t, .. } => t,
                 _ => todo!(),
             },
