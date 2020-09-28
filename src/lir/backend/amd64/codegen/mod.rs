@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use hashbrown::HashMap;
 use smallvec::SmallVec;
 
-use crate::lir::{BasicBlockPrototype, BindingPrototype};
+use crate::lir::{BasicBlockPrototype, BindingPrototype, Lifetime};
 use crate::types::TypeInfo;
 use crate::utils::IntPtr;
 

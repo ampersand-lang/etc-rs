@@ -2,9 +2,9 @@ use hashbrown::HashSet;
 use smallvec::{smallvec, SmallVec};
 
 use crate::assets::Resources;
-use crate::lir::codegen::Lifetime;
 use crate::lir::context::*;
 use crate::lir::repr::*;
+use crate::lir::Lifetime;
 use crate::types::{primitive, NamedType};
 
 use super::*;

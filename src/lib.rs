@@ -7,7 +7,10 @@ use ast::{Node, RootNode, Visit, VisitResult};
 use dispatch::Dispatcher;
 use lexer::Location;
 use lir::{
-    context::ExecutionContext, target::Target, Binding, Bytes, Elems, Foreign, TypedValue, Variants,
+    backend::{Backend, IntoBackendSystem},
+    context::ExecutionContext,
+    target::Target,
+    Binding, Bytes, Elems, Foreign, TypedValue, Variants,
 };
 use pipeline::*;
 use scope::Scope;
@@ -94,7 +97,7 @@ pub fn interpreter_pipeline() -> Pipeline {
     pipeline
 }
 
-pub fn compiler_pipeline() -> Pipeline {
+pub fn compiler_pipeline(b: impl Backend) -> Pipeline {
     let mut pipeline = Pipeline::new();
     pipeline.add_stage(pass::VALIDATE_PASS);
     pipeline.add_stage(pass::REIFY_PASS);
@@ -105,7 +108,7 @@ pub fn compiler_pipeline() -> Pipeline {
     pipeline.add_stage(pass::COLLAPSE_PASS);
     pipeline.add_stage(pass::COMPILE_PASS);
     pipeline.add_stage(pass::EXEC_PASS);
-    pipeline.add_stage(pass::CODEGEN_PASS);
+    pipeline.add_stage(pass::BACKEND_PASS);
     pipeline.repeat(|world| {
         let roots = world.resources::<&mut RootNode>();
         let nodes = world.resources::<&Node>();
@@ -136,6 +139,6 @@ pub fn compiler_pipeline() -> Pipeline {
     pipeline.add_system_to_stage(pass::COLLAPSE_PASS, pass::collapse_update.system());
     pipeline.add_system_to_stage(pass::COMPILE_PASS, pass::compile_update.system());
     pipeline.add_system_to_stage(pass::EXEC_PASS, pass::exec_update.system());
-    pipeline.add_system_to_stage(pass::CODEGEN_PASS, pass::codegen_update.system());
+    pipeline.add_system_to_stage(pass::BACKEND_PASS, b.system());
     pipeline
 }
