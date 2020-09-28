@@ -6,7 +6,7 @@ use crate::utils::IntPtr;
 
 use super::*;
 
-pub trait CallConv: 'static {
+pub trait CallConv: Send + Sync + 'static {
     fn name(&self) -> &'static str;
     fn free(&self, args: &[TypeInfo]) -> Vec<Register>;
     fn begin(&self, builder: &mut FunctionBuilder) -> Fallible<()>;

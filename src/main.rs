@@ -1,6 +1,6 @@
 use std::env;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::mem;
 use std::path::Path;
 use std::process;
@@ -9,7 +9,11 @@ use etc_rs::assets::*;
 use etc_rs::ast::{Node, RootNode};
 use etc_rs::dispatch;
 use etc_rs::lexer::Lexer;
-use etc_rs::lir::{context::ExecutionContext, foreign, ThreadId};
+use etc_rs::lir::{
+    backend::{amd64::Amd64, Output},
+    context::ExecutionContext,
+    foreign, ThreadId,
+};
 use etc_rs::parser::{grammar, State};
 use etc_rs::types::{builtin, primitive};
 
@@ -188,13 +192,20 @@ fn try_main() -> io::Result<()> {
         let root = RootNode(node, false);
         world.insert(handle, root);
 
-        let mut pipeline = etc_rs::compiler_pipeline();
+        let mut pipeline = etc_rs::compiler_pipeline(Amd64::default());
 
         if let Err(err) = pipeline.run(&world) {
             eprintln!("errors:");
             eprintln!("{}", err);
             process::exit(1);
         }
+
+        let output = world.global::<Output>();
+        let bytes = &output.0;
+        let outpath = directory.with_extension("asm");
+        let mut outfile = File::create(&outpath)?;
+        println!("* etc-rs: writing output to: `{}`", outpath.display());
+        outfile.write_all(bytes)?;
     }
 
     Ok(())

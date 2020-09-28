@@ -50,7 +50,7 @@ pub fn exec_update(
     }
 
     if count == pos {
-        Ok(Some(pass::CODEGEN_PASS))
+        Ok(Some(pass::BACKEND_PASS))
     } else {
         Ok(Some("repeat"))
     }

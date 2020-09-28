@@ -1,4 +1,3 @@
-pub use codegen_pass::*;
 pub use collapse_pass::*;
 pub use compile_pass::*;
 pub use exec_pass::*;
@@ -9,7 +8,6 @@ pub use scope_pass::*;
 pub use universe_pass::*;
 pub use validate_pass::*;
 
-mod codegen_pass;
 mod collapse_pass;
 mod compile_pass;
 mod exec_pass;
@@ -30,4 +28,4 @@ pub const COLLAPSE_PASS: &str = "collapse_pass";
 pub const COMPILE_PASS: &str = "compile_pass";
 pub const EXEC_PASS: &str = "exec_pass";
 pub const INTERPRET_PASS: &str = "interpret_pass";
-pub const CODEGEN_PASS: &str = "codegen_pass";
+pub const BACKEND_PASS: &str = "backend_pass";

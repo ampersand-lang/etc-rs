@@ -1,50 +1,6 @@
-use crate::lir::{BasicBlock, BasicBlockExt, BasicBlockPrototype, BindingPrototype};
+use crate::lir::{BasicBlockPrototype, BindingPrototype, Lifetime};
 
 use super::*;
-
-#[derive(Debug, Clone, Copy)]
-pub struct Lifetime {
-    pub(crate) block: BasicBlock,
-    pub(crate) position: u32,
-}
-
-impl Lifetime {
-    pub fn new(block: BasicBlock, position: u32) -> Self {
-        Self { block, position }
-    }
-
-    pub fn empty(block: BasicBlock) -> Self {
-        Self { block, position: 0 }
-    }
-
-    pub fn to_cmp(&self) -> (BasicBlock, u32) {
-        (self.block, self.position)
-    }
-
-    pub fn ge(&self, other: &Self, prot: &[BasicBlockPrototype]) -> bool {
-        if self.block == other.block {
-            self.position >= other.position
-        } else if prot.is_child(self.block, other.block) {
-            false
-        } else if prot.is_child(other.block, self.block) {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn gt(&self, other: &Self, prot: &[BasicBlockPrototype]) -> bool {
-        if self.block == other.block {
-            self.position > other.position
-        } else if prot.is_child(self.block, other.block) {
-            false
-        } else if prot.is_child(other.block, self.block) {
-            true
-        } else {
-            false
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub enum RegisterPurpose {
