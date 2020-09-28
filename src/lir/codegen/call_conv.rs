@@ -37,7 +37,6 @@ impl CallConv for AmpCall64 {
 
     fn free(&self, args: &[TypeInfo]) -> Vec<Register> {
         let mut free = HashSet::with_capacity(16);
-        free.insert(Register::rax());
         free.insert(Register::rdx());
         free.insert(Register::rcx());
         free.insert(Register::rbx());

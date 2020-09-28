@@ -157,3 +157,20 @@ impl Repr for str {
         }
     }
 }
+
+impl Repr for [u8] {
+    fn type_info(&self) -> TypeInfo {
+        TypeInfo::new(self.len(), 1)
+    }
+
+    fn write_bytes(&self, out: &mut [u8]) {
+        out.copy_from_slice(&self);
+    }
+
+    fn copy_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() != self.len() {
+            panic!("attempt to copy from slice of invalid length");
+        }
+        self.copy_from_slice(bytes);
+    }
+}

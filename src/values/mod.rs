@@ -132,7 +132,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                 "{}",
                 types::PrettyPrinterRef::new(&Default::default(), self.types, typ)
             ),
-            Payload::Function(func) => write!(f, "{:x}", func),
+            Payload::Function(func) => write!(f, "@{}+{}", func.offset, func.idx),
         }
     }
 }

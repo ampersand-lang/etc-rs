@@ -31,6 +31,10 @@ pub struct State<'a, 'res> {
 }
 
 impl<'a, 'res> State<'a, 'res> {
+    pub fn new(lexer: Lexer<'a, 'res>, nodes: Resources<&'res mut Node>) -> Self {
+        Self { lexer, nodes }
+    }
+
     pub fn location(&mut self) -> Option<Handle<Location>> {
         self.lexer.peek().map(|tok| tok.location)
     }

@@ -95,24 +95,18 @@ pub fn infer_update(
                                 "format-ast" => builtin::FORMAT_AST.clone(),
                                 "new-node" => builtin::NEW_NODE.clone(),
                                 "quasiquote" => builtin::QUASIQUOTE.clone(),
+                                "compile" => builtin::COMPILE.clone(),
                                 ident => panic!("not a builtin identifier: `${}`", ident),
                             }
                         }
-                        Payload::Identifier(string) => {
-                            println!(
-                                "{:?}: {:?}",
-                                strings.get(string).unwrap().as_str(),
-                                node.scope.unwrap(),
-                            );
-                            TypeId {
-                                group: TypeGroup::None,
-                                concrete: NonConcrete::Dispatch(node.scope.unwrap(), string),
-                            }
-                        }
+                        Payload::Identifier(string) => TypeId {
+                            group: TypeGroup::None,
+                            concrete: NonConcrete::Dispatch(node.scope.unwrap(), string),
+                        },
                         Payload::Type(_) => primitive::TYPE.clone(),
                         Payload::Function(id) => {
                             let ctx = contexts.get(root.thread.unwrap()).unwrap();
-                            let funk = ctx.function(id);
+                            let funk = ctx.function((id.offset + id.idx) as usize);
                             let param_types = funk.param_types().iter().copied().collect();
                             let result_type = funk.result_type();
                             let named = Handle::new();

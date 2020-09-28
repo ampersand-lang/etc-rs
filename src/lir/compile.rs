@@ -80,7 +80,7 @@ impl<'a> Compile<FunctionBuilder<'a>> for Node {
         builder: FunctionBuilder<'a>,
     ) -> Fallible<Self::Output> {
         let (v, f) = Node::compile(handle, res, ValueBuilder(builder))?;
-        let mut id = 0;
+        let mut id = FuncId::new(0, 0);
         let b = f.build_return(v).build(&mut id);
         Ok((id, b))
     }
@@ -125,8 +125,10 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 ),
                 Payload::String(string) => {
                     let string = res.get::<String>(string).unwrap();
+                    let mut bytes = string.as_bytes().to_vec();
+                    bytes.push(0);
                     let mut addr = VirtualAddress(0);
-                    builder.0.builder = builder.0.builder.add_global(&mut addr, string.as_str());
+                    builder.0.builder = builder.0.builder.add_global(&mut addr, bytes.as_slice());
                     (
                         TypedValue::new(this.type_of.unwrap(), Value::Address(addr)),
                         builder.0,
@@ -147,6 +149,10 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                                 this.type_of.unwrap(),
                                 Value::Ffi(*foreign::FORMAT_AST),
                             ),
+                            builder.0,
+                        ),
+                        "compile" => (
+                            TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::COMPILE)),
                             builder.0,
                         ),
                         _ => todo!(),
@@ -311,6 +317,15 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             // XXX: is this correct?
             Kind::Binding | Kind::Global => {
                 let v = if let Some(expr) = this.children[2] {
+                    let value = res.get(expr).unwrap();
+                    let eliminate = match value.payload {
+                        Some(Payload::Function(_)) => true,
+                        _ => false,
+                    };
+                    if eliminate {
+                        return Ok((TypedValue::new(*primitive::UNIT, Value::Unit), builder.0));
+                    }
+
                     let (v, f) = Node::compile(expr, res, builder)?;
                     builder = ValueBuilder(f);
                     v

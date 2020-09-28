@@ -29,4 +29,5 @@ pub const INFER_PASS: &str = "infer_pass";
 pub const COLLAPSE_PASS: &str = "collapse_pass";
 pub const COMPILE_PASS: &str = "compile_pass";
 pub const EXEC_PASS: &str = "exec_pass";
+pub const INTERPRET_PASS: &str = "interpret_pass";
 pub const CODEGEN_PASS: &str = "codegen_pass";

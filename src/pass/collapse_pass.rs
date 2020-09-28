@@ -21,7 +21,6 @@ pub fn collapse(
         NonConcrete::Type(_) => Ok((typ, None)),
         NonConcrete::Dispatch(scope, name) => {
             let string = strings.get(name).unwrap();
-            println!("get {:?}: {:?}", string.as_str(), scope);
             let mut iter = Some(scope);
             while let Some(scope) = iter {
                 let id = Handle::from_name(scope, string.as_bytes());
@@ -125,7 +124,6 @@ pub fn collapse_update(
             }
 
             if let Some(typ) = node.type_of {
-                println!("{:?}, {:?}", node.id(), node.kind);
                 let (t, s) = match collapse(typ, &scopes, &strings, &dispatch, &named_types, &nodes)
                 {
                     Ok(tuple) => tuple,

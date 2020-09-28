@@ -60,7 +60,7 @@ pub struct FunctionBuilder<'a> {
 impl<'a> FunctionBuilder<'a> {
     pub fn build(mut self, idx: &mut FuncId) -> Builder<'a> {
         let mut builder = self.builder;
-        *idx = builder.ctx.text.len();
+        idx.idx = builder.ctx.text.len() as u32;
         for (idx, ir) in self.body.iter_mut().enumerate() {
             ir.life.position = idx as _;
         }

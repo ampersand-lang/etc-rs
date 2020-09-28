@@ -1,4 +1,6 @@
+use std::convert::TryInto;
 use std::fmt::{self, Display};
+use std::mem;
 
 use failure::Fallible;
 use hashbrown::{HashMap, HashSet};
@@ -7,11 +9,11 @@ use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
 use crate::ast::{Kind, Node, NodeId, Visit, VisitResult};
-use crate::types::{primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId};
+use crate::types::{primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId, TypeInfo};
 use crate::values::Payload;
 
 use self::codegen::Lifetime;
-use self::context::{ExecutionContext, TypeError};
+use self::context::{ExecutionContext, TypeError, VirtualAddress};
 use self::repr::*;
 
 pub mod builder;
@@ -28,12 +30,14 @@ pub mod foreign {
         pub static ref PTR: Handle<Foreign> = Handle::new();
         pub static ref FN: Handle<Foreign> = Handle::new();
         pub static ref FORMAT_AST: Handle<Foreign> = Handle::new();
+        pub static ref COMPILE: Handle<Foreign> = Handle::new();
     }
 
     pub fn init(mut res: Resources<&mut Foreign>) {
         res.insert(*PTR, Box::new(type_ptr));
         res.insert(*FN, Box::new(type_fn));
         res.insert(*FORMAT_AST, Box::new(format_ast));
+        res.insert(*COMPILE, Box::new(compile));
     }
 
     fn type_ptr(
@@ -198,6 +202,30 @@ pub mod foreign {
         res.insert(node.id(), node);
         Ok(TypedValue::new(*primitive::NODE, Value::Node(handle)))
     }
+
+    fn compile(
+        ctx: &mut ExecutionContext,
+        _res: &mut Resources<(&String, &mut NamedType, &mut Node)>,
+        args: &[TypedValue],
+    ) -> Fallible<TypedValue> {
+        let ptr = match args[0].val {
+            Value::Arg(r) => {
+                VirtualAddress::from_bytes(&ctx.arguments[&Argument::new(r, ctx.invocation)])
+            }
+            Value::Register(r) => {
+                VirtualAddress::from_bytes(&ctx.registers[&r.build(ctx.invocation)])
+            }
+            Value::Address(ptr) => ptr,
+            _ => return Err(From::from(TypeError)),
+        };
+        let bytes = ctx.read_nul(ptr)?;
+        let string = String::from_utf8_lossy(&bytes[..bytes.len() - 1]).into_owned();
+        ctx.vars.compile_list.push(string);
+        Ok(TypedValue {
+            typ: *primitive::UNIT,
+            val: Value::Unit,
+        })
+    }
 }
 
 pub type ThreadId = Handle<context::ExecutionContext>;
@@ -269,7 +297,54 @@ impl Argument {
     }
 }
 
-pub type FuncId = usize;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FuncId {
+    pub offset: u32,
+    pub idx: u32,
+}
+
+impl FuncId {
+    pub fn new(offset: usize, idx: usize) -> Self {
+        let offset = offset as _;
+        let idx = idx as _;
+        Self { offset, idx }
+    }
+}
+
+impl Repr for FuncId {
+    fn type_info(&self) -> TypeInfo {
+        Self::static_type_info()
+    }
+
+    fn write_bytes(&self, out: &mut [u8]) {
+        out[..4].copy_from_slice(&self.offset.to_le_bytes());
+        out[4..].copy_from_slice(&self.idx.to_le_bytes());
+    }
+
+    fn copy_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() != mem::size_of::<u64>() {
+            panic!("attempt to copy from slice of invalid length");
+        }
+        self.offset = u32::from_le_bytes(bytes[..8].try_into().unwrap());
+        self.idx = u32::from_le_bytes(bytes[8..].try_into().unwrap());
+    }
+}
+
+impl ReprExt for FuncId {
+    fn static_type_info() -> TypeInfo {
+        TypeInfo::new(mem::size_of::<u32>() * 2, mem::align_of::<u64>())
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Self {
+        if bytes.len() != mem::size_of::<u32>() * 2 {
+            panic!("attempt to copy from slice of invalid length");
+        }
+        Self {
+            offset: u32::from_le_bytes(bytes[..4].try_into().unwrap()),
+            idx: u32::from_le_bytes(bytes[4..].try_into().unwrap()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TypedValue {
@@ -334,7 +409,7 @@ impl Display for Value {
             Value::Struct(_fields) => write!(f, "()"),
             Value::Tagged(..) => todo!(),
             Value::Union(..) => todo!(),
-            Value::Function(func) => write!(f, "%{}", func),
+            Value::Function(func) => write!(f, "@{}+{}", func.offset, func.idx),
             Value::Label(b) => write!(f, "%{}", b.number()),
             Value::Ffi(id) => write!(f, "ffi {}", id.display()),
         }
@@ -359,6 +434,16 @@ pub enum Instruction {
     Jmp,
     /// Three arguments: any boolean value and two basic blocks
     IfThenElse,
+    /// Two arguments: two integers
+    Add,
+    /// Two arguments: two integers
+    Sub,
+    /// Two arguments: two integers
+    Mul,
+    /// Two arguments: two integers
+    Div,
+    /// Two arguments: two integers
+    Rem,
 }
 
 #[derive(Debug, Clone)]

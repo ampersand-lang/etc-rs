@@ -85,6 +85,29 @@ pub mod builtin {
                 },
             },
         );
+
+        let pointee = primitive::S8.clone();
+        let handle = Handle::new();
+        let t = NamedType {
+            name: None,
+            t: Type::Pointer(pointee),
+        };
+        res.insert(handle, t);
+        let string = TypeId {
+            group: TypeGroup::Pointer,
+            concrete: NonConcrete::Type(handle),
+        };
+
+        res.insert(
+            COMPILE.concrete.to_type(),
+            NamedType {
+                name: Some("compile".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::UNIT,
+                    param_types: smallvec![string],
+                },
+            },
+        );
     }
 
     lazy_static! {
@@ -119,6 +142,12 @@ pub mod builtin {
             }
         };
         pub static ref QUASIQUOTE: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: NonConcrete::Type(Handle::new()),
+            }
+        };
+        pub static ref COMPILE: TypeId = {
             TypeId {
                 group: TypeGroup::Function,
                 concrete: NonConcrete::Type(Handle::new()),
