@@ -11,6 +11,8 @@ use crate::types::{self, NamedType, TypeId};
 pub enum Payload {
     /// The empty tuple.
     Unit,
+    /// True or False.
+    Bool(bool),
     /// Any non-negative integer.
     Integer(u64),
     /// Any (non-negative) real number according to IEEE-754.
@@ -115,6 +117,8 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.payload {
             Payload::Unit => write!(f, "()"),
+            Payload::Bool(true) => write!(f, "true"),
+            Payload::Bool(false) => write!(f, "false"),
             Payload::Integer(u) => write!(f, "{}", u),
             Payload::Float(x) => write!(f, "{:?}", x),
             Payload::String(handle) => write!(

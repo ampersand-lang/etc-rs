@@ -569,6 +569,7 @@ impl ExecutionContext {
                                 TypeGroup::None => Payload::Unit,
                                 TypeGroup::Type => Payload::Type(TypeId::from_bytes(value)),
                                 TypeGroup::Node => todo!(),
+                                TypeGroup::Bool => Payload::Bool(u8::from_bytes(value) != 0),
                                 TypeGroup::Int => match value.len() {
                                     1 => Payload::Integer(u8::from_bytes(value) as u64),
                                     2 => Payload::Integer(u16::from_bytes(value) as u64),
@@ -598,6 +599,7 @@ impl ExecutionContext {
                                 TypeGroup::None => Payload::Unit,
                                 TypeGroup::Type => Payload::Type(TypeId::from_bytes(value)),
                                 TypeGroup::Node => todo!(),
+                                TypeGroup::Bool => Payload::Bool(u8::from_bytes(value) != 0),
                                 TypeGroup::Int => match value.len() {
                                     1 => Payload::Integer(u8::from_bytes(value) as u64),
                                     2 => Payload::Integer(u16::from_bytes(value) as u64),
@@ -948,6 +950,7 @@ impl ExecutionContext {
                     TypeGroup::None => Value::Unit,
                     TypeGroup::Type => Value::Type(TypeId::from_bytes(value)),
                     TypeGroup::Node => Value::Node(NodeId::from_bytes(value)),
+                    TypeGroup::Bool => Value::Bool(u8::from_bytes(value) != 0),
                     TypeGroup::Int => match value.len() {
                         1 => Value::Uint(u8::from_bytes(value) as u64),
                         2 => Value::Uint(u16::from_bytes(value) as u64),
@@ -979,6 +982,7 @@ impl ExecutionContext {
                     TypeGroup::None => Value::Unit,
                     TypeGroup::Type => Value::Type(TypeId::from_bytes(value)),
                     TypeGroup::Node => Value::Node(NodeId::from_bytes(value)),
+                    TypeGroup::Bool => Value::Bool(u8::from_bytes(value) != 0),
                     TypeGroup::Int => match value.len() {
                         1 => Value::Uint(u8::from_bytes(value) as u64),
                         2 => Value::Uint(u16::from_bytes(value) as u64),

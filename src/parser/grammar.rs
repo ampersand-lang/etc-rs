@@ -358,7 +358,7 @@ fn alternative(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn atomic(state: &mut State) -> Fallible<NodeId> {
-    or7(
+    or9(
         move |state| {
             let location = state.location().unwrap_or_else(Handle::nil);
             Ok(grouped(
@@ -412,6 +412,8 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
             }))
         },
         grouped(TokenKind::Paren, root),
+        atom(TokenKind::True),
+        atom(TokenKind::False),
         atom(TokenKind::Integer),
         atom(TokenKind::Real),
         atom(TokenKind::Identifier),

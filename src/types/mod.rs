@@ -28,6 +28,14 @@ pub mod primitive {
         );
 
         res.insert(
+            BOOL.concrete.to_type(),
+            NamedType {
+                name: Some("bool".to_string()),
+                t: Type::Bool,
+            },
+        );
+
+        res.insert(
             TYPE.concrete.to_type(),
             NamedType {
                 name: Some("type".to_string()),
@@ -181,6 +189,12 @@ pub mod primitive {
                 concrete: NonConcrete::Type(Handle::new()),
             }
         };
+        pub static ref BOOL: TypeId = {
+            TypeId {
+                group: TypeGroup::Bool,
+                concrete: NonConcrete::Type(Handle::new()),
+            }
+        };
         pub static ref TYPE: TypeId = {
             TypeId {
                 group: TypeGroup::Type,
@@ -310,6 +324,7 @@ impl TypeId {
             NonConcrete::Type(handle) => {
                 let t = res.get::<NamedType>(handle).unwrap();
                 match t.t {
+                    Type::Bool => Some(1),
                     Type::S8 => Some(1),
                     Type::S16 => Some(2),
                     Type::S32 => Some(4),
@@ -357,6 +372,7 @@ impl TypeId {
             NonConcrete::Type(handle) => {
                 let t = res.get::<NamedType>(handle).unwrap();
                 match t.t {
+                    Type::Bool => Some(1),
                     Type::S8 => Some(1),
                     Type::S16 => Some(2),
                     Type::S32 => Some(4),
@@ -403,6 +419,7 @@ impl TypeId {
     pub fn matches<A: AssetBundle>(&self, other: &TypeId, res: &Resources<A>) -> bool {
         match (self.group, other.group) {
             (_, TypeGroup::None) => return true,
+            (TypeGroup::Bool, TypeGroup::Bool) => return true,
             (TypeGroup::Type, TypeGroup::Type) => return true,
             (TypeGroup::Int, TypeGroup::Int) => return true,
             (TypeGroup::Float, TypeGroup::Float) => return true,
@@ -474,6 +491,7 @@ impl NonConcrete {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 pub enum TypeGroup {
     None,
+    Bool,
     Type,
     Node,
     Int,
@@ -512,6 +530,7 @@ impl Handle<NamedType> {
         let this = res.get::<NamedType>(self).unwrap();
         let other = res.get::<NamedType>(other).unwrap();
         match (&this.t, &other.t) {
+            (Type::Bool, Type::Bool) => true,
             (Type::S8, Type::S8) => true,
             (Type::S16, Type::S16) => true,
             (Type::S32, Type::S32) => true,
@@ -570,6 +589,7 @@ pub struct NamedType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
+    Bool,
     S8,
     S16,
     S32,
@@ -691,6 +711,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                     write!(f, "{}", name)
                 } else {
                     match &ty.t {
+                        Type::Bool => write!(f, "bool"),
                         Type::S8 => write!(f, "s8"),
                         Type::S16 => write!(f, "s16"),
                         Type::S32 => write!(f, "s32"),

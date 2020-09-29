@@ -134,6 +134,15 @@ impl Backend for Amd64 {
                                     _ => todo!(),
                                 };
                                 match ir.args[1].val {
+                                    Value::Bool(p) => {
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .size(Size::from_bytes(1).unwrap())
+                                            .argument(target.reg)
+                                            .argument(p as u8 as u64)
+                                            .build()?;
+                                    }
                                     Value::Uint(int) => {
                                         let bb = builder.basic_block_mut(bb);
                                         bb.instruction()
@@ -260,6 +269,7 @@ impl Backend for Amd64 {
                             for (idx, &arg) in ir.args[2..].iter().enumerate() {
                                 let info = param_types[idx].type_info(&named_types, &target);
                                 let arg = match arg.val {
+                                    Value::Bool(p) => (p as u8 as u64).into(),
                                     Value::Uint(i) => i.into(),
                                     Value::Arg(r) => program.call_conv.argument(builder, r)?,
                                     Value::Register(r) => builder.local(r).unwrap().reg.into(),
@@ -278,6 +288,10 @@ impl Backend for Amd64 {
                             let t = ir.args[0].typ;
                             let t = t.type_info(&named_types, &target);
                             let result = match ir.args[0].val {
+                                Value::Bool(p) => TypedArgument {
+                                    info: t,
+                                    arg: (p as u8 as u64).into(),
+                                },
                                 Value::Uint(u) => TypedArgument {
                                     info: t,
                                     arg: u.into(),

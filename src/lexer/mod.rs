@@ -119,6 +119,8 @@ pub enum Side {
 #[allow(missing_docs)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
+    True,
+    False,
     Integer,
     Real,
     Identifier,
@@ -155,6 +157,9 @@ impl TokenKind {
             "]" => Self::Bracket(Side::Right),
             "{" => Self::Curly(Side::Left),
             "}" => Self::Curly(Side::Right),
+            "with!" => Self::With,
+            "true" => Self::True,
+            "false" => Self::False,
             _ => panic!("{:?} is not a literal token", lit),
         }
     }
@@ -176,6 +181,8 @@ impl Display for TokenKind {
             Self::SingleQuote => "'",
             Self::Dollar => "$",
             Self::With => "with!",
+            Self::True => "true",
+            Self::False => "false",
             Self::Paren(Side::Left) => "(",
             Self::Paren(Side::Right) => ")",
             Self::Bracket(Side::Left) => "[",
@@ -196,6 +203,10 @@ pub enum TokenValue {
     ///
     /// This is chosen for all punctuation marks.
     None,
+    /// A boolean 1-bit value.
+    ///
+    /// True, or False.
+    Bool(bool),
     /// An unsigned integer.
     ///
     /// Negative numbers are not single tokens, they are expressions.
@@ -499,6 +510,18 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                             location: handle,
                             kind: TokenKind::With,
                             value: TokenValue::None,
+                        }))
+                    } else if ident == "true" {
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::True,
+                            value: TokenValue::Bool(true),
+                        }))
+                    } else if ident == "false" {
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::True,
+                            value: TokenValue::Bool(false),
                         }))
                     } else {
                         let id_handle = Handle::from_hash(&ident);

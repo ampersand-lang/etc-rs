@@ -75,6 +75,7 @@ pub fn infer_update(
                 Kind::Nil => {
                     let typ = match node.payload.unwrap() {
                         Payload::Unit => primitive::UNIT.clone(),
+                        Payload::Bool(_) => primitive::BOOL.clone(),
                         Payload::Integer(_) => primitive::SINT.clone(),
                         Payload::Float(_) => primitive::FLOAT.clone(),
                         Payload::String(_) => {

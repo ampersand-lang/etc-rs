@@ -220,7 +220,7 @@ pub fn or4<T, U, V, W>(
 ///
 /// `|` in EBNF.
 #[inline]
-pub fn or7<T: Clone>(
+pub fn or9<T: Clone>(
     a: impl Fn(&mut State) -> Fallible<T>,
     b: impl Fn(&mut State) -> Fallible<T>,
     c: impl Fn(&mut State) -> Fallible<T>,
@@ -228,6 +228,8 @@ pub fn or7<T: Clone>(
     e: impl Fn(&mut State) -> Fallible<T>,
     f: impl Fn(&mut State) -> Fallible<T>,
     g: impl Fn(&mut State) -> Fallible<T>,
+    h: impl Fn(&mut State) -> Fallible<T>,
+    i: impl Fn(&mut State) -> Fallible<T>,
 ) -> impl Fn(&mut State) -> Fallible<T> {
     move |state| {
         let lexer = state.lexer.data.clone();
@@ -255,6 +257,14 @@ pub fn or7<T: Clone>(
             .or_else(|_| {
                 state.lexer.data = lexer.clone();
                 g(state)
+            })
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                h(state)
+            })
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                i(state)
             })
     }
 }
@@ -313,6 +323,7 @@ pub fn atom(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<NodeId> {
                 if tok.kind == lit {
                     let payload = match tok.value {
                         TokenValue::None => panic!("atom is not an atom"),
+                        TokenValue::Bool(p) => Payload::Bool(p),
                         TokenValue::Integer(int) => Payload::Integer(int),
                         TokenValue::Real(real) => Payload::Float(real),
                         TokenValue::Identifier(ident) => Payload::Identifier(ident),

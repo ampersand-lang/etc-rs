@@ -117,6 +117,10 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     TypedValue::new(this.type_of.unwrap(), Value::Unit),
                     builder.0,
                 ),
+                Payload::Bool(p) => (
+                    TypedValue::new(this.type_of.unwrap(), Value::Bool(p)),
+                    builder.0,
+                ),
                 Payload::Integer(i) => (
                     TypedValue::new(this.type_of.unwrap(), Value::Uint(i)),
                     builder.0,
