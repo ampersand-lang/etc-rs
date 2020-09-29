@@ -1,7 +1,7 @@
 use failure::Fallible;
 use hashbrown::{HashMap, HashSet};
 
-use crate::assets::{Handle, LazyUpdate, Resources};
+use crate::assets::{AssetBundle, Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
 use crate::dispatch::*;
 use crate::error::MultiError;
@@ -9,12 +9,12 @@ use crate::scope::{Scope, ScopeId};
 use crate::types::{NamedType, NonConcrete, TypeId};
 use crate::values::Payload;
 
-pub fn collapse(
+pub fn collapse<A: AssetBundle, B: AssetBundle>(
     typ: TypeId,
     scopes: &Resources<&Scope>,
     strings: &Resources<&String>,
-    dispatch: &Resources<&Dispatcher>,
-    named_types: &Resources<&NamedType>,
+    dispatch: &Resources<B>,
+    named_types: &Resources<A>,
     nodes: &Resources<&mut Node>,
 ) -> Fallible<(TypeId, Option<ScopeId>)> {
     match typ.concrete {
@@ -50,6 +50,7 @@ pub fn collapse(
                     1 => results[0].result_type(),
                     _ => todo!(),
                 };
+                let (t, _) = collapse(t, scopes, strings, dispatch, named_types, nodes)?;
                 return Ok((t, Some(scope)));
             }
             // TODO: a proper error type

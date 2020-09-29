@@ -1,4 +1,6 @@
-id :: {a} => a;
-
-x := id 42;
-x
+x := $builtin-add 1, 1;
+y := $builtin-sub x, 2;
+z := $builtin-mul y, 4;
+u := $builtin-div z, 8;
+v := $builtin-rem u, 16;
+v

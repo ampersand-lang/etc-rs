@@ -434,6 +434,209 @@ impl Backend for Amd64 {
                                 .argument(Register::rax())
                                 .build()?;
                         }
+                        Instruction::Mul => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            if t.size != 8 {
+                                todo!();
+                            }
+                            let arg0 = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+                            let arg1 = match ir.args[1].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = *builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(Register::rax())
+                                .argument(arg0.arg)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("imul")
+                                .argument(Register::rax())
+                                .argument(arg1.arg)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(target.reg)
+                                .argument(Register::rax())
+                                .build()?;
+                        }
+                        Instruction::Div => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            if t.size != 8 {
+                                todo!();
+                            }
+                            let arg0 = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+                            let arg1 = match ir.args[1].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = *builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(Register::rdx())
+                                .argument(0)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(Register::rax())
+                                .argument(arg0.arg)
+                                .build()?;
+                            bb.instruction().opcode("idiv").argument(arg1.arg).build()?;
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(target.reg)
+                                .argument(Register::rax())
+                                .build()?;
+                        }
+                        Instruction::Rem => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            if t.size != 8 {
+                                todo!();
+                            }
+                            let arg0 = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+                            let arg1 = match ir.args[1].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = *builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(Register::rdx())
+                                .argument(0)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(Register::rax())
+                                .argument(arg0.arg)
+                                .build()?;
+                            bb.instruction().opcode("idiv").argument(arg1.arg).build()?;
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(target.reg)
+                                .argument(Register::rdx())
+                                .build()?;
+                        }
                         _ => todo!(),
                     }
                 }

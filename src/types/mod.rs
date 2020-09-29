@@ -305,7 +305,7 @@ pub struct TypeId {
 }
 
 impl TypeId {
-    fn size_of<A: AssetBundle>(&self, res: &Resources<A>, target: &Target) -> Option<usize> {
+    pub fn size_of<A: AssetBundle>(&self, res: &Resources<A>, target: &Target) -> Option<usize> {
         match self.concrete {
             NonConcrete::Type(handle) => {
                 let t = res.get::<NamedType>(handle).unwrap();
@@ -352,7 +352,7 @@ impl TypeId {
         }
     }
 
-    fn align_of<A: AssetBundle>(&self, res: &Resources<A>, target: &Target) -> Option<usize> {
+    pub fn align_of<A: AssetBundle>(&self, res: &Resources<A>, target: &Target) -> Option<usize> {
         match self.concrete {
             NonConcrete::Type(handle) => {
                 let t = res.get::<NamedType>(handle).unwrap();
@@ -603,6 +603,22 @@ pub enum Type {
     Pointer(TypeId),
     Array(TypeId, usize),
     Slice(TypeId),
+}
+
+impl Type {
+    pub fn is_signed(&self) -> bool {
+        matches!(
+            self,
+            Type::S8 | Type::S16 | Type::S32 | Type::S64 | Type::Sint
+        )
+    }
+
+    pub fn is_unsigned(&self) -> bool {
+        matches!(
+            self,
+            Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::Uint
+        )
+    }
 }
 
 /// The configuration for pretty-printing a type.

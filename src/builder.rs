@@ -1,16 +1,21 @@
 use either::Either;
 use failure::Fallible;
+use hashbrown::HashMap;
 use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
-use crate::ast::Node;
+use crate::ast::{Node, NodeId};
+use crate::dispatch::Dispatcher;
 use crate::lir::{
     builder::{FunctionBuilder, ValueBuilder},
     compile::Compile as _,
-    foreign, Bytes, Elems, TypedValue, Value, Variants,
+    foreign,
+    target::Target,
+    Bytes, Elems, TypedValue, Value, Variants,
 };
+use crate::pass::collapse;
 use crate::scope::Scope;
-use crate::types::{primitive, NamedType, TypeId};
+use crate::types::{primitive, NamedType, NonConcrete, TypeId};
 use crate::values::Payload;
 
 pub type Infer = Box<
@@ -19,6 +24,10 @@ pub type Infer = Box<
             &Resources<&mut Node>,
             &mut Resources<&mut NamedType>,
             &Resources<&String>,
+            &Resources<&Scope>,
+            &Resources<&mut Dispatcher>,
+            &mut HashMap<NodeId, TypeId>,
+            &Target,
         ) -> Fallible<TypeId>
         + Send
         + Sync
@@ -75,10 +84,23 @@ impl BuilderMacro {
         nodes: &Resources<&mut Node>,
         named_types: &mut Resources<&mut NamedType>,
         strings: &Resources<&String>,
+        scopes: &Resources<&Scope>,
+        dispatch: &Resources<&mut Dispatcher>,
+        types: &mut HashMap<NodeId, TypeId>,
+        target: &Target,
     ) -> Option<Fallible<TypeId>> {
-        self.infer
-            .as_ref()
-            .map(|f| f(node, nodes, named_types, strings))
+        self.infer.as_ref().map(|f| {
+            f(
+                node,
+                nodes,
+                named_types,
+                strings,
+                scopes,
+                dispatch,
+                types,
+                target,
+            )
+        })
     }
 
     pub fn compile<'a>(
@@ -125,9 +147,11 @@ impl BuilderMacro {
 
     pub fn build_new_node() -> Self {
         Self::new("new-node")
-            .with_infer(Box::new(|_node, _nodes, _named_types, _string| {
-                Ok(*primitive::NODE)
-            }))
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _string, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::NODE)
+                },
+            ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::new();
                 for expr in &node.children[1..] {
@@ -145,9 +169,11 @@ impl BuilderMacro {
 
     pub fn build_format_ast() -> Self {
         Self::new("format-ast")
-            .with_infer(Box::new(|_node, _nodes, _named_types, _string| {
-                Ok(*primitive::NODE)
-            }))
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _string, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::NODE)
+                },
+            ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::new();
                 let func =
@@ -168,9 +194,11 @@ impl BuilderMacro {
 
     pub fn build_quasiquote() -> Self {
         Self::new("quasiquote")
-            .with_infer(Box::new(|_node, _nodes, _named_types, _string| {
-                Ok(*primitive::NODE)
-            }))
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _string, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::NODE)
+                },
+            ))
             .with_compile(Box::new(|node, _res, _builders, builder| {
                 let node =
                     TypedValue::new(*primitive::NODE, Value::Node(node.children[1].unwrap()));
@@ -180,9 +208,11 @@ impl BuilderMacro {
 
     pub fn build_compile() -> Self {
         Self::new("compile")
-            .with_infer(Box::new(|_node, _nodes, _named_types, _string| {
-                Ok(*primitive::UNIT)
-            }))
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _string, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::UNIT)
+                },
+            ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::new();
                 let func = TypedValue::new(*primitive::UNIT_BUILDER, Value::Ffi(*foreign::COMPILE));
@@ -199,18 +229,341 @@ impl BuilderMacro {
                 Ok((result, builder.0))
             }))
     }
+
+    pub fn build_builtin_add() -> Self {
+        Self::new("builtin-add")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                    if node.children.len() > 3 {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    let (u, _) = collapse(
+                        types[&arg1.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    match (t.concrete, u.concrete) {
+                        (NonConcrete::Type(t), NonConcrete::Type(u)) => {
+                            let t = &named_types.get(t).unwrap().t;
+                            let u = &named_types.get(u).unwrap().t;
+                            if !(t.is_signed() && u.is_signed()
+                                || t.is_unsigned() && u.is_unsigned())
+                            {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                    if t.size_of(named_types, target).unwrap()
+                        > u.size_of(named_types, target).unwrap()
+                    {
+                        Ok(t)
+                    } else {
+                        Ok(u)
+                    }
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 =
+                    builder
+                        .0
+                        .build_add(&mut result, node.type_of.unwrap(), args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_sub() -> Self {
+        Self::new("builtin-sub")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                    if node.children.len() > 3 {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    let (u, _) = collapse(
+                        types[&arg1.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    match (t.concrete, u.concrete) {
+                        (NonConcrete::Type(t), NonConcrete::Type(u)) => {
+                            let t = &named_types.get(t).unwrap().t;
+                            let u = &named_types.get(u).unwrap().t;
+                            if !(t.is_signed() && u.is_signed()
+                                || t.is_unsigned() && u.is_unsigned())
+                            {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                    if t.size_of(named_types, target).unwrap()
+                        > u.size_of(named_types, target).unwrap()
+                    {
+                        Ok(t)
+                    } else {
+                        Ok(u)
+                    }
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 =
+                    builder
+                        .0
+                        .build_sub(&mut result, node.type_of.unwrap(), args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_mul() -> Self {
+        Self::new("builtin-mul")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                    if node.children.len() > 3 {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    let (u, _) = collapse(
+                        types[&arg1.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    match (t.concrete, u.concrete) {
+                        (NonConcrete::Type(t), NonConcrete::Type(u)) => {
+                            let t = &named_types.get(t).unwrap().t;
+                            let u = &named_types.get(u).unwrap().t;
+                            if !(t.is_signed() && u.is_signed()
+                                || t.is_unsigned() && u.is_unsigned())
+                            {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                    if t.size_of(named_types, target).unwrap()
+                        > u.size_of(named_types, target).unwrap()
+                    {
+                        Ok(t)
+                    } else {
+                        Ok(u)
+                    }
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 =
+                    builder
+                        .0
+                        .build_mul(&mut result, node.type_of.unwrap(), args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_div() -> Self {
+        Self::new("builtin-div")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                    if node.children.len() > 3 {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    let (u, _) = collapse(
+                        types[&arg1.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    match (t.concrete, u.concrete) {
+                        (NonConcrete::Type(t), NonConcrete::Type(u)) => {
+                            let t = &named_types.get(t).unwrap().t;
+                            let u = &named_types.get(u).unwrap().t;
+                            if !(t.is_signed() && u.is_signed()
+                                || t.is_unsigned() && u.is_unsigned())
+                            {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                    if t.size_of(named_types, target).unwrap()
+                        > u.size_of(named_types, target).unwrap()
+                    {
+                        Ok(t)
+                    } else {
+                        Ok(u)
+                    }
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 =
+                    builder
+                        .0
+                        .build_div(&mut result, node.type_of.unwrap(), args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_rem() -> Self {
+        Self::new("builtin-rem")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                    if node.children.len() > 3 {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    let (u, _) = collapse(
+                        types[&arg1.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    match (t.concrete, u.concrete) {
+                        (NonConcrete::Type(t), NonConcrete::Type(u)) => {
+                            let t = &named_types.get(t).unwrap().t;
+                            let u = &named_types.get(u).unwrap().t;
+                            if !(t.is_signed() && u.is_signed()
+                                || t.is_unsigned() && u.is_unsigned())
+                            {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                    if t.size_of(named_types, target).unwrap()
+                        > u.size_of(named_types, target).unwrap()
+                    {
+                        Ok(t)
+                    } else {
+                        Ok(u)
+                    }
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 =
+                    builder
+                        .0
+                        .build_rem(&mut result, node.type_of.unwrap(), args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
 }
 
 pub fn init(mut res: Resources<&mut BuilderMacro>) {
-    let builder = BuilderMacro::build_new_node();
-    res.insert(builder.id(), builder);
-
-    let builder = BuilderMacro::build_format_ast();
-    res.insert(builder.id(), builder);
-
-    let builder = BuilderMacro::build_quasiquote();
-    res.insert(builder.id(), builder);
-
-    let builder = BuilderMacro::build_compile();
-    res.insert(builder.id(), builder);
+    let builders = vec![
+        BuilderMacro::build_new_node(),
+        BuilderMacro::build_format_ast(),
+        BuilderMacro::build_quasiquote(),
+        BuilderMacro::build_compile(),
+        BuilderMacro::build_builtin_add(),
+        BuilderMacro::build_builtin_sub(),
+        BuilderMacro::build_builtin_mul(),
+        BuilderMacro::build_builtin_div(),
+        BuilderMacro::build_builtin_rem(),
+    ];
+    for builder in builders {
+        res.insert(builder.id(), builder);
+    }
 }

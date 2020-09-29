@@ -217,4 +217,114 @@ impl<'a> FunctionBuilder<'a> {
         });
         self
     }
+
+    pub fn build_add(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::Add,
+            args: smallvec![a, b],
+            typ,
+        });
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
+    pub fn build_sub(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::Sub,
+            args: smallvec![a, b],
+            typ,
+        });
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
+    pub fn build_mul(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::Mul,
+            args: smallvec![a, b],
+            typ,
+        });
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
+    pub fn build_div(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::Div,
+            args: smallvec![a, b],
+            typ,
+        });
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
+    pub fn build_rem(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::Rem,
+            args: smallvec![a, b],
+            typ,
+        });
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
 }

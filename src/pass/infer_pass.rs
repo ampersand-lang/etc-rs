@@ -4,13 +4,13 @@ use failure::{Fail, Fallible};
 use hashbrown::HashMap;
 use smallvec::SmallVec;
 
-use crate::assets::{Handle, LazyUpdate, Resources};
+use crate::assets::{Handle, LazyUpdate, Resources, Static};
 use crate::ast::{Kind, Node, RootNode, VisitResult, Which};
 use crate::builder::BuilderMacro;
 use crate::dispatch::*;
 use crate::error::MultiError;
 use crate::lexer::Location;
-use crate::lir::context::ExecutionContext;
+use crate::lir::{context::ExecutionContext, target::Target};
 use crate::scope::Scope;
 use crate::types::{primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId};
 use crate::values::Payload;
@@ -36,6 +36,7 @@ pub enum InferError {
 
 pub fn infer_update(
     _lazy: &mut LazyUpdate,
+    target: &Static<Target>,
     roots: Resources<&RootNode>,
     scopes: Resources<&Scope>,
     contexts: Resources<&ExecutionContext>,
@@ -197,9 +198,20 @@ pub fn infer_update(
                                 let handle = Handle::from_hash(alternative.as_bytes());
                                 if let Some(builder) = builders.get::<BuilderMacro>(handle) {
                                     builder
-                                        .infer(node, &nodes, &mut named_types, &strings)
+                                        .infer(
+                                            node,
+                                            &nodes,
+                                            &mut named_types,
+                                            &strings,
+                                            &scopes,
+                                            &dispatch,
+                                            &mut types,
+                                            &target,
+                                        )
                                         .transpose()
-                                        .expect("i don't know how to handle errors yet")
+                                        .unwrap_or_else(|err| {
+                                            panic!("i don't know how to handle errors yet: {}", err)
+                                        })
                                 } else {
                                     panic!("not an alternative: `${}`", alternative.as_str());
                                 }
