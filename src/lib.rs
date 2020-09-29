@@ -4,6 +4,7 @@
 
 use assets::*;
 use ast::{Node, RootNode, Visit, VisitResult};
+use builder::BuilderMacro;
 use dispatch::Dispatcher;
 use lexer::Location;
 use lir::{
@@ -22,6 +23,7 @@ pub mod utils;
 
 pub mod assets;
 pub mod ast;
+pub mod builder;
 pub mod dispatch;
 pub mod error;
 pub mod lexer;
@@ -50,6 +52,7 @@ pub fn init_assets(world: &World) {
     world.init_asset::<Variants>();
     world.init_asset::<Bytes>();
     world.init_asset::<Foreign>();
+    world.init_asset::<BuilderMacro>();
     world.init_static::<Target>();
 }
 

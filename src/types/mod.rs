@@ -11,151 +11,6 @@ use crate::lir::target::Target;
 use crate::scope::ScopeId;
 use crate::utils::IntPtr;
 
-pub mod builtin {
-    use lazy_static::lazy_static;
-
-    use super::*;
-
-    pub fn init(mut res: Resources<&mut NamedType>) {
-        res.insert(
-            DECLARE.concrete.to_type(),
-            NamedType {
-                name: Some("declare".to_string()),
-                t: Type::Function {
-                    result_type: *primitive::UNIT,
-                    param_types: smallvec![*primitive::NODE],
-                },
-            },
-        );
-
-        res.insert(
-            PTR.concrete.to_type(),
-            NamedType {
-                name: Some("ptr".to_string()),
-                t: Type::Function {
-                    result_type: *primitive::TYPE,
-                    param_types: smallvec![*primitive::TYPE],
-                },
-            },
-        );
-
-        res.insert(
-            FN.concrete.to_type(),
-            NamedType {
-                name: Some("fn".to_string()),
-                t: Type::Function {
-                    result_type: *primitive::TYPE,
-                    param_types: smallvec![*primitive::TYPE, *primitive::TYPE],
-                },
-            },
-        );
-
-        res.insert(
-            FORMAT_AST.concrete.to_type(),
-            NamedType {
-                name: Some("format-ast".to_string()),
-                t: Type::Function {
-                    result_type: *primitive::NODE,
-                    param_types: smallvec![*primitive::NODE],
-                },
-            },
-        );
-
-        res.insert(
-            NEW_NODE.concrete.to_type(),
-            NamedType {
-                name: Some("new-node".to_string()),
-                t: Type::Function {
-                    result_type: *primitive::NODE,
-                    param_types: smallvec![
-                        *primitive::U8,
-                        *primitive::TYPE, /* ANY, VARIADIC */
-                    ],
-                },
-            },
-        );
-
-        res.insert(
-            QUASIQUOTE.concrete.to_type(),
-            NamedType {
-                name: Some("quasiquote".to_string()),
-                t: Type::Function {
-                    result_type: *primitive::NODE,
-                    param_types: smallvec![/* ANY */],
-                },
-            },
-        );
-
-        let pointee = primitive::S8.clone();
-        let handle = Handle::new();
-        let t = NamedType {
-            name: None,
-            t: Type::Pointer(pointee),
-        };
-        res.insert(handle, t);
-        let string = TypeId {
-            group: TypeGroup::Pointer,
-            concrete: NonConcrete::Type(handle),
-        };
-
-        res.insert(
-            COMPILE.concrete.to_type(),
-            NamedType {
-                name: Some("compile".to_string()),
-                t: Type::Function {
-                    result_type: *primitive::UNIT,
-                    param_types: smallvec![string],
-                },
-            },
-        );
-    }
-
-    lazy_static! {
-        pub static ref DECLARE: TypeId = {
-            TypeId {
-                group: TypeGroup::Function,
-                concrete: NonConcrete::Type(Handle::new()),
-            }
-        };
-        pub static ref PTR: TypeId = {
-            TypeId {
-                group: TypeGroup::Function,
-                concrete: NonConcrete::Type(Handle::new()),
-            }
-        };
-        pub static ref FN: TypeId = {
-            TypeId {
-                group: TypeGroup::Function,
-                concrete: NonConcrete::Type(Handle::new()),
-            }
-        };
-        pub static ref FORMAT_AST: TypeId = {
-            TypeId {
-                group: TypeGroup::Function,
-                concrete: NonConcrete::Type(Handle::new()),
-            }
-        };
-        pub static ref NEW_NODE: TypeId = {
-            TypeId {
-                group: TypeGroup::Function,
-                concrete: NonConcrete::Type(Handle::new()),
-            }
-        };
-        pub static ref QUASIQUOTE: TypeId = {
-            TypeId {
-                group: TypeGroup::Function,
-                concrete: NonConcrete::Type(Handle::new()),
-            }
-        };
-        pub static ref COMPILE: TypeId = {
-            TypeId {
-                group: TypeGroup::Function,
-                concrete: NonConcrete::Type(Handle::new()),
-            }
-        };
-    }
-}
-
 pub mod primitive {
     use lazy_static::lazy_static;
 
@@ -295,6 +150,28 @@ pub mod primitive {
                 t: Type::Float,
             },
         );
+
+        res.insert(
+            UNIT_BUILDER.concrete.to_type(),
+            NamedType {
+                name: Some("builder".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::UNIT,
+                    param_types: smallvec![],
+                },
+            },
+        );
+
+        res.insert(
+            NODE_BUILDER.concrete.to_type(),
+            NamedType {
+                name: Some("builder".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::NODE,
+                    param_types: smallvec![],
+                },
+            },
+        );
     }
 
     lazy_static! {
@@ -391,6 +268,18 @@ pub mod primitive {
         pub static ref FLOAT: TypeId = {
             TypeId {
                 group: TypeGroup::Float,
+                concrete: NonConcrete::Type(Handle::new()),
+            }
+        };
+        pub static ref UNIT_BUILDER: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: NonConcrete::Type(Handle::new()),
+            }
+        };
+        pub static ref NODE_BUILDER: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
                 concrete: NonConcrete::Type(Handle::new()),
             }
         };

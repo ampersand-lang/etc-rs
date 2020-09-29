@@ -3,6 +3,7 @@ name = "etc-rs"
 version = "0.1.0"
 authors = ["Szymon Walter <waltersz@protonmail.com>"]
 edition = "2018"
+default-run = "etc"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -24,3 +25,11 @@ rand = "0.7"
 [features]
 default = []
 docs = []
+
+[[bin]]
+name = "etc"
+path = "src/main.rs"
+
+[[bin]]
+name = "etci"
+path = "src/bin/etci.rs"

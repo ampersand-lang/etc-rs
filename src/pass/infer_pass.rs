@@ -6,12 +6,13 @@ use smallvec::SmallVec;
 
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, VisitResult, Which};
+use crate::builder::BuilderMacro;
 use crate::dispatch::*;
 use crate::error::MultiError;
 use crate::lexer::Location;
 use crate::lir::context::ExecutionContext;
 use crate::scope::Scope;
-use crate::types::{builtin, primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId};
+use crate::types::{primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId};
 use crate::values::Payload;
 
 #[derive(Debug, Fail)]
@@ -41,6 +42,7 @@ pub fn infer_update(
     mut dispatch: Resources<&mut Dispatcher>,
     mut named_types: Resources<&mut NamedType>,
     strings: Resources<&String>,
+    builders: Resources<&BuilderMacro>,
     locations: Resources<&Location>,
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<Option<&'static str>> {
@@ -87,17 +89,9 @@ pub fn infer_update(
                                 concrete: NonConcrete::Type(handle),
                             }
                         }
-                        Payload::Identifier(string) if node.alternative => {
-                            match strings.get::<String>(string).unwrap().as_str() {
-                                "declare" => builtin::DECLARE.clone(),
-                                "ptr" => builtin::PTR.clone(),
-                                "fn" => builtin::FN.clone(),
-                                "format-ast" => builtin::FORMAT_AST.clone(),
-                                "new-node" => builtin::NEW_NODE.clone(),
-                                "quasiquote" => builtin::QUASIQUOTE.clone(),
-                                "compile" => builtin::COMPILE.clone(),
-                                ident => panic!("not a builtin identifier: `${}`", ident),
-                            }
+                        Payload::Identifier(_string) if node.alternative => {
+                            // placeholder
+                            *primitive::UNIT_BUILDER
                         }
                         Payload::Identifier(string) => TypeId {
                             group: TypeGroup::None,
@@ -196,70 +190,78 @@ pub fn infer_update(
                 }
                 Kind::Application => {
                     let func = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
-                    let typ = types
-                        .get(&func.id())
-                        .copied()
-                        .or_else(|| func.unquote_type)
-                        .or_else(|| func.type_of);
-                    let args = node.children[1..].to_vec();
-                    let typ = typ.and_then(|typ| match typ.concrete {
-                        NonConcrete::Type(handle) => {
-                            match &named_types.get::<NamedType>(handle).unwrap().t {
-                                Type::Function {
-                                    result_type,
-                                    param_types,
-                                } => Some((result_type.clone(), param_types.clone())),
-                                _ => {
-                                    errors.push(From::from(InferError::NotAFunction {
-                                        location: locations
-                                            .get::<Location>(func.location)
-                                            .unwrap()
-                                            .as_ref()
-                                            .clone(),
-                                        typ,
-                                    }));
-                                    return None;
+                    let typ = if func.alternative {
+                        match func.payload {
+                            Some(Payload::Identifier(ident)) => {
+                                let alternative = strings.get(ident).unwrap();
+                                let handle = Handle::from_hash(alternative.as_bytes());
+                                if let Some(builder) = builders.get::<BuilderMacro>(handle) {
+                                    builder
+                                        .infer(node, &nodes, &mut named_types, &strings)
+                                        .transpose()
+                                        .expect("i don't know how to handle errors yet")
+                                } else {
+                                    panic!("not an alternative: `${}`", alternative.as_str());
                                 }
                             }
+                            _ => None,
                         }
-                        NonConcrete::Dispatch(scope, handle) => {
-                            let args: SmallVec<_> = args
-                                .iter()
-                                .map(|param| {
-                                    let id = param.unwrap();
-                                    nodes
-                                        .get::<Node>(id)
-                                        .unwrap()
-                                        .type_of
-                                        .or_else(|| types.get(&id).copied())
-                                        .unwrap()
-                                })
-                                .collect();
-                            let ident = strings.get(handle).unwrap();
-                            let mut iter = Some(scope);
-                            let mut result = None;
-                            while let Some(scope) = iter {
-                                let name = Name(scope, handle);
-                                let dispatch = dispatch.get::<Dispatcher>(DispatchId::from_name(
-                                    name.0,
-                                    ident.as_bytes(),
-                                ));
-                                let dispatch = if let Some(d) = dispatch {
-                                    d
-                                } else {
-                                    let scope = scopes.get(scope);
-                                    if let Some(scope) = scope {
-                                        iter = Some(scope.parent());
-                                    } else {
-                                        iter = None;
+                    } else {
+                        None
+                    };
+                    if let Some(typ) = typ {
+                        types.insert(node.id(), typ);
+                    } else {
+                        let typ = types
+                            .get(&func.id())
+                            .copied()
+                            .or_else(|| func.unquote_type)
+                            .or_else(|| func.type_of);
+                        let args = node.children[1..].to_vec();
+                        let typ = typ.and_then(|typ| match typ.concrete {
+                            NonConcrete::Type(handle) => {
+                                match &named_types.get::<NamedType>(handle).unwrap().t {
+                                    Type::Function {
+                                        result_type,
+                                        param_types,
+                                    } => Some((result_type.clone(), param_types.clone())),
+                                    _ => {
+                                        errors.push(From::from(InferError::NotAFunction {
+                                            location: locations
+                                                .get::<Location>(func.location)
+                                                .unwrap()
+                                                .as_ref()
+                                                .clone(),
+                                            typ,
+                                        }));
+                                        return None;
                                     }
-                                    continue;
-                                };
-                                let query =
-                                    Query::new(name, IsFunction::Yes, Some(args.clone()), None);
-                                let results = dispatch.query(&query, &named_types);
-                                match results.len() {
-                                    0 => {
+                                }
+                            }
+                            NonConcrete::Dispatch(scope, handle) => {
+                                let args: SmallVec<_> = args
+                                    .iter()
+                                    .map(|param| {
+                                        let id = param.unwrap();
+                                        nodes
+                                            .get::<Node>(id)
+                                            .unwrap()
+                                            .type_of
+                                            .or_else(|| types.get(&id).copied())
+                                            .unwrap()
+                                    })
+                                    .collect();
+                                let ident = strings.get(handle).unwrap();
+                                let mut iter = Some(scope);
+                                let mut result = None;
+                                while let Some(scope) = iter {
+                                    let name = Name(scope, handle);
+                                    let dispatch = dispatch.get::<Dispatcher>(
+                                        DispatchId::from_name(name.0, ident.as_bytes()),
+                                    );
+                                    let dispatch = if let Some(d) = dispatch {
+                                        d
+                                    } else {
                                         let scope = scopes.get(scope);
                                         if let Some(scope) = scope {
                                             iter = Some(scope.parent());
@@ -267,56 +269,72 @@ pub fn infer_update(
                                             iter = None;
                                         }
                                         continue;
-                                    }
-                                    1 => {
-                                        result = Some((
-                                            results[0].result_type(),
-                                            results[0]
-                                                .arg_types()
-                                                .unwrap()
-                                                .iter()
-                                                .copied()
-                                                .collect(),
-                                        ));
-                                        break;
-                                    }
-                                    _ => {
-                                        errors.push(From::from(InferError::MultipleDefinitions {
-                                            location: locations
-                                                .get::<Location>(func.location)
-                                                .unwrap()
-                                                .as_ref()
-                                                .clone(),
-                                        }));
-                                        return None;
+                                    };
+                                    let query =
+                                        Query::new(name, IsFunction::Yes, Some(args.clone()), None);
+                                    let results = dispatch.query(&query, &named_types);
+                                    match results.len() {
+                                        0 => {
+                                            let scope = scopes.get(scope);
+                                            if let Some(scope) = scope {
+                                                iter = Some(scope.parent());
+                                            } else {
+                                                iter = None;
+                                            }
+                                            continue;
+                                        }
+                                        1 => {
+                                            result = Some((
+                                                results[0].result_type(),
+                                                results[0]
+                                                    .arg_types()
+                                                    .unwrap()
+                                                    .iter()
+                                                    .copied()
+                                                    .collect(),
+                                            ));
+                                            break;
+                                        }
+                                        _ => {
+                                            errors.push(From::from(
+                                                InferError::MultipleDefinitions {
+                                                    location: locations
+                                                        .get::<Location>(func.location)
+                                                        .unwrap()
+                                                        .as_ref()
+                                                        .clone(),
+                                                },
+                                            ));
+                                            return None;
+                                        }
                                     }
                                 }
+                                result
                             }
-                            result
-                        }
-                        _ => todo!(),
-                    });
-                    if let Some((result_type, param_types)) = typ {
-                        if !func.alternative && args.len() < param_types.len() {
-                            todo!()
-                        } else {
-                            let named = Handle::new();
-                            named_types.insert(
-                                named,
-                                NamedType {
-                                    name: None,
-                                    t: Type::Function {
-                                        result_type,
-                                        param_types,
+                            _ => todo!(),
+                        });
+                        if let Some((result_type, param_types)) = typ {
+                            if !func.alternative && args.len() < param_types.len() {
+                                todo!()
+                            } else {
+                                let named = Handle::new();
+                                named_types.insert(
+                                    named,
+                                    NamedType {
+                                        name: None,
+                                        t: Type::Function {
+                                            result_type,
+                                            param_types,
+                                        },
                                     },
-                                },
-                            );
-                            let typ = TypeId {
-                                group: TypeGroup::Function,
-                                concrete: NonConcrete::Type(named),
-                            };
-                            types.insert(func.id(), typ);
-                            types.insert(node.id(), result_type);
+                                );
+                                let typ = TypeId {
+                                    group: TypeGroup::Function,
+                                    concrete: NonConcrete::Type(named),
+                                };
+                                types.insert(func.id(), typ);
+                                types.insert(node.id(), result_type);
+                            }
                         }
                     }
                 }

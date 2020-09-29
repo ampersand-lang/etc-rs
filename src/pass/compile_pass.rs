@@ -2,6 +2,7 @@ use failure::Fallible;
 
 use crate::assets::{LazyUpdate, Resources, Static};
 use crate::ast::{Node, RootNode, Visit, VisitResult};
+use crate::builder::BuilderMacro;
 use crate::lir::{
     compile::Compile, context::ExecutionContext, target::Target, Bytes, Elems, ThreadId,
     TypedValue, Variants,
@@ -26,6 +27,7 @@ pub fn compile_update(
         &mut Variants,
         &mut Bytes,
     )>,
+    builders: Resources<&BuilderMacro>,
 ) -> Fallible<Option<&'static str>> {
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = root_node.0;
@@ -61,7 +63,7 @@ pub fn compile_update(
         } else {
             ExecutionContext::builder(types, target.as_ref().clone())
         };
-        let (t, ctx) = Node::compile(root, &mut nodes, builder)?;
+        let (t, ctx) = Node::compile(root, &mut nodes, &builders, builder)?;
         types = t;
         let thread_id = ThreadId::new();
         nodes.get_mut::<Node>(root).unwrap().thread = Some(thread_id);

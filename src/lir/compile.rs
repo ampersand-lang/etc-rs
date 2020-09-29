@@ -1,9 +1,11 @@
+use either::Either;
 use failure::Fallible;
 use hashbrown::HashMap;
 use smallvec::SmallVec;
 
 use crate::assets::{Asset, Handle, Resources};
 use crate::ast::{Kind, Node};
+use crate::builder::BuilderMacro;
 use crate::lir::builder::*;
 use crate::lir::context::{ExecutionContext, VirtualAddress};
 
@@ -28,6 +30,7 @@ pub trait Compile<B>: Asset + Sized {
             &mut Variants,
             &mut Bytes,
         )>,
+        builders: &Resources<&BuilderMacro>,
         builder: B,
     ) -> Fallible<Self::Output>;
 }
@@ -47,6 +50,7 @@ impl<'a> Compile<Builder<'a>> for Node {
             &mut Variants,
             &mut Bytes,
         )>,
+        builders: &Resources<&BuilderMacro>,
         builder: Builder<'a>,
     ) -> Fallible<Self::Output> {
         let _root = res.get::<Node>(handle).unwrap();
@@ -56,7 +60,7 @@ impl<'a> Compile<Builder<'a>> for Node {
             .function("main")
             .add_basic_block(&mut start)
             .result(*primitive::S32);
-        let (main, mut b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
+        let (main, mut b): (FuncId, Builder<'a>) = Node::compile(handle, res, builders, f)?;
         b.ctx.main = main;
         Ok(b.build())
     }
@@ -77,9 +81,10 @@ impl<'a> Compile<FunctionBuilder<'a>> for Node {
             &mut Variants,
             &mut Bytes,
         )>,
+        builders: &Resources<&BuilderMacro>,
         builder: FunctionBuilder<'a>,
     ) -> Fallible<Self::Output> {
-        let (v, f) = Node::compile(handle, res, ValueBuilder(builder))?;
+        let (v, f) = Node::compile(handle, res, builders, ValueBuilder(builder))?;
         let mut id = FuncId::new(0, 0);
         let b = f.build_return(v).build(&mut id);
         Ok((id, b))
@@ -101,6 +106,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             &mut Variants,
             &mut Bytes,
         )>,
+        builders: &Resources<&BuilderMacro>,
         mut builder: ValueBuilder<'a>,
     ) -> Fallible<Self::Output> {
         // PERF: can we avoid this clone?
@@ -134,29 +140,12 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                         builder.0,
                     )
                 }
-                Payload::Identifier(ident) if this.alternative => {
-                    match res.get::<String>(ident).unwrap().as_str() {
-                        "ptr" => (
-                            TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::PTR)),
-                            builder.0,
-                        ),
-                        "fn" => (
-                            TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::FN)),
-                            builder.0,
-                        ),
-                        "format-ast" => (
-                            TypedValue::new(
-                                this.type_of.unwrap(),
-                                Value::Ffi(*foreign::FORMAT_AST),
-                            ),
-                            builder.0,
-                        ),
-                        "compile" => (
-                            TypedValue::new(this.type_of.unwrap(), Value::Ffi(*foreign::COMPILE)),
-                            builder.0,
-                        ),
-                        _ => todo!(),
-                    }
+                Payload::Identifier(_ident) if this.alternative => {
+                    // placeholder value
+                    (
+                        TypedValue::new(this.type_of.unwrap(), Value::Unit),
+                        builder.0,
+                    )
                 }
                 Payload::Identifier(ident) => {
                     let name = res.get::<String>(ident).unwrap();
@@ -194,7 +183,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
                 for expr in &this.children {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builder)?;
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         result = v;
                     } else {
@@ -260,7 +249,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     let mut v = TypedValue::new(*primitive::UNIT, Value::Unit);
                     f = f.parameter(&mut v, param);
                 }
-                let (id, b): (FuncId, Builder<'a>) = Node::compile(handle, res, f)?;
+                let (id, b): (FuncId, Builder<'a>) = Node::compile(handle, res, builders, f)?;
                 builder.0.builder = b;
                 let result = TypedValue::new(this.type_of.unwrap(), Value::Function(id));
                 (result, builder.0)
@@ -270,49 +259,35 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 // PERF: clone is bad
                 let func = res.get::<Node>(func).unwrap().as_ref().clone();
                 // NOTE: special forms
-                let done = match func.kind {
+                match func.kind {
                     Kind::Nil => match func.payload.unwrap() {
                         Payload::Identifier(ident) if func.alternative => {
-                            match res.get::<String>(ident).unwrap().as_str() {
-                                "quasiquote" => Some(TypedValue::new(
-                                    *primitive::NODE,
-                                    Value::Node(this.children[1].unwrap()),
-                                )),
-                                "new-node" => {
-                                    let mut args = SmallVec::new();
-                                    for expr in &this.children[1..] {
-                                        if let Some(expr) = expr {
-                                            let (v, f) = Node::compile(*expr, res, builder)?;
-                                            builder = ValueBuilder(f);
-                                            args.push(v);
-                                        }
-                                    }
-                                    let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
-                                    builder.0 = builder.0.build_newnode(&mut result, args);
-                                    Some(result)
+                            let alternative = res.get::<String>(ident).unwrap();
+                            let handle = Handle::from_hash(alternative.as_bytes());
+                            if let Some(b) = builders.get::<BuilderMacro>(handle) {
+                                match b.compile(&this, res, builders, builder) {
+                                    Either::Left(res) => return res,
+                                    Either::Right(b) => builder = b,
                                 }
-                                _ => None,
+                            } else {
+                                panic!("not an alternative: `${}`", alternative.as_str());
                             }
                         }
-                        _ => None,
+                        _ => {}
                     },
-                    _ => None,
-                };
-                if let Some(done) = done {
-                    (done, builder.0)
-                } else {
-                    let mut args = SmallVec::new();
-                    for expr in &this.children {
-                        if let Some(expr) = expr {
-                            let (v, f) = Node::compile(*expr, res, builder)?;
-                            builder = ValueBuilder(f);
-                            args.push(v);
-                        }
-                    }
-                    let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
-                    let b = builder.0.build_call(&mut result, args);
-                    (result, b)
+                    _ => {}
                 }
+                let mut args = SmallVec::new();
+                for expr in &this.children {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                let b = builder.0.build_call(&mut result, args);
+                (result, b)
             }
             // XXX: is this correct?
             Kind::Binding | Kind::Global => {
@@ -326,7 +301,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                         return Ok((TypedValue::new(*primitive::UNIT, Value::Unit), builder.0));
                     }
 
-                    let (v, f) = Node::compile(expr, res, builder)?;
+                    let (v, f) = Node::compile(expr, res, builders, builder)?;
                     builder = ValueBuilder(f);
                     v
                 } else {
@@ -355,7 +330,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             Kind::Tuple => {
                 let mut result = Elems::new();
                 for expr in &this.children {
-                    let (v, f) = Node::compile(expr.unwrap(), res, builder)?;
+                    let (v, f) = Node::compile(expr.unwrap(), res, builders, builder)?;
                     builder = ValueBuilder(f);
                     result.push(v);
                 }
@@ -367,11 +342,11 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 )
             }
             Kind::Argument => todo!(),
-            Kind::Declaration => Node::compile(this.children[0].unwrap(), res, builder)?,
+            Kind::Declaration => Node::compile(this.children[0].unwrap(), res, builders, builder)?,
             Kind::Array => {
                 let mut result = Elems::new();
                 for expr in &this.children {
-                    let (v, f) = Node::compile(expr.unwrap(), res, builder)?;
+                    let (v, f) = Node::compile(expr.unwrap(), res, builders, builder)?;
                     builder = ValueBuilder(f);
                     result.push(v);
                 }
