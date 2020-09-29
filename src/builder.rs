@@ -231,7 +231,7 @@ impl BuilderMacro {
     }
 
     pub fn build_builtin_add() -> Self {
-        Self::new("builtin-add")
+        Self::new("+")
             .with_infer(Box::new(
                 |node, nodes, named_types, strings, scopes, dispatch, types, target| {
                     if node.children.len() > 3 {
@@ -295,7 +295,7 @@ impl BuilderMacro {
     }
 
     pub fn build_builtin_sub() -> Self {
-        Self::new("builtin-sub")
+        Self::new("-")
             .with_infer(Box::new(
                 |node, nodes, named_types, strings, scopes, dispatch, types, target| {
                     if node.children.len() > 3 {
@@ -359,7 +359,7 @@ impl BuilderMacro {
     }
 
     pub fn build_builtin_mul() -> Self {
-        Self::new("builtin-mul")
+        Self::new("*")
             .with_infer(Box::new(
                 |node, nodes, named_types, strings, scopes, dispatch, types, target| {
                     if node.children.len() > 3 {
@@ -423,7 +423,7 @@ impl BuilderMacro {
     }
 
     pub fn build_builtin_div() -> Self {
-        Self::new("builtin-div")
+        Self::new("/")
             .with_infer(Box::new(
                 |node, nodes, named_types, strings, scopes, dispatch, types, target| {
                     if node.children.len() > 3 {
@@ -487,7 +487,7 @@ impl BuilderMacro {
     }
 
     pub fn build_builtin_rem() -> Self {
-        Self::new("builtin-rem")
+        Self::new("%")
             .with_infer(Box::new(
                 |node, nodes, named_types, strings, scopes, dispatch, types, target| {
                     if node.children.len() > 3 {
