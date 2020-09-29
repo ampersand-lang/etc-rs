@@ -65,7 +65,6 @@ impl CharExt for char {
                         | '.'
                         | ':'
                         | ';'
-                        | '='
                         | '['
                         | ']'
                         | '{'
@@ -352,6 +351,30 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                             value: TokenValue::None,
                         }))
                     }
+                    Some(&'=') => {
+                        let mut ident = String::new();
+                        ident.push('=');
+                        while let Some(&ch) = self.data.src.peek() {
+                            match ch {
+                                next if next.is_ident_cont() => {
+                                    self.data.column += 1;
+                                    self.data.src.next();
+                                    ident.push(next);
+                                }
+                                x if x.is_whitespace() => break,
+                                '"' | '#' | ';' | ',' | ':' | '.' | '\'' | '(' | ')' | '['
+                                | ']' | '{' | '}' => break,
+                                _ => return Some(Err(From::from(LexerError { location }))),
+                            }
+                        }
+                        let id_handle = Handle::from_hash(&ident);
+                        self.res.insert(id_handle, ident);
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::Identifier,
+                            value: TokenValue::Identifier(id_handle),
+                        }))
+                    }
                     _ => Some(Ok(Token {
                         location: handle,
                         kind: TokenKind::Equals,
@@ -500,8 +523,8 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                                 ident.push(next);
                             }
                             x if x.is_whitespace() => break,
-                            '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '['
-                            | ']' | '{' | '}' => break,
+                            '"' | '#' | ';' | ',' | ':' | '.' | '\'' | '(' | ')' | '[' | ']'
+                            | '{' | '}' => break,
                             _ => return Some(Err(From::from(LexerError { location }))),
                         }
                     }

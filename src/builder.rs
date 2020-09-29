@@ -11,7 +11,8 @@ use crate::lir::{
     compile::Compile as _,
     foreign,
     target::Target,
-    Bytes, Elems, TypedValue, Value, Variants,
+    Bytes, Elems, TypedValue, Value, Variants, ICMP_EQ, ICMP_GE, ICMP_GT, ICMP_LE, ICMP_LT,
+    ICMP_NE,
 };
 use crate::pass::collapse;
 use crate::scope::Scope;
@@ -549,6 +550,333 @@ impl BuilderMacro {
                 Ok((result, builder.0))
             }))
     }
+
+    pub fn build_builtin_bit_and() -> Self {
+        Self::new("&")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                    if node.children.len() > 3 {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    let (u, _) = collapse(
+                        types[&arg1.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    match (t.concrete, u.concrete) {
+                        (NonConcrete::Type(t), NonConcrete::Type(u)) => {
+                            let t = &named_types.get(t).unwrap().t;
+                            let u = &named_types.get(u).unwrap().t;
+                            if !(t.is_signed() && u.is_signed()
+                                || t.is_unsigned() && u.is_unsigned()
+                                || t.is_bool() && u.is_bool())
+                            {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                    if t.size_of(named_types, target).unwrap()
+                        > u.size_of(named_types, target).unwrap()
+                    {
+                        Ok(t)
+                    } else {
+                        Ok(u)
+                    }
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 =
+                    builder
+                        .0
+                        .build_bit_and(&mut result, node.type_of.unwrap(), args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_bit_or() -> Self {
+        Self::new("|")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                    if node.children.len() > 3 {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    let (u, _) = collapse(
+                        types[&arg1.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    match (t.concrete, u.concrete) {
+                        (NonConcrete::Type(t), NonConcrete::Type(u)) => {
+                            let t = &named_types.get(t).unwrap().t;
+                            let u = &named_types.get(u).unwrap().t;
+                            if !(t.is_signed() && u.is_signed()
+                                || t.is_unsigned() && u.is_unsigned()
+                                || t.is_bool() && u.is_bool())
+                            {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                    if t.size_of(named_types, target).unwrap()
+                        > u.size_of(named_types, target).unwrap()
+                    {
+                        Ok(t)
+                    } else {
+                        Ok(u)
+                    }
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 =
+                    builder
+                        .0
+                        .build_bit_or(&mut result, node.type_of.unwrap(), args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_bit_xor() -> Self {
+        Self::new("^")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                    if node.children.len() > 3 {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    let (u, _) = collapse(
+                        types[&arg1.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    match (t.concrete, u.concrete) {
+                        (NonConcrete::Type(t), NonConcrete::Type(u)) => {
+                            let t = &named_types.get(t).unwrap().t;
+                            let u = &named_types.get(u).unwrap().t;
+                            if !(t.is_signed() && u.is_signed()
+                                || t.is_unsigned() && u.is_unsigned()
+                                || t.is_bool() && u.is_bool())
+                            {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                    if t.size_of(named_types, target).unwrap()
+                        > u.size_of(named_types, target).unwrap()
+                    {
+                        Ok(t)
+                    } else {
+                        Ok(u)
+                    }
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 =
+                    builder
+                        .0
+                        .build_bit_xor(&mut result, node.type_of.unwrap(), args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_eq() -> Self {
+        Self::new("==")
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::BOOL)
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_icmp(&mut result, ICMP_EQ, args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_ne() -> Self {
+        Self::new("!=")
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::BOOL)
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_icmp(&mut result, ICMP_NE, args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_lt() -> Self {
+        Self::new("<")
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::BOOL)
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_icmp(&mut result, ICMP_LT, args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_gt() -> Self {
+        Self::new(">")
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::BOOL)
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_icmp(&mut result, ICMP_GT, args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_le() -> Self {
+        Self::new("<=")
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::BOOL)
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_icmp(&mut result, ICMP_LE, args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_builtin_ge() -> Self {
+        Self::new(">=")
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::BOOL)
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::<[_; 2]>::new();
+                for expr in &node.children[1..] {
+                    if let Some(expr) = expr {
+                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        builder = ValueBuilder(f);
+                        args.push(v);
+                    }
+                }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_icmp(&mut result, ICMP_GE, args[0], args[1]);
+                Ok((result, builder.0))
+            }))
+    }
 }
 
 pub fn init(mut res: Resources<&mut BuilderMacro>) {
@@ -562,6 +890,15 @@ pub fn init(mut res: Resources<&mut BuilderMacro>) {
         BuilderMacro::build_builtin_mul(),
         BuilderMacro::build_builtin_div(),
         BuilderMacro::build_builtin_rem(),
+        BuilderMacro::build_builtin_bit_and(),
+        BuilderMacro::build_builtin_bit_or(),
+        BuilderMacro::build_builtin_bit_xor(),
+        BuilderMacro::build_builtin_eq(),
+        BuilderMacro::build_builtin_ne(),
+        BuilderMacro::build_builtin_lt(),
+        BuilderMacro::build_builtin_gt(),
+        BuilderMacro::build_builtin_le(),
+        BuilderMacro::build_builtin_ge(),
     ];
     for builder in builders {
         res.insert(builder.id(), builder);

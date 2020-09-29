@@ -120,7 +120,7 @@ impl<'a> FunctionBuilder<'a> {
             instr: Instruction::Alloca,
             args: smallvec![
                 TypedValue::new(*primitive::TYPE, Value::Type(t)),
-                TypedValue::new(t, Value::Uint(n))
+                TypedValue::new(*primitive::UINT, Value::Uint(n))
             ],
             typ: ptr_t,
         });
@@ -326,6 +326,95 @@ impl<'a> FunctionBuilder<'a> {
             typ,
         });
         *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
+    pub fn build_bit_and(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::BitAnd,
+            args: smallvec![a, b],
+            typ,
+        });
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
+    pub fn build_bit_or(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::BitOr,
+            args: smallvec![a, b],
+            typ,
+        });
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
+    pub fn build_bit_xor(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::BitXor,
+            args: smallvec![a, b],
+            typ,
+        });
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
+    pub fn build_icmp(
+        mut self,
+        out: &mut TypedValue,
+        cmp: u8,
+        a: TypedValue,
+        b: TypedValue,
+    ) -> Self {
+        assert!(matches!(cmp, 0..=5), "icmp not in [0; 6)!");
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.body.push(Ir {
+            binding: Some(binding),
+            life: Lifetime::empty(self.current_block.expect("no current block started")),
+            instr: Instruction::Icmp,
+            args: smallvec![TypedValue::new(*primitive::U8, Value::Uint(cmp as _)), a, b],
+            typ: *primitive::BOOL,
+        });
+        *out = TypedValue::new(*primitive::BOOL, Value::Register(binding));
         self
     }
 }

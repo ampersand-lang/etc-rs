@@ -10,6 +10,7 @@ use crate::assets::{LazyUpdate, Resources};
 use crate::ast::{self, Node};
 use crate::lir::repr::*;
 use crate::lir::target::Target;
+use crate::lir::{ICMP_EQ, ICMP_GE, ICMP_GT, ICMP_LE, ICMP_LT, ICMP_NE};
 use crate::types::{NamedType, TypeInfo};
 
 use super::*;
@@ -870,6 +871,152 @@ impl ExecutionContext {
                     };
                     let mut bytes = smallvec![0; t.size];
                     (a % b).write_bytes(&mut bytes);
+                    value = bytes;
+                    Ok(Result::Continue(1))
+                }
+                Instruction::BitAnd => {
+                    let t = ir.typ.type_info(res, &self.target);
+                    let a = match ir.args[0].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Bool(n) => n as u8 as u64,
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let b = match ir.args[1].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Bool(n) => n as u8 as u64,
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let mut bytes = smallvec![0; t.size];
+                    // TODO: account for other sizes
+                    if t.size == 1 {
+                        ((a & b) as u8).write_bytes(&mut bytes);
+                    } else {
+                        (a & b).write_bytes(&mut bytes);
+                    }
+                    value = bytes;
+                    Ok(Result::Continue(1))
+                }
+                Instruction::BitOr => {
+                    let t = ir.typ.type_info(res, &self.target);
+                    let a = match ir.args[0].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Bool(n) => n as u8 as u64,
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let b = match ir.args[1].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Bool(n) => n as u8 as u64,
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let mut bytes = smallvec![0; t.size];
+                    // TODO: account for other sizes
+                    if t.size == 1 {
+                        ((a | b) as u8).write_bytes(&mut bytes);
+                    } else {
+                        (a | b).write_bytes(&mut bytes);
+                    }
+                    value = bytes;
+                    Ok(Result::Continue(1))
+                }
+                Instruction::BitXor => {
+                    let t = ir.typ.type_info(res, &self.target);
+                    let a = match ir.args[0].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Bool(n) => n as u8 as u64,
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let b = match ir.args[1].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Bool(n) => n as u8 as u64,
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let mut bytes = smallvec![0; t.size];
+                    // TODO: account for other sizes
+                    if t.size == 1 {
+                        ((a ^ b) as u8).write_bytes(&mut bytes);
+                    } else {
+                        (a ^ b).write_bytes(&mut bytes);
+                    }
+                    value = bytes;
+                    Ok(Result::Continue(1))
+                }
+                Instruction::Icmp => {
+                    let t = ir.typ.type_info(res, &self.target);
+                    let icmp = match ir.args[0].val {
+                        Value::Uint(i) => i as u8,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    assert!(matches!(icmp, 0..=5), "icmp is not in [0; 6)!");
+                    let a = match ir.args[1].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Bool(n) => n as u8 as u64,
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let b = match ir.args[2].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Bool(n) => n as u8 as u64,
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let mut bytes = smallvec![0; t.size];
+                    // TODO: account for other sizes
+                    let p = match icmp {
+                        ICMP_EQ => a == b,
+                        ICMP_NE => a != b,
+                        ICMP_LT => a < b,
+                        ICMP_GT => a > b,
+                        ICMP_LE => a <= b,
+                        ICMP_GE => a >= b,
+                        _ => unreachable!(),
+                    };
+                    (p as u8).write_bytes(&mut bytes);
                     value = bytes;
                     Ok(Result::Continue(1))
                 }

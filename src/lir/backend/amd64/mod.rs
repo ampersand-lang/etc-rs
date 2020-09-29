@@ -3,7 +3,10 @@ use smallvec::SmallVec;
 
 use crate::assets::{Resources, World};
 use crate::ast::{Node, RootNode};
-use crate::lir::{context::ExecutionContext, target::Target, Instruction, Value};
+use crate::lir::{
+    context::ExecutionContext, target::Target, Instruction, Value, ICMP_EQ, ICMP_GE, ICMP_GT,
+    ICMP_LE, ICMP_LT, ICMP_NE,
+};
 use crate::types::{NamedType, NonConcrete, Type, TypeInfo};
 
 use super::Backend;
@@ -110,7 +113,11 @@ impl Backend for Amd64 {
                         | Instruction::Sub
                         | Instruction::Mul
                         | Instruction::Div
-                        | Instruction::Rem => {
+                        | Instruction::Rem
+                        | Instruction::BitAnd
+                        | Instruction::BitOr
+                        | Instruction::BitXor
+                        | Instruction::Icmp => {
                             let t = ir.typ.type_info(&named_types, &target);
                             let (start, end) = func.lifetime(ir.binding.unwrap());
                             builder.add_local(ir.binding.unwrap(), t, start, end);
@@ -649,6 +656,443 @@ impl Backend for Amd64 {
                                 .opcode("mov")
                                 .argument(target.reg)
                                 .argument(Register::rdx())
+                                .build()?;
+                        }
+                        Instruction::BitAnd => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            let arg0 = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                Value::Bool(n) => TypedArgument {
+                                    info: t,
+                                    arg: (n as u8 as u64).into(),
+                                },
+                                _ => todo!(),
+                            };
+                            let arg1 = match ir.args[1].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = *builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                Value::Bool(n) => TypedArgument {
+                                    info: t,
+                                    arg: (n as u8 as u64).into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(Register::rax())
+                                .argument(arg0.arg)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("and")
+                                .argument(Register::rax())
+                                .argument(arg1.arg)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(target.reg)
+                                .argument(Register::rax())
+                                .build()?;
+                        }
+                        Instruction::BitOr => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            let arg0 = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                Value::Bool(n) => TypedArgument {
+                                    info: t,
+                                    arg: (n as u8 as u64).into(),
+                                },
+                                _ => todo!(),
+                            };
+                            let arg1 = match ir.args[1].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = *builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                Value::Bool(n) => TypedArgument {
+                                    info: t,
+                                    arg: (n as u8 as u64).into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(Register::rax())
+                                .argument(arg0.arg)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("or")
+                                .argument(Register::rax())
+                                .argument(arg1.arg)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(target.reg)
+                                .argument(Register::rax())
+                                .build()?;
+                        }
+                        Instruction::BitXor => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            let arg0 = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                Value::Bool(n) => TypedArgument {
+                                    info: t,
+                                    arg: (n as u8 as u64).into(),
+                                },
+                                _ => todo!(),
+                            };
+                            let arg1 = match ir.args[1].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = *builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                Value::Bool(n) => TypedArgument {
+                                    info: t,
+                                    arg: (n as u8 as u64).into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(Register::rax())
+                                .argument(arg0.arg)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("xor")
+                                .argument(Register::rax())
+                                .argument(arg1.arg)
+                                .build()?;
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(target.reg)
+                                .argument(Register::rax())
+                                .build()?;
+                        }
+                        Instruction::Icmp => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            let icmp = match ir.args[0].val {
+                                Value::Uint(n) => n as u8,
+                                _ => panic!("icmp must be a literal integer!"),
+                            };
+                            assert!(matches!(icmp, 0..=5), "icmp is not in [0; 5)!");
+                            let arg0 = match ir.args[1].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+                            let arg1 = match ir.args[2].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = *builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("cmp")
+                                .argument(arg0.arg)
+                                .argument(arg1.arg)
+                                .build()?;
+                            match icmp {
+                                ICMP_EQ => {
+                                    bb.instruction()
+                                        .opcode("popf")
+                                        .argument(Register::eax())
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("shr")
+                                        .argument(Register::eax())
+                                        .argument(6)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                }
+                                ICMP_NE => {
+                                    bb.instruction()
+                                        .opcode("popf")
+                                        .argument(Register::eax())
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("shr")
+                                        .argument(Register::eax())
+                                        .argument(6)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("xor")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                }
+                                ICMP_LT => {
+                                    bb.instruction()
+                                        .opcode("popf")
+                                        .argument(Register::eax())
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("shr")
+                                        .argument(Register::eax())
+                                        .argument(7)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                }
+                                ICMP_GT => {
+                                    bb.instruction()
+                                        .opcode("popf")
+                                        .argument(Register::eax())
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("popf")
+                                        .argument(Register::edx())
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("shr")
+                                        .argument(Register::eax())
+                                        .argument(7)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("shr")
+                                        .argument(Register::edx())
+                                        .argument(6)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("xor")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::edx())
+                                        .argument(1)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("xor")
+                                        .argument(Register::edx())
+                                        .argument(1)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::eax())
+                                        .argument(Register::edx())
+                                        .build()?;
+                                }
+                                ICMP_LE => {
+                                    bb.instruction()
+                                        .opcode("popf")
+                                        .argument(Register::eax())
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("popf")
+                                        .argument(Register::edx())
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("shr")
+                                        .argument(Register::eax())
+                                        .argument(7)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("shr")
+                                        .argument(Register::edx())
+                                        .argument(6)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::edx())
+                                        .argument(1)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("or")
+                                        .argument(Register::eax())
+                                        .argument(Register::edx())
+                                        .build()?;
+                                }
+                                ICMP_GE => {
+                                    bb.instruction()
+                                        .opcode("popf")
+                                        .argument(Register::eax())
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("shr")
+                                        .argument(Register::eax())
+                                        .argument(7)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("and")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("xor")
+                                        .argument(Register::eax())
+                                        .argument(1)
+                                        .build()?;
+                                }
+                                _ => unreachable!(),
+                            }
+                            bb.instruction()
+                                .opcode("movzx")
+                                .argument(target.reg)
+                                .argument(Register::eax())
                                 .build()?;
                         }
                         _ => todo!(),

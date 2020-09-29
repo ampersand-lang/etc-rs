@@ -639,6 +639,10 @@ impl Type {
             Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::Uint
         )
     }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Type::Bool)
+    }
 }
 
 /// The configuration for pretty-printing a type.

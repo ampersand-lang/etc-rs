@@ -227,6 +227,13 @@ pub mod foreign {
     }
 }
 
+pub const ICMP_EQ: u8 = 0;
+pub const ICMP_NE: u8 = 1;
+pub const ICMP_LT: u8 = 2;
+pub const ICMP_GT: u8 = 3;
+pub const ICMP_LE: u8 = 4;
+pub const ICMP_GE: u8 = 5;
+
 #[derive(Debug, Clone, Copy)]
 pub struct Lifetime {
     pub(crate) block: BasicBlock,
@@ -487,6 +494,14 @@ pub enum Instruction {
     Div,
     /// Two arguments: two integers
     Rem,
+    /// Two arguments: two booleans or two integers of the same size
+    BitAnd,
+    /// Two arguments: two booleans or two integers of the same size
+    BitOr,
+    /// Two arguments: two booleans or two integers of the same size
+    BitXor,
+    /// Three arguments: a literal integer in the range `[0; 6)`, two booleans or two integers of the same size
+    Icmp,
 }
 
 #[derive(Debug, Clone)]

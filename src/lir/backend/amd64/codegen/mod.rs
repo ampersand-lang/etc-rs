@@ -76,6 +76,38 @@ pub enum Register {
 }
 
 impl Register {
+    pub const fn eax() -> Self {
+        Self::Rax(Bits::E)
+    }
+
+    pub const fn edx() -> Self {
+        Self::Rdx(Bits::E)
+    }
+
+    pub const fn ecx() -> Self {
+        Self::Rcx(Bits::E)
+    }
+
+    pub const fn ebx() -> Self {
+        Self::Rbx(Bits::E)
+    }
+
+    pub const fn esp() -> Self {
+        Self::Rsp(Bits::E)
+    }
+
+    pub const fn ebp() -> Self {
+        Self::Rbp(Bits::E)
+    }
+
+    pub const fn esi() -> Self {
+        Self::Rsi(Bits::E)
+    }
+
+    pub const fn edi() -> Self {
+        Self::Rdi(Bits::E)
+    }
+
     pub const fn rax() -> Self {
         Self::Rax(Bits::R)
     }
