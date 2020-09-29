@@ -327,6 +327,19 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 res.insert::<TypedValue>(handle, addr);
                 (v, builder)
             }
+            Kind::Assign => {
+                let expr = this.children[0].unwrap();
+                let (addr, f) = Node::compile(expr, res, builders, PointerBuilder(builder.0))?;
+                builder = ValueBuilder(f);
+
+                let expr = this.children[1].unwrap();
+                let (v, f) = Node::compile(expr, res, builders, builder)?;
+                builder = ValueBuilder(f);
+
+                let builder = builder.0.build_store(addr, v);
+
+                (v, builder)
+            }
             Kind::Tuple => {
                 let mut result = Elems::new();
                 for expr in &this.children {
@@ -362,5 +375,54 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             Kind::With => todo!(),
         };
         Ok(value)
+    }
+}
+
+impl<'a> Compile<PointerBuilder<'a>> for Node {
+    type Output = (TypedValue, FunctionBuilder<'a>);
+
+    fn compile(
+        handle: Handle<Self>,
+        res: &mut Resources<(
+            &mut Self,
+            &Scope,
+            &Payload,
+            &String,
+            &mut TypedValue,
+            &mut Elems,
+            &mut Variants,
+            &mut Bytes,
+        )>,
+        _builders: &Resources<&BuilderMacro>,
+        builder: PointerBuilder<'a>,
+    ) -> Fallible<Self::Output> {
+        // PERF: can we avoid this clone?
+        let this = res.get::<Node>(handle).unwrap().as_ref().clone();
+        match this.kind {
+            Kind::Nil => match this.payload.unwrap() {
+                Payload::Identifier(ident) => {
+                    let name = res.get::<String>(ident).unwrap();
+                    let mut addr = None;
+                    let mut iter = Some(this.scope.unwrap());
+                    while let Some(scope) = iter {
+                        let handle = Handle::from_name(scope, name.as_bytes());
+                        if let Some(val) = res.get::<TypedValue>(handle).map(|v| *v) {
+                            addr = Some(val);
+                            break;
+                        }
+                        let scope = res.get(scope);
+                        if let Some(scope) = scope {
+                            iter = Some(scope.parent());
+                        } else {
+                            iter = None;
+                        }
+                    }
+                    let addr = addr.expect(&format!("binding not found: {}", name.as_str()));
+                    Ok((addr, builder.0))
+                }
+                _ => panic!("can't assign to something not an identifier"),
+            },
+            _ => panic!("can't assign to something not an identifier"),
+        }
     }
 }

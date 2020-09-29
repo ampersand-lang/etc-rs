@@ -186,6 +186,36 @@ pub fn or3<T, U, V>(
     }
 }
 
+/// A disjunction of three parsers, that may return different results.
+///
+/// `|` in EBNF.
+#[inline]
+pub fn or4<T, U, V, W>(
+    a: impl Fn(&mut State) -> Fallible<T>,
+    b: impl Fn(&mut State) -> Fallible<U>,
+    c: impl Fn(&mut State) -> Fallible<V>,
+    d: impl Fn(&mut State) -> Fallible<W>,
+) -> impl Fn(&mut State) -> Fallible<Either<Either<T, U>, Either<V, W>>> {
+    move |state| {
+        let lexer = state.lexer.data.clone();
+        a(state)
+            .map(Either::Left)
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                b(state).map(Either::Right)
+            })
+            .map(Either::Left)
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                c(state).map(Either::Left).map(Either::Right)
+            })
+            .or_else(|_| {
+                state.lexer.data = lexer;
+                d(state).map(Either::Right).map(Either::Right)
+            })
+    }
+}
+
 /// A disjunction of seven parsers.
 ///
 /// `|` in EBNF.

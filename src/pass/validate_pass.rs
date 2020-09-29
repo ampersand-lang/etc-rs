@@ -75,6 +75,18 @@ pub fn validate_update(
                         errors.push(From::from(MalformedTree(loc.clone())));
                     }
                 }
+                Kind::Assign => {
+                    if node.children.len() != 2 {
+                        errors.push(From::from(MalformedTree(loc.clone())));
+                        return VisitResult::Recurse;
+                    }
+                    if node.children[0].is_none() {
+                        errors.push(From::from(MalformedTree(loc.clone())));
+                    }
+                    if node.children[1].is_none() {
+                        errors.push(From::from(MalformedTree(loc.clone())));
+                    }
+                }
                 Kind::Tuple => {
                     for child in &node.children {
                         if child.is_none() {

@@ -5,7 +5,8 @@ expr = binding
 binding = alternative , ":=" , binary
         | alternative , "::" , binary
         | alternative , ":" binary , "=" , binary
-        | alternative , ":" binary , ":" , binary ;
+        | alternative , ":" binary , ":" , binary
+        | ?ident? , "=" , binary ;
 declaration = alternative , ":" , binary
             | binary ;
 with-handler = binary , { "with!" , argument }

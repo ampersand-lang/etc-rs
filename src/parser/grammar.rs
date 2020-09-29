@@ -94,11 +94,9 @@ fn stmt(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn expr(state: &mut State) -> Fallible<NodeId> {
-    Ok(match or3(global, binding, declaration)(state)? {
-        Either::Left(Either::Left(node)) => node,
-        Either::Left(Either::Right(node)) => node,
-        Either::Right(node) => node,
-    })
+    Ok(or4(global, binding, assign, declaration)(state)?
+        .into_inner()
+        .into_inner())
 }
 
 fn binding(state: &mut State) -> Fallible<NodeId> {
@@ -137,6 +135,23 @@ fn global(state: &mut State) -> Fallible<NodeId> {
         iter::once(Some(name))
             .chain(iter::once(typ))
             .chain(iter::once(Some(value))),
+    );
+    let handle = node.id();
+    state.nodes.insert(handle, node);
+    Ok(handle)
+}
+
+fn assign(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
+    let (name, _, value) = and3(
+        atom(TokenKind::Identifier),
+        literal(TokenKind::Equals),
+        binary,
+    )(state)?;
+    let node = Node::new(
+        Kind::Assign,
+        location,
+        iter::once(Some(name)).chain(iter::once(Some(value))),
     );
     let handle = node.id();
     state.nodes.insert(handle, node);

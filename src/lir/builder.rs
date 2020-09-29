@@ -10,6 +10,7 @@ use crate::types::{primitive, NamedType};
 use super::*;
 
 pub struct ValueBuilder<'a>(pub(crate) FunctionBuilder<'a>);
+pub struct PointerBuilder<'a>(pub(crate) FunctionBuilder<'a>);
 
 pub struct Builder<'a> {
     pub(crate) res: Resources<&'a mut NamedType>,

@@ -421,6 +421,17 @@ pub fn infer_update(
                         dispatch.insert(handle, d);
                     }
                 }
+                Kind::Assign => {
+                    let value = nodes.get::<Node>(node.children[1].unwrap()).unwrap();
+                    let value = types
+                        .get(&value.id())
+                        .copied()
+                        .or_else(|| value.unquote_type)
+                        .or_else(|| value.type_of);
+                    if let Some(value) = value {
+                        types.insert(node.id(), value);
+                    }
+                }
                 Kind::Tuple => {
                     if node.alternative {
                         types.insert(node.id(), *primitive::TYPE);

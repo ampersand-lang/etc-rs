@@ -86,6 +86,18 @@ pub enum Kind {
     /// ];
     /// ```
     Binding,
+    /// An assigment of a value to a pre-variable name.
+    ///
+    /// # Children
+    /// - 0: symbol
+    /// - 1: value
+    ///
+    /// # Examples
+    /// ```text
+    /// x := 1;
+    /// x = 0;
+    /// ```
+    Assign,
     /// A global binding of a value to a variable name.
     ///
     /// # Children
@@ -825,6 +837,39 @@ impl<'a, 'res> Debug for PrettyPrinterRef<'a, 'res> {
                         .unwrap(),
                 )
                 .finish(),
+            Kind::Assign => f
+                .debug_struct("Assign")
+                .field("universe", &node.universe)
+                .field("scope", &node.scope)
+                .field(
+                    "name",
+                    &node.children[0]
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
+                        .unwrap(),
+                )
+                .field(
+                    "value",
+                    &node.children[1]
+                        .map(|node| {
+                            PrettyPrinterRef::new(
+                                self.config,
+                                self.res,
+                                self.types,
+                                self.strings,
+                                node,
+                            )
+                        })
+                        .unwrap(),
+                )
+                .finish(),
             Kind::Global => f
                 .debug_struct("Global")
                 .field("universe", &node.universe)
@@ -1191,7 +1236,7 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                 }
                 Ok(())
             }
-            Kind::Binding => write!(
+            Kind::Binding if node.children[1].is_none() => write!(
                 f,
                 "{} := {}",
                 node.children[0]
@@ -1204,6 +1249,59 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                     ))
                     .unwrap(),
                 node.children[2]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+            ),
+            Kind::Binding => write!(
+                f,
+                "{}: {} = {}",
+                node.children[0]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+                node.children[1]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+                node.children[2]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+            ),
+            Kind::Assign => write!(
+                f,
+                "{} = {}",
+                node.children[0]
+                    .map(|node| PrettyPrinterRef::new(
+                        self.config,
+                        self.res,
+                        self.types,
+                        self.strings,
+                        node
+                    ))
+                    .unwrap(),
+                node.children[1]
                     .map(|node| PrettyPrinterRef::new(
                         self.config,
                         self.res,
