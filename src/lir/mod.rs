@@ -662,9 +662,20 @@ pub struct Global {
     pub(crate) is_const: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum AttributeKind {
+    InlineAlways,
+}
+
+#[derive(Debug, Clone)]
+pub struct Attribute {
+    pub kind: AttributeKind,
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     pub(crate) name: String,
+    pub(crate) attributes: SmallVec<[Attribute; 4]>,
     pub(crate) param_types: SmallVec<[TypeId; 4]>,
     pub(crate) result_type: TypeId,
     pub(crate) body: Vec<Ir>,

@@ -3,10 +3,12 @@ stmt = expr , ";" ;
 expr = binding
      | declaration ;
 binding = alternative , ":=" , binary
-        | alternative , "::" , binary
         | alternative , ":" binary , "=" , binary
-        | alternative , ":" binary , ":" , binary
+        | { attribute } , alternative , "::" , binary
+        | { attribute } , alternative , ":" binary , ":" , binary
         | ?ident? , "=" , binary ;
+attribute = "@" , "(" , ?ident? , [ argument , { "," , argument } ] , ")"
+          | "@" , ?ident? ;
 declaration = alternative , ":" , binary
             | binary ;
 with-handler = binary , { "with!" , argument }

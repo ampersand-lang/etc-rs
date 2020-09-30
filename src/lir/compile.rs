@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use smallvec::SmallVec;
 
 use crate::assets::{Asset, Handle, Resources};
-use crate::ast::{Kind, Node};
+use crate::ast::{self, Kind, Node};
 use crate::builder::BuilderMacro;
 use crate::lir::builder::*;
 use crate::lir::context::{ExecutionContext, VirtualAddress};
@@ -20,6 +20,7 @@ pub trait Compile<B>: Asset + Sized {
 
     fn compile(
         handle: Handle<Self>,
+        name: Option<&str>,
         res: &mut Resources<(
             &mut Self,
             &Scope,
@@ -40,6 +41,7 @@ impl<'a> Compile<Builder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
+        name: Option<&str>,
         res: &mut Resources<(
             &mut Self,
             &Scope,
@@ -57,11 +59,11 @@ impl<'a> Compile<Builder<'a>> for Node {
         // TODO: remove this primitive
         let mut start = BasicBlock::new(0);
         let f = builder
-            .function("main")
+            .function(name.unwrap())
             .add_basic_block(&mut start)
             .set_basic_block_as_current(start)
             .result(*primitive::S32);
-        let (main, mut b): (FuncId, Builder<'a>) = Node::compile(handle, res, builders, f)?;
+        let (main, mut b): (FuncId, Builder<'a>) = Node::compile(handle, name, res, builders, f)?;
         b.ctx.main = main;
         Ok(b.build())
     }
@@ -72,6 +74,7 @@ impl<'a> Compile<FunctionBuilder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
+        name: Option<&str>,
         res: &mut Resources<(
             &mut Self,
             &Scope,
@@ -83,9 +86,23 @@ impl<'a> Compile<FunctionBuilder<'a>> for Node {
             &mut Bytes,
         )>,
         builders: &Resources<&BuilderMacro>,
-        builder: FunctionBuilder<'a>,
+        mut builder: FunctionBuilder<'a>,
     ) -> Fallible<Self::Output> {
-        let (v, f) = Node::compile(handle, res, builders, ValueBuilder(builder))?;
+        let name = name.unwrap();
+        let attributes = builder.builder.attributes.take();
+        if let Some(attributes) = attributes {
+            for attribute in attributes {
+                match attribute.kind {
+                    ast::AttributeKind::InlineAlways => {
+                        builder.builder.inlined.insert(name.to_string());
+                        builder = builder.attribute(Attribute {
+                            kind: AttributeKind::InlineAlways,
+                        })
+                    }
+                }
+            }
+        }
+        let (v, f) = Node::compile(handle, None, res, builders, ValueBuilder(builder))?;
         let mut id = FuncId::new(0, 0);
         let b = f.build_return(v).build(&mut id);
         Ok((id, b))
@@ -97,6 +114,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
+        _name: Option<&str>,
         res: &mut Resources<(
             &mut Self,
             &Scope,
@@ -188,7 +206,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
                 for expr in &this.children {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         result = v;
                     } else {
@@ -239,15 +257,18 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
 
                 let handle = this.children[1].unwrap();
                 let body = res.get::<Node>(handle).unwrap();
-                let mut name = String::new();
-                for _ in 0..16 {
-                    name.push((b'a' + rand::random::<u8>() % 26) as char);
-                }
+                let name = builder.0.builder.name.take().unwrap_or_else(|| {
+                    let mut name = String::new();
+                    for _ in 0..16 {
+                        name.push((b'a' + rand::random::<u8>() % 26) as char);
+                    }
+                    name
+                });
                 let mut start = BasicBlock::new(0);
                 let mut f = builder
                     .0
                     .builder
-                    .function(name)
+                    .function(name.clone())
                     .add_basic_block(&mut start)
                     .set_basic_block_as_current(start)
                     .result(body.type_of.unwrap());
@@ -255,7 +276,8 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     let mut v = TypedValue::new(*primitive::UNIT, Value::Unit);
                     f = f.parameter(&mut v, param);
                 }
-                let (id, b): (FuncId, Builder<'a>) = Node::compile(handle, res, builders, f)?;
+                let (id, b): (FuncId, Builder<'a>) =
+                    Node::compile(handle, Some(&name), res, builders, f)?;
                 builder.0.builder = b;
                 let result = TypedValue::new(this.type_of.unwrap(), Value::Function(id));
                 (result, builder.0)
@@ -286,10 +308,34 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 let mut args = SmallVec::new();
                 for expr in &this.children {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
+                }
+                match func.kind {
+                    Kind::Nil => match func.payload.unwrap() {
+                        Payload::Identifier(ident) => {
+                            let ident = res.get::<String>(ident).unwrap();
+                            if builder.0.builder.inlined.contains(ident.as_str()) {
+                                let mut func = None;
+                                for f in builder.0.builder.ctx.iter() {
+                                    if f.name == ident.as_str() {
+                                        // PERF: clone bad
+                                        func = Some(f.clone());
+                                        break;
+                                    }
+                                }
+                                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                                let func = func.unwrap();
+                                args.remove(0);
+                                let b = builder.0.inline(&mut result, func, args);
+                                return Ok((result, b));
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
                 }
                 let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
                 let b = builder.0.build_call(&mut result, args);
@@ -297,6 +343,16 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             }
             // XXX: is this correct?
             Kind::Binding | Kind::Global => {
+                if matches!(this.kind, Kind::Global) {
+                    let name = this.children[0].unwrap();
+                    let name = res.get(name).unwrap();
+                    let name = match name.payload.unwrap() {
+                        Payload::Identifier(ident) => res.get(ident).unwrap().to_string(),
+                        _ => panic!("global is not bound to an identifier"),
+                    };
+                    builder.0.builder.name = Some(name);
+                    builder.0.builder.attributes = Some(this.attributes.clone());
+                }
                 let v = if let Some(expr) = this.children[2] {
                     let value = res.get(expr).unwrap();
                     let eliminate = match value.payload {
@@ -307,7 +363,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                         return Ok((TypedValue::new(*primitive::UNIT, Value::Unit), builder.0));
                     }
 
-                    let (v, f) = Node::compile(expr, res, builders, builder)?;
+                    let (v, f) = Node::compile(expr, None, res, builders, builder)?;
                     builder = ValueBuilder(f);
                     v
                 } else {
@@ -335,11 +391,12 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             }
             Kind::Assign => {
                 let expr = this.children[0].unwrap();
-                let (addr, f) = Node::compile(expr, res, builders, PointerBuilder(builder.0))?;
+                let (addr, f) =
+                    Node::compile(expr, None, res, builders, PointerBuilder(builder.0))?;
                 builder = ValueBuilder(f);
 
                 let expr = this.children[1].unwrap();
-                let (v, f) = Node::compile(expr, res, builders, builder)?;
+                let (v, f) = Node::compile(expr, None, res, builders, builder)?;
                 builder = ValueBuilder(f);
 
                 let builder = builder.0.build_store(addr, v);
@@ -349,7 +406,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
             Kind::Tuple => {
                 let mut result = Elems::new();
                 for expr in &this.children {
-                    let (v, f) = Node::compile(expr.unwrap(), res, builders, builder)?;
+                    let (v, f) = Node::compile(expr.unwrap(), None, res, builders, builder)?;
                     builder = ValueBuilder(f);
                     result.push(v);
                 }
@@ -361,11 +418,13 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 )
             }
             Kind::Argument => todo!(),
-            Kind::Declaration => Node::compile(this.children[0].unwrap(), res, builders, builder)?,
+            Kind::Declaration => {
+                Node::compile(this.children[0].unwrap(), None, res, builders, builder)?
+            }
             Kind::Array => {
                 let mut result = Elems::new();
                 for expr in &this.children {
-                    let (v, f) = Node::compile(expr.unwrap(), res, builders, builder)?;
+                    let (v, f) = Node::compile(expr.unwrap(), None, res, builders, builder)?;
                     builder = ValueBuilder(f);
                     result.push(v);
                 }
@@ -389,6 +448,7 @@ impl<'a> Compile<PointerBuilder<'a>> for Node {
 
     fn compile(
         handle: Handle<Self>,
+        _name: Option<&str>,
         res: &mut Resources<(
             &mut Self,
             &Scope,

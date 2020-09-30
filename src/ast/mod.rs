@@ -261,6 +261,17 @@ enum PrivateVisitResult {
     Repeat(NodeId),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum AttributeKind {
+    InlineAlways,
+}
+
+#[derive(Debug, Clone)]
+pub struct Attribute {
+    pub kind: AttributeKind,
+    pub arguments: SmallVec<[NodeId; 4]>,
+}
+
 /// The primary abstract syntax tree node.
 ///
 /// All nodes are homogeneous.
@@ -268,6 +279,7 @@ enum PrivateVisitResult {
 pub struct Node {
     /// This node's handle.
     id: NodeId,
+    pub attributes: SmallVec<[Attribute; 4]>,
     /// A flag that shows if a newnode should be created.
     pub no_newnode: bool,
     /// A flag for marking nodes which should be transformed into `new-node`s in inference.
@@ -324,6 +336,7 @@ impl Node {
     ) -> Self {
         Node {
             id: NodeId::new(),
+            attributes: SmallVec::new(),
             no_newnode: false,
             mark_newnode: false,
             reify: None,
@@ -555,6 +568,7 @@ impl Clone for Node {
     fn clone(&self) -> Self {
         Self {
             id: NodeId::new(),
+            attributes: self.attributes.clone(),
             no_newnode: self.no_newnode,
             mark_newnode: self.mark_newnode,
             reify: self.reify,

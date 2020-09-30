@@ -157,7 +157,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -182,7 +182,7 @@ impl BuilderMacro {
                 args.push(func);
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -220,7 +220,7 @@ impl BuilderMacro {
                 args.push(func);
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -281,7 +281,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -345,7 +345,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -409,7 +409,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -473,7 +473,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -537,7 +537,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -602,7 +602,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -667,7 +667,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -732,7 +732,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -757,7 +757,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -779,7 +779,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -801,7 +801,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -823,7 +823,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -845,7 +845,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -867,7 +867,7 @@ impl BuilderMacro {
                 let mut args = SmallVec::<[_; 2]>::new();
                 for expr in &node.children[1..] {
                     if let Some(expr) = expr {
-                        let (v, f) = Node::compile(*expr, res, builders, builder)?;
+                        let (v, f) = Node::compile(*expr, None, res, builders, builder)?;
                         builder = ValueBuilder(f);
                         args.push(v);
                     }
@@ -911,7 +911,7 @@ impl BuilderMacro {
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let expr = node.children[1].unwrap();
-                let (v, mut f) = Node::compile(expr, res, builders, builder)?;
+                let (v, mut f) = Node::compile(expr, None, res, builders, builder)?;
 
                 let mut bb0 = BasicBlock::new(0);
                 let mut bb1 = BasicBlock::new(0);
@@ -922,7 +922,7 @@ impl BuilderMacro {
 
                 builder.0 = builder.0.set_basic_block_as_current(bb0);
                 let then = node.children[2].unwrap();
-                let (value, f) = Node::compile(then, res, builders, builder)?;
+                let (value, f) = Node::compile(then, None, res, builders, builder)?;
                 builder = ValueBuilder(f);
 
                 let mut res0 = TypedValue::new(*primitive::UNIT, Value::Unit);
@@ -935,7 +935,7 @@ impl BuilderMacro {
 
                 builder.0 = builder.0.set_basic_block_as_current(bb1);
                 let or_else = node.children[3].unwrap();
-                let (value, f) = Node::compile(or_else, res, builders, builder)?;
+                let (value, f) = Node::compile(or_else, None, res, builders, builder)?;
                 builder = ValueBuilder(f);
 
                 let mut res1 = TypedValue::new(*primitive::UNIT, Value::Unit);
@@ -982,14 +982,14 @@ impl BuilderMacro {
 
                 builder.0 = builder.0.set_basic_block_as_current(bb0);
                 let expr = node.children[1].unwrap();
-                let (v, mut f) = Node::compile(expr, res, builders, builder)?;
+                let (v, mut f) = Node::compile(expr, None, res, builders, builder)?;
 
                 f = f.build_cond_br(v, bb1, bb_fin);
                 builder = ValueBuilder(f);
 
                 builder.0 = builder.0.set_basic_block_as_current(bb1);
                 let then = node.children[2].unwrap();
-                let (_, f) = Node::compile(then, res, builders, builder)?;
+                let (_, f) = Node::compile(then, None, res, builders, builder)?;
                 builder = ValueBuilder(f);
 
                 builder.0 = builder

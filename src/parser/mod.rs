@@ -22,6 +22,11 @@ pub struct UnexpectedEof;
 #[fail(display = "unexpected token: `{}` at {}", _0, _1)]
 pub struct UnexpectedToken(TokenKind, Location);
 
+/// Returned from parsers if the attribute name following a `@` token was unrecognized.
+#[derive(Debug, Fail)]
+#[fail(display = "invalid attribute: {}", _0)]
+pub struct InvalidAttribute(Location);
+
 /// The current parsing state.
 pub struct State<'a, 'res> {
     /// A n-peekable lexer wrapper.

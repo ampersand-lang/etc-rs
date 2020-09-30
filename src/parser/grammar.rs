@@ -6,7 +6,7 @@ use failure::{Error, Fallible};
 use crate::error::MultiError;
 
 use crate::assets::Handle;
-use crate::ast::{Kind, Node, NodeId};
+use crate::ast::{Attribute, AttributeKind, Kind, Node, NodeId};
 use crate::lexer::{Location, Side, TokenKind};
 
 use super::*;
@@ -120,7 +120,88 @@ fn binding(state: &mut State) -> Fallible<NodeId> {
     Ok(handle)
 }
 
+fn attribute(state: &mut State) -> Fallible<Attribute> {
+    let location = state.location().unwrap_or_else(Handle::nil);
+    let opt_attr = or(
+        and(
+            literal(TokenKind::At),
+            grouped(
+                TokenKind::Paren,
+                and(
+                    atom(TokenKind::Identifier),
+                    optional(and(
+                        argument,
+                        repeat(and(literal(TokenKind::Comma), argument)),
+                    )),
+                ),
+            ),
+        ),
+        and(literal(TokenKind::At), atom(TokenKind::Identifier)),
+    )(state)?;
+    match opt_attr {
+        Either::Left((_, (attr, params))) => {
+            let attr = state.nodes.get(attr).unwrap();
+            let attr = match attr.payload {
+                Some(Payload::Identifier(attr)) => attr,
+                _ => {
+                    return Err(From::from(InvalidAttribute(
+                        state.lexer.res.get(location).unwrap().as_ref().clone(),
+                    )))
+                }
+            };
+            let attr = state.lexer.res.get::<String>(attr).unwrap();
+            let attr = match attr.as_str() {
+                "inline-always" => AttributeKind::InlineAlways,
+                _ => {
+                    return Err(From::from(InvalidAttribute(
+                        state.lexer.res.get(location).unwrap().as_ref().clone(),
+                    )))
+                }
+            };
+
+            let mut args = SmallVec::new();
+            if let Some((first, params)) = params {
+                args.push(first);
+                for (_, other) in params {
+                    args.push(other);
+                }
+            }
+
+            Ok(Attribute {
+                kind: attr,
+                arguments: args,
+            })
+        }
+        Either::Right((_, attr)) => {
+            let attr = state.nodes.get(attr).unwrap();
+            let attr = match attr.payload {
+                Some(Payload::Identifier(attr)) => attr,
+                _ => {
+                    return Err(From::from(InvalidAttribute(
+                        state.lexer.res.get(location).unwrap().as_ref().clone(),
+                    )))
+                }
+            };
+            let attr = state.lexer.res.get::<String>(attr).unwrap();
+            let attr = match attr.as_str() {
+                "inline-always" => AttributeKind::InlineAlways,
+                _ => {
+                    return Err(From::from(InvalidAttribute(
+                        state.lexer.res.get(location).unwrap().as_ref().clone(),
+                    )))
+                }
+            };
+
+            Ok(Attribute {
+                kind: attr,
+                arguments: SmallVec::new(),
+            })
+        }
+    }
+}
+
 fn global(state: &mut State) -> Fallible<NodeId> {
+    let attributes = repeat(attribute)(state)?;
     let location = state.location().unwrap_or_else(Handle::nil);
     let (name, _, typ, _, value) = and5(
         alternative,
@@ -129,13 +210,14 @@ fn global(state: &mut State) -> Fallible<NodeId> {
         literal(TokenKind::Colon),
         binary,
     )(state)?;
-    let node = Node::new(
+    let mut node = Node::new(
         Kind::Global,
         location,
         iter::once(Some(name))
             .chain(iter::once(typ))
             .chain(iter::once(Some(value))),
     );
+    node.attributes = attributes;
     let handle = node.id();
     state.nodes.insert(handle, node);
     Ok(handle)

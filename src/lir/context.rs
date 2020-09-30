@@ -3,7 +3,7 @@ use std::mem;
 use std::ops::Range;
 
 use failure::{Fail, Fallible};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use smallvec::smallvec;
 
 use crate::assets::{LazyUpdate, Resources};
@@ -170,11 +170,20 @@ impl ExecutionContext {
         Builder {
             res,
             ctx: Self::new(target),
+            inlined: HashSet::new(),
+            name: None,
+            attributes: None,
         }
     }
 
     pub fn builder_with(ctx: Self, res: Resources<&mut NamedType>) -> Builder {
-        Builder { res, ctx }
+        Builder {
+            res,
+            ctx,
+            inlined: HashSet::new(),
+            name: None,
+            attributes: None,
+        }
     }
 
     pub fn extend(&mut self, other: Self) {

@@ -2,6 +2,7 @@ use hashbrown::HashSet;
 use smallvec::{smallvec, SmallVec};
 
 use crate::assets::Resources;
+use crate::ast;
 use crate::lir::context::*;
 use crate::lir::repr::*;
 use crate::types::{primitive, NamedType};
@@ -14,6 +15,9 @@ pub struct PointerBuilder<'a>(pub(crate) FunctionBuilder<'a>);
 pub struct Builder<'a> {
     pub(crate) res: Resources<&'a mut NamedType>,
     pub(crate) ctx: ExecutionContext,
+    pub(crate) inlined: HashSet<String>,
+    pub(crate) name: Option<String>,
+    pub(crate) attributes: Option<SmallVec<[ast::Attribute; 4]>>,
 }
 
 impl<'a> Builder<'a> {
@@ -26,6 +30,7 @@ impl<'a> Builder<'a> {
             builder: self,
             counter: BindingPrototype::new(0, 0),
             name: name.into(),
+            attributes: SmallVec::new(),
             param_types: SmallVec::new(),
             result_type: None,
             block_map: HashMap::new(),
@@ -52,6 +57,7 @@ pub struct FunctionBuilder<'a> {
     pub(crate) builder: Builder<'a>,
     counter: BindingPrototype,
     name: String,
+    attributes: SmallVec<[Attribute; 4]>,
     param_types: SmallVec<[TypeId; 4]>,
     result_type: Option<TypeId>,
     block_map: HashMap<BasicBlock, BasicBlockBuilder>,
@@ -81,6 +87,7 @@ impl<'a> FunctionBuilder<'a> {
         }
         builder.ctx.text.push(Function {
             name: self.name,
+            attributes: self.attributes,
             param_types: self.param_types,
             result_type: self.result_type.expect("no result type given"),
             body,
@@ -88,6 +95,43 @@ impl<'a> FunctionBuilder<'a> {
             is_ref: self.is_ref,
         });
         builder
+    }
+
+    pub fn inline(
+        mut self,
+        out: &mut TypedValue,
+        other: Function,
+        args: SmallVec<[TypedValue; 4]>,
+    ) -> Self {
+        for (ip, mut ir) in other.body.into_iter().enumerate() {
+            if ip > 0 {
+                for block in &other.blocks {
+                    if block.start == ip {
+                        let mut bb = BasicBlock::new(block.number);
+                        self = self.add_basic_block(&mut bb).set_basic_block_as_current(bb);
+                    }
+                }
+            }
+            for arg in &mut ir.args {
+                match arg.val {
+                    Value::Arg(idx) => *arg = args[idx as usize].clone(),
+                    _ => {}
+                }
+            }
+            match ir.instr {
+                Instruction::Return => {
+                    *out = ir.args[0];
+                    return self;
+                }
+                _ => {}
+            }
+            self.block_map
+                .get_mut(self.current_block.as_ref().unwrap())
+                .unwrap()
+                .body
+                .push(ir.clone());
+        }
+        self
     }
 
     pub fn parameter(mut self, out: &mut TypedValue, t: TypeId) -> Self {
@@ -113,6 +157,11 @@ impl<'a> FunctionBuilder<'a> {
 
     pub fn set_basic_block_as_current(mut self, bb: BasicBlock) -> Self {
         self.current_block = Some(bb);
+        self
+    }
+
+    pub fn attribute(mut self, attr: Attribute) -> Self {
+        self.attributes.push(attr);
         self
     }
 

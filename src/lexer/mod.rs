@@ -34,7 +34,8 @@ impl CharExt for char {
             || self.is_ascii_punctuation()
                 && !matches!(
                     self,
-                    '$' | '"'
+                    '$' | '@'
+                        | '"'
                         | '#'
                         | '\''
                         | '('
@@ -56,7 +57,8 @@ impl CharExt for char {
             || self.is_ascii_punctuation()
                 && !matches!(
                     self,
-                    '$' | '"'
+                    '$' | '@'
+                        | '"'
                         | '#'
                         | '\''
                         | '('
@@ -131,6 +133,7 @@ pub enum TokenKind {
     EqualsArrow,
     Dot,
     Dollar,
+    At,
     SingleQuote,
     With,
     Paren(Side),
@@ -150,6 +153,7 @@ impl TokenKind {
             "." => Self::Dot,
             "'" => Self::SingleQuote,
             "$" => Self::Dollar,
+            "@" => Self::Curly(Side::Right),
             "(" => Self::Paren(Side::Left),
             ")" => Self::Paren(Side::Right),
             "[" => Self::Bracket(Side::Left),
@@ -179,6 +183,7 @@ impl Display for TokenKind {
             Self::Dot => ".",
             Self::SingleQuote => "'",
             Self::Dollar => "$",
+            Self::At => "@",
             Self::With => "with!",
             Self::True => "true",
             Self::False => "false",
@@ -396,6 +401,11 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                     kind: TokenKind::Dollar,
                     value: TokenValue::None,
                 })),
+                '@' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::At,
+                    value: TokenValue::None,
+                })),
                 '(' => Some(Ok(Token {
                     location: handle,
                     kind: TokenKind::Paren(Side::Left),
@@ -501,8 +511,8 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                                 int += next.to_digit(10).unwrap() as u64;
                             }
                             x if x.is_whitespace() => break,
-                            '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')' | '['
-                            | ']' | '{' | '}' => break,
+                            '@' | '"' | '#' | ';' | ',' | ':' | '=' | '.' | '\'' | '(' | ')'
+                            | '[' | ']' | '{' | '}' => break,
                             _ => return Some(Err(From::from(LexerError { location }))),
                         }
                     }
@@ -523,8 +533,8 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                                 ident.push(next);
                             }
                             x if x.is_whitespace() => break,
-                            '"' | '#' | ';' | ',' | ':' | '.' | '\'' | '(' | ')' | '[' | ']'
-                            | '{' | '}' => break,
+                            '@' | '"' | '#' | ';' | ',' | ':' | '.' | '\'' | '(' | ')' | '['
+                            | ']' | '{' | '}' => break,
                             _ => return Some(Err(From::from(LexerError { location }))),
                         }
                     }

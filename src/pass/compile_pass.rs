@@ -63,7 +63,7 @@ pub fn compile_update(
         } else {
             ExecutionContext::builder(types, target.as_ref().clone())
         };
-        let (t, ctx) = Node::compile(root, &mut nodes, &builders, builder)?;
+        let (t, ctx) = Node::compile(root, Some("main"), &mut nodes, &builders, builder)?;
         types = t;
         let thread_id = ThreadId::new();
         nodes.get_mut::<Node>(root).unwrap().thread = Some(thread_id);

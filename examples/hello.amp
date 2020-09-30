@@ -1,5 +1,5 @@
-i := 0;
-$while (i $< 100), (
-  i = i $+ 1;
-);
-0
+@inline-always
+foonction :: {a: sint} => a;
+
+x := foonction 0;
+x
