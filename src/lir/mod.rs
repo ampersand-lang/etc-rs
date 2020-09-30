@@ -460,7 +460,7 @@ impl Display for Value {
             Value::Tagged(..) => todo!(),
             Value::Union(..) => todo!(),
             Value::Function(func) => write!(f, "@{}+{}", func.offset, func.idx),
-            Value::Label(b) => write!(f, "%{}", b.number()),
+            Value::Label(b) => write!(f, ".L{}", b.number()),
             Value::Ffi(id) => write!(f, "ffi {}", id.display()),
         }
     }
@@ -474,6 +474,8 @@ pub enum Instruction {
     Store,
     /// One argument: an address
     Load,
+    /// One argument: anything
+    Copy,
     /// At least one argument: a function or fn reference
     Call,
     /// At least one argument: a u64 (node kind)
@@ -481,9 +483,11 @@ pub enum Instruction {
     /// One argument: any value
     Return,
     /// One argument: a basic block
-    Jmp,
+    Br,
     /// Three arguments: any boolean value and two basic blocks
-    IfThenElse,
+    CondBr,
+    /// Any even number of arguments: value, basic block pairs
+    Phi,
     /// Two arguments: two integers
     Add,
     /// Two arguments: two integers
@@ -504,13 +508,67 @@ pub enum Instruction {
     Icmp,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum RegisterConstraint {
+    // on amd64: rax
+    PhiRegister,
+    // on amd64: rax
+    ReturnValue,
+    // on amd64: rdi
+    ReturnByRef,
+    // on amd64: rsi
+    HandlerValue,
+    // on amd64: rsi
+    HandlerByRef,
+}
+
 #[derive(Debug, Clone)]
 pub struct Ir {
+    pub(crate) constraint: Option<RegisterConstraint>,
     pub(crate) binding: Option<BindingPrototype>,
     pub(crate) life: Lifetime,
     pub(crate) instr: Instruction,
     pub(crate) args: SmallVec<[TypedValue; 4]>,
     pub(crate) typ: TypeId,
+}
+
+impl Ir {
+    pub fn new(
+        basic_block: BasicBlock,
+        binding: BindingPrototype,
+        typ: TypeId,
+        instr: Instruction,
+        args: SmallVec<[TypedValue; 4]>,
+    ) -> Self {
+        Self {
+            constraint: None,
+            binding: Some(binding),
+            life: Lifetime::empty(basic_block),
+            instr,
+            args,
+            typ,
+        }
+    }
+
+    pub fn new_void(
+        basic_block: BasicBlock,
+        instr: Instruction,
+        args: SmallVec<[TypedValue; 4]>,
+    ) -> Self {
+        Self {
+            constraint: None,
+            binding: None,
+            life: Lifetime::empty(basic_block),
+            instr,
+            args,
+            typ: *primitive::UNIT,
+        }
+    }
+
+    pub fn with_constraint(mut self, constraint: RegisterConstraint) -> Self {
+        self.constraint = Some(constraint);
+        self
+    }
 }
 
 impl Display for Ir {
@@ -529,7 +587,7 @@ impl Display for Ir {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BasicBlock(u32);
 
 impl BasicBlock {
@@ -652,7 +710,7 @@ impl Function {
                 }
             }
             match ir.instr {
-                Instruction::Jmp => {
+                Instruction::Br => {
                     match ir.args[0].val {
                         Value::Label(bb) => {
                             let bb = &self.blocks[bb.number() as usize];
@@ -662,7 +720,7 @@ impl Function {
                     }
                     break;
                 }
-                Instruction::IfThenElse => {
+                Instruction::CondBr => {
                     match ir.args[1].val {
                         Value::Label(bb) => {
                             let bb = &self.blocks[bb.number() as usize];
@@ -701,18 +759,24 @@ impl Function {
 
 impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "%{} := (", self.name)?;
+        write!(f, "%{} :: {{", self.name)?;
         if let Some(t) = self.param_types.get(0) {
             write!(f, "type {:?}", t.group)?;
         }
         for t in self.param_types.iter().skip(1) {
             write!(f, "; type {:?}", t.group)?;
         }
-        writeln!(f, ") => {{")?;
-        for ir in &self.body {
+        writeln!(f, "}} => (")?;
+        for (ip, ir) in self.body.iter().enumerate() {
+            for (l, block) in self.blocks.iter().enumerate() {
+                if block.start == ip {
+                    writeln!(f, ".L{}:", l)?;
+                    break;
+                }
+            }
             writeln!(f, "  {}", ir)?;
         }
-        writeln!(f, "}};")
+        writeln!(f, ");")
     }
 }
 

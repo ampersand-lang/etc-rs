@@ -1,11 +1,12 @@
 use failure::Fallible;
+use hashbrown::HashMap;
 use smallvec::SmallVec;
 
 use crate::assets::{Resources, World};
 use crate::ast::{Node, RootNode};
 use crate::lir::{
-    context::ExecutionContext, target::Target, Instruction, Value, ICMP_EQ, ICMP_GE, ICMP_GT,
-    ICMP_LE, ICMP_LT, ICMP_NE,
+    context::ExecutionContext, target::Target, Instruction, RegisterConstraint, Value, ICMP_EQ,
+    ICMP_GE, ICMP_GT, ICMP_LE, ICMP_LT, ICMP_NE,
 };
 use crate::types::{NamedType, NonConcrete, Type, TypeInfo};
 
@@ -109,6 +110,11 @@ impl Backend for Amd64 {
                             let (start, end) = func.lifetime(ir.binding.unwrap());
                             builder.add_local(ir.binding.unwrap(), t, start, end);
                         }
+                        Instruction::Phi => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            let (start, end) = func.lifetime(ir.binding.unwrap());
+                            builder.add_local(ir.binding.unwrap(), t, start, end);
+                        }
                         Instruction::Add
                         | Instruction::Sub
                         | Instruction::Mul
@@ -126,8 +132,28 @@ impl Backend for Amd64 {
                     }
                 }
                 builder.allocate();
-                let bb = builder.add_basic_block();
-                for ir in func.body {
+
+                let mut bb_table = Vec::new();
+                let mut basic_blocks = HashMap::new();
+                for ip in 0..func.body.len() {
+                    for b in &func.blocks {
+                        if b.start == ip {
+                            bb_table.push(b.start);
+                            let block = builder.add_basic_block();
+                            basic_blocks.insert(b.start, block);
+                            break;
+                        }
+                    }
+                }
+
+                let mut current_block = None;
+                for (ip, ir) in func.body.into_iter().enumerate() {
+                    let bb = if let Some(bb) = basic_blocks.get(&ip) {
+                        current_block = Some(*bb);
+                        *bb
+                    } else {
+                        current_block.unwrap()
+                    };
                     match ir.instr {
                         Instruction::Alloca => {}
                         Instruction::Store => {
@@ -320,6 +346,168 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
                             program.call_conv.build_ret(builder, bb, result)?;
+                        }
+                        Instruction::Copy => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            if t.size != 8 {
+                                todo!();
+                            }
+
+                            let arg0 = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Uint(n) => TypedArgument {
+                                    info: t,
+                                    arg: n.into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            if let Some(constraint) = ir.constraint {
+                                match constraint {
+                                    RegisterConstraint::PhiRegister => {
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(Register::rax())
+                                            .argument(arg0.arg)
+                                            .build()?;
+                                    }
+                                    RegisterConstraint::ReturnValue => {
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(Register::rax())
+                                            .argument(arg0.arg)
+                                            .build()?;
+                                    }
+                                    RegisterConstraint::ReturnByRef => {
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(Register::rdi())
+                                            .argument(arg0.arg)
+                                            .build()?;
+                                    }
+                                    RegisterConstraint::HandlerValue
+                                    | RegisterConstraint::HandlerByRef => {
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(Register::rdi())
+                                            .argument(arg0.arg)
+                                            .build()?;
+                                    }
+                                }
+                            } else {
+                                panic!("useless Copy instruction");
+                            }
+                        }
+                        Instruction::Phi => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            if t.size != 8 {
+                                todo!();
+                            }
+
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("mov")
+                                .argument(dest.reg)
+                                .argument(Register::rax())
+                                .build()?;
+                        }
+                        Instruction::Br => {
+                            let arg0 = match ir.args[0].val {
+                                Value::Label(block) => basic_blocks[&bb_table[block.0 as usize]],
+                                _ => panic!("Br can only jump to a direct label"),
+                            };
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction().opcode("jmp").argument(arg0).build()?;
+                        }
+                        Instruction::CondBr => {
+                            let t = ir.args[0].typ.type_info(&named_types, &target);
+                            if t.size != 1 {
+                                todo!();
+                            }
+                            let arg0 = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.into(),
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    TypedArgument {
+                                        info: t,
+                                        arg: source.reg.into(),
+                                    }
+                                }
+                                Value::Bool(p) => TypedArgument {
+                                    info: t,
+                                    arg: (p as u8 as u64).into(),
+                                },
+                                _ => todo!(),
+                            };
+
+                            let bb0 = match ir.args[1].val {
+                                Value::Label(block) => basic_blocks[&bb_table[block.0 as usize]],
+                                _ => panic!("CondBr can only jump to a direct label"),
+                            };
+
+                            let bb1 = match ir.args[2].val {
+                                Value::Label(block) => basic_blocks[&bb_table[block.0 as usize]],
+                                _ => panic!("CondBr can only jump to a direct label"),
+                            };
+
+                            let bb = builder.basic_block_mut(bb);
+                            match arg0.arg {
+                                Argument::Uint(0) => {
+                                    bb.instruction().opcode("jmp").argument(bb1).build()?;
+                                }
+                                Argument::Uint(_) => {
+                                    bb.instruction().opcode("jmp").argument(bb0).build()?;
+                                }
+                                Argument::Register(_) => {
+                                    bb.instruction()
+                                        .opcode("test")
+                                        .argument(arg0.arg.clone())
+                                        .argument(arg0.arg)
+                                        .build()?;
+                                    bb.instruction().opcode("jz").argument(bb1).build()?;
+                                    bb.instruction().opcode("jmp").argument(bb0).build()?;
+                                }
+                                _ => {
+                                    bb.instruction()
+                                        .opcode("movzx")
+                                        .argument(Register::rax())
+                                        .argument(arg0.arg)
+                                        .build()?;
+                                    bb.instruction()
+                                        .opcode("test")
+                                        .argument(Register::rax())
+                                        .argument(Register::rax())
+                                        .build()?;
+                                    bb.instruction().opcode("jz").argument(bb1).build()?;
+                                    bb.instruction().opcode("jmp").argument(bb0).build()?;
+                                }
+                            }
                         }
                         Instruction::Add => {
                             let t = ir.typ.type_info(&named_types, &target);

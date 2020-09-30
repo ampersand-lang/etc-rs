@@ -124,8 +124,9 @@ pub struct CompilerVars {
 pub struct ExecutionContext {
     pub(crate) target: Target,
     pub(crate) main: FuncId,
-    pub(crate) call_stack: Vec<(usize, u64, ExecAddress)>,
+    pub(crate) call_stack: Vec<(usize, u64, Option<u32>, ExecAddress)>,
     pub(crate) instr_ptr: ExecAddress,
+    pub(crate) last: Option<u32>,
     pub(crate) invocation: u64,
     pub(crate) text: Vec<Function>,
     pub(crate) desc: Vec<Global>,
@@ -148,6 +149,7 @@ impl ExecutionContext {
             main: FuncId::new(0, 0),
             call_stack: Vec::new(),
             instr_ptr: ExecAddress(0, 0, BindingPrototype::new(0, 0)),
+            last: None,
             invocation: 0,
             text: Vec::new(),
             desc: Vec::new(),
@@ -511,8 +513,12 @@ impl ExecutionContext {
 
                     if let Some(func) = func {
                         let func = func.offset + func.idx;
-                        self.call_stack
-                            .push((self.stack_ptr, self.invocation, self.instr_ptr));
+                        self.call_stack.push((
+                            self.stack_ptr,
+                            self.invocation,
+                            self.last,
+                            self.instr_ptr,
+                        ));
                         self.instr_ptr = ExecAddress(func as _, 0, ir.binding.unwrap());
                         let new_invocation = rand::random();
 
@@ -662,11 +668,12 @@ impl ExecutionContext {
                             .type_info(res, &self.target);
 
                         let r = self.instr_ptr.2;
-                        let (sp, inv, ip) = self.call_stack.pop().unwrap();
+                        let (sp, inv, l, ip) = self.call_stack.pop().unwrap();
                         let old_invocation = self.invocation;
                         self.stack_ptr = sp;
                         self.instr_ptr = ip;
                         self.invocation = inv;
+                        self.last = l;
 
                         let binding = r.build(self.invocation);
                         let mut value = smallvec![0_u8; t.size];
@@ -696,18 +703,19 @@ impl ExecutionContext {
                         Ok(Result::Continue(1))
                     }
                 }
-                Instruction::Jmp => {
+                Instruction::Br => {
                     match ir.args[0].val {
                         Value::Label(b) => {
                             let func = &self.text[self.instr_ptr.0 as usize];
                             let b = &func.blocks[b.number() as usize];
+                            self.last = Some(self.instr_ptr.1);
                             self.instr_ptr.1 = b.start as _;
                         }
                         _ => return Err(From::from(TypeError)),
                     }
                     Ok(Result::Continue(0))
                 }
-                Instruction::IfThenElse => {
+                Instruction::CondBr => {
                     let cond = match ir.args[0].val {
                         Value::Bool(p) => p,
                         Value::Arg(r) => {
@@ -723,6 +731,7 @@ impl ExecutionContext {
                             Value::Label(b) => {
                                 let func = &self.text[self.instr_ptr.0 as usize];
                                 let b = &func.blocks[b.number() as usize];
+                                self.last = Some(self.instr_ptr.1);
                                 self.instr_ptr.1 = b.start as _;
                             }
                             _ => return Err(From::from(TypeError)),
@@ -732,12 +741,81 @@ impl ExecutionContext {
                             Value::Label(b) => {
                                 let func = &self.text[self.instr_ptr.0 as usize];
                                 let b = &func.blocks[b.number() as usize];
+                                self.last = Some(self.instr_ptr.1);
                                 self.instr_ptr.1 = b.start as _;
                             }
                             _ => return Err(From::from(TypeError)),
                         }
                     }
                     Ok(Result::Continue(0))
+                }
+                Instruction::Copy => {
+                    let t = ir.typ.type_info(res, &self.target);
+                    let mut bytes = smallvec![0; t.size];
+                    match ir.args[0].val {
+                        Value::Unit => {}
+                        Value::Arg(r) => bytes
+                            .copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
+                        Value::Register(r) => {
+                            bytes.copy_from_slice(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Function(id) => id.write_bytes(&mut bytes),
+                        Value::Label(_b) => todo!(),
+                        Value::Bool(p) => u8::from(p).write_bytes(&mut bytes),
+                        Value::Uint(int) => int.write_bytes(&mut bytes),
+                        Value::Float(flt) => flt.write_bytes(&mut bytes),
+                        Value::Address(addr) => addr.write_bytes(&mut bytes),
+                        Value::Type(typ) => typ.write_bytes(&mut bytes),
+                        Value::Node(node) => node.write_bytes(&mut bytes),
+                        Value::Array(_) => todo!(),
+                        Value::Struct(_) => todo!(),
+                        Value::Union(_) => todo!(),
+                        Value::Tagged(..) => todo!(),
+                        Value::Ffi(foreign) => foreign.write_bytes(&mut bytes),
+                    }
+                    value = bytes;
+                    Ok(Result::Continue(1))
+                }
+                Instruction::Phi => {
+                    let t = ir.typ.type_info(res, &self.target);
+                    let last = self.last.expect("phi-node in an invalid state");
+                    let mut result = None;
+                    for pair in ir.args.chunks_exact(2) {
+                        let value = &pair[0];
+                        let block = &pair[1];
+                        match block.val {
+                            Value::Label(b) if b.0 == last => {
+                                result = Some(*value);
+                                break;
+                            }
+                            _ => panic!("invalid phi-node"),
+                        }
+                    }
+                    let result = result.expect("invalid phi-node");
+                    let mut bytes = smallvec![0; t.size];
+                    match result.val {
+                        Value::Unit => {}
+                        Value::Arg(r) => bytes
+                            .copy_from_slice(&self.arguments[&Argument::new(r, self.invocation)]),
+                        Value::Register(r) => {
+                            bytes.copy_from_slice(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Function(id) => id.write_bytes(&mut bytes),
+                        Value::Label(_b) => todo!(),
+                        Value::Bool(p) => u8::from(p).write_bytes(&mut bytes),
+                        Value::Uint(int) => int.write_bytes(&mut bytes),
+                        Value::Float(flt) => flt.write_bytes(&mut bytes),
+                        Value::Address(addr) => addr.write_bytes(&mut bytes),
+                        Value::Type(typ) => typ.write_bytes(&mut bytes),
+                        Value::Node(node) => node.write_bytes(&mut bytes),
+                        Value::Array(_) => todo!(),
+                        Value::Struct(_) => todo!(),
+                        Value::Union(_) => todo!(),
+                        Value::Tagged(..) => todo!(),
+                        Value::Ffi(foreign) => foreign.write_bytes(&mut bytes),
+                    }
+                    value = bytes;
+                    Ok(Result::Continue(1))
                 }
                 Instruction::Add => {
                     let t = ir.typ.type_info(res, &self.target);
@@ -1054,7 +1132,7 @@ impl ExecutionContext {
     ) -> Fallible<TypedValue> {
         let f = f.offset + f.idx;
         self.call_stack
-            .push((self.stack_ptr, self.invocation, self.instr_ptr));
+            .push((self.stack_ptr, self.invocation, self.last, self.instr_ptr));
         self.invocation = rand::random();
         self.instr_ptr = ExecAddress(f as _, 0, BindingPrototype::new(0, 0));
         for (idx, TypedValue { typ, val }) in args.iter().enumerate() {
@@ -1154,10 +1232,11 @@ impl ExecutionContext {
             }
             TypedValue { val: x, .. } => x,
         };
-        let (sp, inv, ip) = self.call_stack.pop().unwrap();
+        let (sp, inv, l, ip) = self.call_stack.pop().unwrap();
         self.stack_ptr = sp;
         self.instr_ptr = ip;
         self.invocation = inv;
+        self.last = l;
         Ok(TypedValue::new(result.typ, result_value))
     }
 }

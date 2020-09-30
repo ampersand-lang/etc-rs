@@ -59,6 +59,7 @@ impl<'a> Compile<Builder<'a>> for Node {
         let f = builder
             .function("main")
             .add_basic_block(&mut start)
+            .set_basic_block_as_current(start)
             .result(*primitive::S32);
         let (main, mut b): (FuncId, Builder<'a>) = Node::compile(handle, res, builders, f)?;
         b.ctx.main = main;
@@ -248,6 +249,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     .builder
                     .function(name)
                     .add_basic_block(&mut start)
+                    .set_basic_block_as_current(start)
                     .result(body.type_of.unwrap());
                 for param in param_types {
                     let mut v = TypedValue::new(*primitive::UNIT, Value::Unit);

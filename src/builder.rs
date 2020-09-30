@@ -1,7 +1,7 @@
 use either::Either;
 use failure::Fallible;
 use hashbrown::HashMap;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use crate::assets::{Handle, Resources};
 use crate::ast::{Node, NodeId};
@@ -11,8 +11,8 @@ use crate::lir::{
     compile::Compile as _,
     foreign,
     target::Target,
-    Bytes, Elems, TypedValue, Value, Variants, ICMP_EQ, ICMP_GE, ICMP_GT, ICMP_LE, ICMP_LT,
-    ICMP_NE,
+    BasicBlock, Bytes, Elems, RegisterConstraint, TypedValue, Value, Variants, ICMP_EQ, ICMP_GE,
+    ICMP_GT, ICMP_LE, ICMP_LT, ICMP_NE,
 };
 use crate::pass::collapse;
 use crate::scope::Scope;
@@ -877,6 +877,90 @@ impl BuilderMacro {
                 Ok((result, builder.0))
             }))
     }
+
+    pub fn build_builtin_if() -> Self {
+        Self::new("if")
+            .with_infer(Box::new(
+                |node, nodes, named_types, strings, scopes, dispatch, types, _target| {
+                    if !matches!(node.children.len(), 3..=4) {
+                        todo!();
+                    }
+                    let arg0 = nodes.get(node.children[2].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        scopes,
+                        strings,
+                        dispatch,
+                        named_types,
+                        nodes,
+                    )?;
+                    if node.children.len() == 3 {
+                        let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
+                        let (_u, _) = collapse(
+                            types[&arg1.id()],
+                            scopes,
+                            strings,
+                            dispatch,
+                            named_types,
+                            nodes,
+                        )?;
+                    }
+                    // TODO: compare types
+                    Ok(t)
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let expr = node.children[1].unwrap();
+                let (v, mut f) = Node::compile(expr, res, builders, builder)?;
+
+                let mut bb0 = BasicBlock::new(0);
+                let mut bb1 = BasicBlock::new(0);
+                f = f.add_basic_block(&mut bb0).add_basic_block(&mut bb1);
+
+                builder = ValueBuilder(f);
+                builder.0 = builder.0.build_cond_br(v, bb0, bb1);
+
+                builder.0 = builder.0.set_basic_block_as_current(bb0);
+                let then = node.children[2].unwrap();
+                let (value, f) = Node::compile(then, res, builders, builder)?;
+                builder = ValueBuilder(f);
+
+                let mut res0 = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_copy(
+                    &mut res0,
+                    value.typ,
+                    RegisterConstraint::PhiRegister,
+                    value,
+                );
+
+                builder.0 = builder.0.set_basic_block_as_current(bb1);
+                let or_else = node.children[3].unwrap();
+                let (value, f) = Node::compile(or_else, res, builders, builder)?;
+                builder = ValueBuilder(f);
+
+                let mut res1 = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_copy(
+                    &mut res1,
+                    value.typ,
+                    RegisterConstraint::PhiRegister,
+                    value,
+                );
+
+                let mut bb_fin = BasicBlock::new(0);
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder
+                    .0
+                    .add_basic_block(&mut bb_fin)
+                    .set_basic_block_as_current(bb0)
+                    .build_br(bb_fin)
+                    .set_basic_block_as_current(bb1)
+                    .build_br(bb_fin)
+                    .set_basic_block_as_current(bb_fin)
+                    .build_phi(&mut result, res1.typ, smallvec![(res0, bb0), (res1, bb1)]);
+
+                Ok((result, builder.0))
+            }))
+    }
 }
 
 pub fn init(mut res: Resources<&mut BuilderMacro>) {
@@ -899,6 +983,7 @@ pub fn init(mut res: Resources<&mut BuilderMacro>) {
         BuilderMacro::build_builtin_gt(),
         BuilderMacro::build_builtin_le(),
         BuilderMacro::build_builtin_ge(),
+        BuilderMacro::build_builtin_if(),
     ];
     for builder in builders {
         res.insert(builder.id(), builder);

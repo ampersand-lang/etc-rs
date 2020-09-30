@@ -463,7 +463,7 @@ impl Display for Argument {
                 }
                 write!(f, "]")
             }
-            Self::BasicBlock(bb) => write!(f, "._{}", bb.0),
+            Self::BasicBlock(bb) => write!(f, ".L{}", bb.0),
         }
     }
 }
@@ -525,6 +525,12 @@ impl<'a> LineBuilder<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BasicBlock(u64);
+
+impl BasicBlock {
+    pub fn number(&self) -> u64 {
+        self.0
+    }
+}
 
 #[derive(Debug)]
 pub struct BasicBlockBuilder {
@@ -644,7 +650,7 @@ impl FunctionBuilder {
         for bb in self.block_list {
             let num = bb.0;
             let bb = &self.basic_blocks[&bb];
-            write!(&mut output, "._{}:\n", num).expect("formatting failed");
+            write!(&mut output, ".L{}:\n", num).expect("formatting failed");
             for line in &bb.block {
                 write!(&mut output, "{}\n", line).expect("formatting failed");
             }
