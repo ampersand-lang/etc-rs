@@ -961,6 +961,47 @@ impl BuilderMacro {
                 Ok((result, builder.0))
             }))
     }
+
+    pub fn build_builtin_while() -> Self {
+        Self::new("while")
+            .with_infer(Box::new(
+                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
+                    Ok(*primitive::UNIT)
+                },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut bb0 = BasicBlock::new(0);
+                let mut bb1 = BasicBlock::new(0);
+                let mut bb_fin = BasicBlock::new(0);
+                builder.0 = builder
+                    .0
+                    .add_basic_block(&mut bb0)
+                    .add_basic_block(&mut bb1)
+                    .add_basic_block(&mut bb_fin)
+                    .build_br(bb0);
+
+                builder.0 = builder.0.set_basic_block_as_current(bb0);
+                let expr = node.children[1].unwrap();
+                let (v, mut f) = Node::compile(expr, res, builders, builder)?;
+
+                f = f.build_cond_br(v, bb1, bb_fin);
+                builder = ValueBuilder(f);
+
+                builder.0 = builder.0.set_basic_block_as_current(bb1);
+                let then = node.children[2].unwrap();
+                let (_, f) = Node::compile(then, res, builders, builder)?;
+                builder = ValueBuilder(f);
+
+                builder.0 = builder
+                    .0
+                    .set_basic_block_as_current(bb1)
+                    .build_br(bb0)
+                    .set_basic_block_as_current(bb_fin);
+
+                let result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                Ok((result, builder.0))
+            }))
+    }
 }
 
 pub fn init(mut res: Resources<&mut BuilderMacro>) {
@@ -984,6 +1025,7 @@ pub fn init(mut res: Resources<&mut BuilderMacro>) {
         BuilderMacro::build_builtin_le(),
         BuilderMacro::build_builtin_ge(),
         BuilderMacro::build_builtin_if(),
+        BuilderMacro::build_builtin_while(),
     ];
     for builder in builders {
         res.insert(builder.id(), builder);

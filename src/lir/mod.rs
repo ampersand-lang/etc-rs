@@ -693,6 +693,7 @@ impl Function {
 
     fn lifetime_inner<'a, I>(
         &self,
+        visited: &mut HashSet<BasicBlock>,
         binding: BindingPrototype,
         start: &mut Option<Lifetime>,
         end: &mut Option<Lifetime>,
@@ -713,8 +714,17 @@ impl Function {
                 Instruction::Br => {
                     match ir.args[0].val {
                         Value::Label(bb) => {
-                            let bb = &self.blocks[bb.number() as usize];
-                            self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
+                            if !visited.contains(&bb) {
+                                visited.insert(bb);
+                                let bb = &self.blocks[bb.number() as usize];
+                                self.lifetime_inner(
+                                    visited,
+                                    binding,
+                                    start,
+                                    end,
+                                    self.body[bb.start..].iter(),
+                                );
+                            }
                         }
                         _ => {}
                     }
@@ -723,15 +733,33 @@ impl Function {
                 Instruction::CondBr => {
                     match ir.args[1].val {
                         Value::Label(bb) => {
-                            let bb = &self.blocks[bb.number() as usize];
-                            self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
+                            if !visited.contains(&bb) {
+                                visited.insert(bb);
+                                let bb = &self.blocks[bb.number() as usize];
+                                self.lifetime_inner(
+                                    visited,
+                                    binding,
+                                    start,
+                                    end,
+                                    self.body[bb.start..].iter(),
+                                );
+                            }
                         }
                         _ => {}
                     }
                     match ir.args[2].val {
                         Value::Label(bb) => {
-                            let bb = &self.blocks[bb.number() as usize];
-                            self.lifetime_inner(binding, start, end, self.body[bb.start..].iter());
+                            if !visited.contains(&bb) {
+                                visited.insert(bb);
+                                let bb = &self.blocks[bb.number() as usize];
+                                self.lifetime_inner(
+                                    visited,
+                                    binding,
+                                    start,
+                                    end,
+                                    self.body[bb.start..].iter(),
+                                );
+                            }
                         }
                         _ => {}
                     }
@@ -746,7 +774,14 @@ impl Function {
     pub fn lifetime(&self, binding: BindingPrototype) -> (Lifetime, Lifetime) {
         let mut start = None;
         let mut end = None;
-        self.lifetime_inner(binding, &mut start, &mut end, self.body.iter());
+        let mut visited = HashSet::new();
+        self.lifetime_inner(
+            &mut visited,
+            binding,
+            &mut start,
+            &mut end,
+            self.body.iter(),
+        );
         let start = start.unwrap();
         let end = end.unwrap();
         (start, end)
