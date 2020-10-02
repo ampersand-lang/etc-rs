@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
-use crate::types::{NonConcrete, TypeGroup, TypeId};
+use crate::types::{primitive, NonConcrete, TypeGroup, TypeId};
 use crate::values::Payload;
 
 pub fn reify_update(
@@ -147,15 +147,11 @@ pub fn reify_update(
                                             new_nodes.push(type_pat);
                                             let type_pat = h;
 
-                                            let type_name = "type".to_string();
-                                            let handle = Handle::from_hash(type_name.as_bytes());
-                                            strings.insert(handle, type_name);
-                                            let type_name = handle;
-
                                             let mut type_type =
                                                 Node::new(Kind::Nil, Handle::nil(), iter::empty());
                                             type_type.payload =
-                                                Some(Payload::Identifier(type_name));
+                                                Some(Payload::Type(*primitive::TYPE));
+                                            type_type.amps = 1;
                                             let h = type_type.id();
                                             new_nodes.push(type_type);
                                             let type_type = h;

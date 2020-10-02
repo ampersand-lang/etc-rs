@@ -34,7 +34,8 @@ impl CharExt for char {
             || self.is_ascii_punctuation()
                 && !matches!(
                     self,
-                    '$' | '@'
+                    '$' | '&'
+                        | '@'
                         | '"'
                         | '#'
                         | '\''
@@ -57,7 +58,8 @@ impl CharExt for char {
             || self.is_ascii_punctuation()
                 && !matches!(
                     self,
-                    '$' | '@'
+                    '$' | '&'
+                        | '@'
                         | '"'
                         | '#'
                         | '\''
@@ -133,6 +135,7 @@ pub enum TokenKind {
     EqualsArrow,
     Dot,
     Dollar,
+    Ampersand,
     At,
     SingleQuote,
     With,
@@ -153,6 +156,7 @@ impl TokenKind {
             "." => Self::Dot,
             "'" => Self::SingleQuote,
             "$" => Self::Dollar,
+            "&" => Self::Ampersand,
             "@" => Self::Curly(Side::Right),
             "(" => Self::Paren(Side::Left),
             ")" => Self::Paren(Side::Right),
@@ -183,6 +187,7 @@ impl Display for TokenKind {
             Self::Dot => ".",
             Self::SingleQuote => "'",
             Self::Dollar => "$",
+            Self::Ampersand => "&",
             Self::At => "@",
             Self::With => "with!",
             Self::True => "true",
@@ -399,6 +404,11 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                 '$' => Some(Ok(Token {
                     location: handle,
                     kind: TokenKind::Dollar,
+                    value: TokenValue::None,
+                })),
+                '&' => Some(Ok(Token {
+                    location: handle,
+                    kind: TokenKind::Ampersand,
                     value: TokenValue::None,
                 })),
                 '@' => Some(Ok(Token {

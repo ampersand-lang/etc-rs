@@ -5,6 +5,7 @@ use hashbrown::{HashMap, HashSet};
 
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
+use crate::universe::Universe;
 use crate::values::Payload;
 
 pub fn mir_update(
@@ -16,11 +17,11 @@ pub fn mir_update(
     for (_, mut root_node) in roots.iter_mut::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
 
-        let mut min_universe = i32::MAX;
-        let mut max_universe = i32::MIN;
+        let mut min_universe = Universe::MAX;
+        let mut max_universe = Universe::MIN;
         root.visit(Visit::Postorder, &nodes, |_, node, _| {
-            min_universe = min_universe.min(node.universe);
-            max_universe = max_universe.max(node.universe);
+            min_universe = min_universe.min(&node.universe);
+            max_universe = max_universe.max(&node.universe);
             VisitResult::Recurse
         });
 
@@ -200,7 +201,6 @@ pub fn mir_update(
                                                 let handle =
                                                     Handle::from_hash(identifier.as_bytes());
                                                 lazy.insert(handle, identifier);
-                                                var.alternative = true;
                                                 var.payload = Some(Payload::Identifier(handle));
 
                                                 let vid = var.id();
@@ -271,6 +271,7 @@ pub fn mir_update(
                             if let Some(parent) = parent {
                                 let parent = nodes.get(parent).unwrap();
                                 if matches!(parent.kind, Kind::Binding | Kind::Global) {
+                                    let kind = parent.kind;
                                     let binding = parent.children[0].unwrap();
                                     let binding = nodes.get(binding).unwrap();
                                     let binding = binding.as_ref().clone();
@@ -284,7 +285,7 @@ pub fn mir_update(
                                     let func = handle;
 
                                     let assignment = Node::new(
-                                        Kind::Binding,
+                                        kind,
                                         Handle::nil(),
                                         iter::once(Some(binding))
                                             .chain(iter::once(None))

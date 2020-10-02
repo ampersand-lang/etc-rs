@@ -17,6 +17,7 @@ use pipeline::*;
 use scope::Scope;
 use system::*;
 use types::NamedType;
+use universe::Universe;
 use values::Payload;
 
 pub mod utils;
@@ -34,6 +35,7 @@ pub mod pipeline;
 pub mod scope;
 pub mod system;
 pub mod types;
+pub mod universe;
 pub mod values;
 
 pub fn init_assets(world: &World) {
@@ -73,11 +75,11 @@ pub fn interpreter_pipeline() -> Pipeline {
         for (_, mut root_node) in roots.iter_mut::<RootNode>() {
             let root = nodes.get::<Node>(root_node.0).unwrap();
 
-            let mut min_universe = i32::MAX;
-            let mut max_universe = i32::MIN;
+            let mut min_universe = Universe::MAX;
+            let mut max_universe = Universe::MIN;
             root.visit(Visit::Postorder, &nodes, |_, node, _| {
-                min_universe = min_universe.min(node.universe);
-                max_universe = max_universe.max(node.universe);
+                min_universe = min_universe.min(&node.universe);
+                max_universe = max_universe.max(&node.universe);
                 VisitResult::Recurse
             });
 
@@ -118,11 +120,11 @@ pub fn compiler_pipeline(b: impl Backend) -> Pipeline {
         for (_, mut root_node) in roots.iter_mut::<RootNode>() {
             let root = nodes.get::<Node>(root_node.0).unwrap();
 
-            let mut min_universe = i32::MAX;
-            let mut max_universe = i32::MIN;
+            let mut min_universe = Universe::MAX;
+            let mut max_universe = Universe::MIN;
             root.visit(Visit::Postorder, &nodes, |_, node, _| {
-                min_universe = min_universe.min(node.universe);
-                max_universe = max_universe.max(node.universe);
+                min_universe = min_universe.min(&node.universe);
+                max_universe = max_universe.max(&node.universe);
                 VisitResult::Recurse
             });
 

@@ -9,6 +9,7 @@ use crate::lir::{
 };
 use crate::scope::Scope;
 use crate::types::NamedType;
+use crate::universe::Universe;
 use crate::values::Payload;
 
 pub fn compile_update(
@@ -33,11 +34,11 @@ pub fn compile_update(
         let root = root_node.0;
         let node = nodes.get::<Node>(root).unwrap();
 
-        let mut min_universe = i32::MAX;
-        let mut max_universe = i32::MIN;
+        let mut min_universe = Universe::MAX;
+        let mut max_universe = Universe::MIN;
         node.visit(Visit::Postorder, &nodes, |_, node, _| {
-            min_universe = min_universe.min(node.universe);
-            max_universe = max_universe.max(node.universe);
+            min_universe = min_universe.min(&node.universe);
+            max_universe = max_universe.max(&node.universe);
             VisitResult::Recurse
         });
 

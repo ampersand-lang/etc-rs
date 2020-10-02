@@ -389,12 +389,15 @@ pub fn infer_update(
                         let d = if let Some(mut d) = dispatch.remove(handle) {
                             if let Some(param_types) = param_types {
                                 d.push(Definition::new_function(
-                                    node.universe,
+                                    node.universe.value(),
                                     param_types,
                                     result_type,
                                 ));
                             } else {
-                                d.push(Definition::new_variable(node.universe, result_type));
+                                d.push(Definition::new_variable(
+                                    node.universe.value(),
+                                    result_type,
+                                ));
                             }
                             d
                         } else {
@@ -403,7 +406,7 @@ pub fn infer_update(
                                 Dispatcher::with_definitions(
                                     name,
                                     iter::once(Definition::new_function(
-                                        node.universe,
+                                        node.universe.value(),
                                         param_types,
                                         result_type,
                                     )),
@@ -412,7 +415,7 @@ pub fn infer_update(
                                 Dispatcher::with_definitions(
                                     name,
                                     iter::once(Definition::new_variable(
-                                        node.universe,
+                                        node.universe.value(),
                                         result_type,
                                     )),
                                 )
@@ -501,13 +504,16 @@ pub fn infer_update(
                         };
 
                         let d = if let Some(mut d) = dispatch.remove(handle) {
-                            d.push(Definition::new_variable(node.universe, type_of));
+                            d.push(Definition::new_variable(node.universe.value(), type_of));
                             d
                         } else {
                             let name = Name(scope, ident);
                             Dispatcher::with_definitions(
                                 name,
-                                iter::once(Definition::new_variable(node.universe, type_of)),
+                                iter::once(Definition::new_variable(
+                                    node.universe.value(),
+                                    type_of,
+                                )),
                             )
                         };
                         types.insert(node.id(), type_of);

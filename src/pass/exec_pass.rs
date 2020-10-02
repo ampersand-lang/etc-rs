@@ -5,6 +5,7 @@ use crate::ast::{Node, RootNode, Visit, VisitResult};
 use crate::lir::{context::ExecutionContext, Foreign, Value};
 use crate::pass;
 use crate::types::NamedType;
+use crate::universe::Universe;
 
 pub fn exec_update(
     lazy: &mut LazyUpdate,
@@ -21,11 +22,11 @@ pub fn exec_update(
             .get_mut::<ExecutionContext>(root.thread.unwrap())
             .unwrap();
 
-        let mut min_universe = i32::MAX;
-        let mut max_universe = i32::MIN;
+        let mut min_universe = Universe::MAX;
+        let mut max_universe = Universe::MIN;
         root.visit(Visit::Postorder, &res, |_, node, _| {
-            min_universe = min_universe.min(node.universe);
-            max_universe = max_universe.max(node.universe);
+            min_universe = min_universe.min(&node.universe);
+            max_universe = max_universe.max(&node.universe);
             VisitResult::Recurse
         });
 
@@ -71,11 +72,11 @@ pub fn interpret_update(
             .get_mut::<ExecutionContext>(root.thread.unwrap())
             .unwrap();
 
-        let mut min_universe = i32::MAX;
-        let mut max_universe = i32::MIN;
+        let mut min_universe = Universe::MAX;
+        let mut max_universe = Universe::MIN;
         root.visit(Visit::Postorder, &res, |_, node, _| {
-            min_universe = min_universe.min(node.universe);
-            max_universe = max_universe.max(node.universe);
+            min_universe = min_universe.min(&node.universe);
+            max_universe = max_universe.max(&node.universe);
             VisitResult::Recurse
         });
 

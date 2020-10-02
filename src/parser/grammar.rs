@@ -440,7 +440,18 @@ fn alternative(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn atomic(state: &mut State) -> Fallible<NodeId> {
-    or9(
+    let mut amps = 0;
+    loop {
+        let lexer = state.lexer.data.clone();
+        match literal(TokenKind::Ampersand)(state) {
+            Ok(_) => amps += 1,
+            Err(_) => {
+                state.lexer.data = lexer;
+                break;
+            }
+        }
+    }
+    let handle = or9(
         move |state| {
             let location = state.location().unwrap_or_else(Handle::nil);
             Ok(grouped(
@@ -500,7 +511,9 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
         atom(TokenKind::Real),
         atom(TokenKind::Identifier),
         atom(TokenKind::String),
-    )(state)
+    )(state)?;
+    state.nodes.get_mut(handle).unwrap().amps = amps;
+    Ok(handle)
 }
 
 #[cfg(test)]

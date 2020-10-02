@@ -1,5 +1,4 @@
-@inline-always
-foonction :: {a: sint} => a;
+id :: {a} => a;
 
-x := foonction 0;
+x := id 0;
 x

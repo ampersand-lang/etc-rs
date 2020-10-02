@@ -10,6 +10,7 @@ use crate::lexer::Location;
 use crate::lir::{ThreadId, Value};
 use crate::scope::ScopeId;
 use crate::types::{NamedType, TypeId};
+use crate::universe::Universe;
 use crate::values::{self, Payload};
 
 /// A handle to a `Node`.
@@ -279,6 +280,8 @@ pub struct Attribute {
 pub struct Node {
     /// This node's handle.
     id: NodeId,
+    /// The number of ampersands (`&`) in front of this node.
+    pub amps: usize,
     pub attributes: SmallVec<[Attribute; 4]>,
     /// A flag that shows if a newnode should be created.
     pub no_newnode: bool,
@@ -300,7 +303,7 @@ pub struct Node {
     /// ```
     pub generic: Option<SmallVec<[Handle<String>; 4]>>,
     /// The order in which nodes get compiled and optionally executed.
-    pub universe: i32,
+    pub universe: Universe,
     /// The source code mapping.
     pub location: Handle<Location>,
     /// A flag for alternative nodes.
@@ -336,13 +339,14 @@ impl Node {
     ) -> Self {
         Node {
             id: NodeId::new(),
+            amps: 0,
             attributes: SmallVec::new(),
             no_newnode: false,
             mark_newnode: false,
             reify: None,
             old_reify: None,
             generic: None,
-            universe: 0,
+            universe: Universe::ZERO,
             location,
             alternative: false,
             kind,
@@ -568,13 +572,14 @@ impl Clone for Node {
     fn clone(&self) -> Self {
         Self {
             id: NodeId::new(),
+            amps: self.amps,
             attributes: self.attributes.clone(),
             no_newnode: self.no_newnode,
             mark_newnode: self.mark_newnode,
             reify: self.reify,
             old_reify: self.old_reify,
             generic: self.generic.clone(),
-            universe: self.universe,
+            universe: self.universe.clone(),
             location: self.location,
             alternative: self.alternative,
             kind: self.kind,
