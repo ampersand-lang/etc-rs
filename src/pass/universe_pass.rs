@@ -6,6 +6,7 @@ use smallvec::SmallVec;
 
 use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, VisitResult, Which};
+use crate::builder::BuilderMacro;
 use crate::types::primitive;
 use crate::universe::Universe;
 use crate::values::Payload;
@@ -14,6 +15,8 @@ pub fn universe_update(
     _lazy: &mut LazyUpdate,
     roots: Resources<&RootNode>,
     mut nodes: Resources<&mut Node>,
+    strings: Resources<&String>,
+    builders: Resources<&BuilderMacro>,
 ) -> Fallible<Option<&'static str>> {
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get(root_node.0).unwrap();
@@ -116,7 +119,35 @@ pub fn universe_update(
                         Kind::Application => {
                             let func = &node.children[0].unwrap();
                             let func = res.get(*func).unwrap();
-                            if !func.alternative {
+                            if func.alternative {
+                                match func.payload.unwrap() {
+                                    Payload::Identifier(ident) => {
+                                        let alternative = strings.get(ident).unwrap();
+                                        let handle = Handle::from_hash(alternative.as_bytes());
+                                        if let Some(builder) = builders.get::<BuilderMacro>(handle)
+                                        {
+                                            let u = builder
+                                                .universal(&node, &nodes, &mut universes)
+                                                .transpose()
+                                                .unwrap_or_else(|err| {
+                                                    panic!(
+                                                        "i don't know how to handle errors yet: {}",
+                                                        err
+                                                    )
+                                                });
+                                            if let Some(u) = u {
+                                                universe = u;
+                                            }
+                                        } else {
+                                            panic!(
+                                                "not an alternative: `${}`",
+                                                alternative.as_str()
+                                            );
+                                        }
+                                    }
+                                    _ => todo!(),
+                                }
+                            } else {
                                 let mapping = &universes[&func.id()];
                                 match mapping {
                                     Universe::Terminal(_) => {

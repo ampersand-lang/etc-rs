@@ -277,33 +277,36 @@ pub fn reify_update(
                 }
                 Kind::Application => {
                     let func = node.children[0].as_ref().unwrap();
-                    nomark.insert(*func);
-                    if let Some((n, is_implicit)) = genapp.get(func).copied() {
-                        if is_implicit {
-                            let mut type_args = SmallVec::<[_; 4]>::new();
-                            for arg in &node.children[1..] {
-                                let arg = arg.unwrap();
-                                nomark.insert(arg);
-                                let mut type_arg =
-                                    Node::new(Kind::Nil, Handle::nil(), iter::empty());
-                                type_arg.payload = Some(Payload::Type(TypeId {
-                                    group: TypeGroup::None,
-                                    concrete: NonConcrete::Typeof(arg),
-                                }));
-                                let h = type_arg.id();
-                                new_nodes.push(type_arg);
-                                let type_arg = h;
-                                mark.insert(type_arg);
-                                type_args.push(Some(type_arg))
+                    let fnode = nodes.get(*func).unwrap();
+                    if !fnode.alternative {
+                        nomark.insert(*func);
+                        if let Some((n, is_implicit)) = genapp.get(func).copied() {
+                            if is_implicit {
+                                let mut type_args = SmallVec::<[_; 4]>::new();
+                                for arg in &node.children[1..] {
+                                    let arg = arg.unwrap();
+                                    nomark.insert(arg);
+                                    let mut type_arg =
+                                        Node::new(Kind::Nil, Handle::nil(), iter::empty());
+                                    type_arg.payload = Some(Payload::Type(TypeId {
+                                        group: TypeGroup::None,
+                                        concrete: NonConcrete::Typeof(arg),
+                                    }));
+                                    let h = type_arg.id();
+                                    new_nodes.push(type_arg);
+                                    let type_arg = h;
+                                    mark.insert(type_arg);
+                                    type_args.push(Some(type_arg))
+                                }
+                                implicits.insert(node.id(), type_args);
+                            } else {
+                                let args = &node.children[1..n + 1];
+                                for arg in args {
+                                    let arg = arg.unwrap();
+                                    mark.insert(arg);
+                                }
+                                transaction.insert(node.id(), n);
                             }
-                            implicits.insert(node.id(), type_args);
-                        } else {
-                            let args = &node.children[1..n + 1];
-                            for arg in args {
-                                let arg = arg.unwrap();
-                                mark.insert(arg);
-                            }
-                            transaction.insert(node.id(), n);
                         }
                     }
                 }

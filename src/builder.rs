@@ -4,11 +4,13 @@ use hashbrown::HashMap;
 use smallvec::{smallvec, SmallVec};
 
 use crate::assets::{Handle, Resources};
-use crate::ast::{Node, NodeId};
+use crate::ast::{Node, NodeId, RootNode};
 use crate::dispatch::Dispatcher;
+use crate::lexer::Location;
 use crate::lir::{
     builder::{FunctionBuilder, ValueBuilder},
     compile::Compile as _,
+    context::ExecutionContext,
     foreign,
     target::Target,
     BasicBlock, Bytes, Elems, RegisterConstraint, TypedValue, Value, Variants, ICMP_EQ, ICMP_GE,
@@ -17,18 +19,31 @@ use crate::lir::{
 use crate::pass::collapse;
 use crate::scope::Scope;
 use crate::types::{primitive, NamedType, NonConcrete, TypeId};
+use crate::universe::Universe;
 use crate::values::Payload;
+
+pub type Universal = Box<
+    dyn Fn(&Node, &Resources<&mut Node>, &mut HashMap<NodeId, Universe>) -> Fallible<Universe>
+        + Send
+        + Sync
+        + 'static,
+>;
 
 pub type Infer = Box<
     dyn Fn(
             &Node,
-            &Resources<&mut Node>,
+            &Node,
+            &Target,
+            &Resources<&RootNode>,
+            &Resources<&Scope>,
+            &Resources<&ExecutionContext>,
+            &mut Resources<&mut Dispatcher>,
             &mut Resources<&mut NamedType>,
             &Resources<&String>,
-            &Resources<&Scope>,
-            &Resources<&mut Dispatcher>,
+            &Resources<&BuilderMacro>,
+            &Resources<&Location>,
+            &Resources<&mut Node>,
             &mut HashMap<NodeId, TypeId>,
-            &Target,
         ) -> Fallible<TypeId>
         + Send
         + Sync
@@ -58,6 +73,7 @@ pub type Compile = Box<
 
 pub struct BuilderMacro {
     name: &'static str,
+    universal: Option<Universal>,
     infer: Option<Infer>,
     compile: Option<Compile>,
     require_intrinsic: bool,
@@ -68,6 +84,7 @@ impl BuilderMacro {
     pub fn new(name: &'static str) -> Self {
         Self {
             name,
+            universal: None,
             infer: None,
             compile: None,
             require_intrinsic: false,
@@ -79,27 +96,46 @@ impl BuilderMacro {
         Handle::from_hash(self.name.as_bytes())
     }
 
-    pub fn infer(
+    pub fn universal(
         &self,
         node: &Node,
         nodes: &Resources<&mut Node>,
+        universes: &mut HashMap<NodeId, Universe>,
+    ) -> Option<Fallible<Universe>> {
+        self.universal.as_ref().map(|f| f(node, nodes, universes))
+    }
+
+    pub fn infer(
+        &self,
+        root: &Node,
+        node: &Node,
+        target: &Target,
+        roots: &Resources<&RootNode>,
+        scopes: &Resources<&Scope>,
+        contexts: &Resources<&ExecutionContext>,
+        dispatch: &mut Resources<&mut Dispatcher>,
         named_types: &mut Resources<&mut NamedType>,
         strings: &Resources<&String>,
-        scopes: &Resources<&Scope>,
-        dispatch: &Resources<&mut Dispatcher>,
+        builders: &Resources<&BuilderMacro>,
+        locations: &Resources<&Location>,
+        nodes: &Resources<&mut Node>,
         types: &mut HashMap<NodeId, TypeId>,
-        target: &Target,
     ) -> Option<Fallible<TypeId>> {
         self.infer.as_ref().map(|f| {
             f(
+                root,
                 node,
-                nodes,
+                target,
+                roots,
+                scopes,
+                contexts,
+                dispatch,
                 named_types,
                 strings,
-                scopes,
-                dispatch,
+                builders,
+                locations,
+                nodes,
                 types,
-                target,
             )
         })
     }
@@ -126,6 +162,11 @@ impl BuilderMacro {
         }
     }
 
+    pub fn with_universal(mut self, universal: Universal) -> Self {
+        self.universal = Some(universal);
+        self
+    }
+
     pub fn with_infer(mut self, infer: Infer) -> Self {
         self.infer = Some(infer);
         self
@@ -148,10 +189,21 @@ impl BuilderMacro {
 
     pub fn build_new_node() -> Self {
         Self::new("new-node")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _string, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::NODE)
-                },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::NODE) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::new();
@@ -170,10 +222,21 @@ impl BuilderMacro {
 
     pub fn build_format_ast() -> Self {
         Self::new("format-ast")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _string, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::NODE)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::NODE) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::new();
@@ -195,10 +258,21 @@ impl BuilderMacro {
 
     pub fn build_quasiquote() -> Self {
         Self::new("quasiquote")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _string, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::NODE)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::NODE) },
             ))
             .with_compile(Box::new(|node, _res, _builders, builder| {
                 let node =
@@ -209,10 +283,21 @@ impl BuilderMacro {
 
     pub fn build_compile() -> Self {
         Self::new("compile")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _string, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::UNIT)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::UNIT) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::new();
@@ -233,8 +318,28 @@ impl BuilderMacro {
 
     pub fn build_builtin_add() -> Self {
         Self::new("+")
+            .with_universal(Box::new(|_, _, _| {
+                let result = Universe::Terminal(0);
+
+                Ok(Universe::Mapping(
+                    vec![Universe::Terminal(0), Universe::Terminal(0)],
+                    Box::new(result),
+                ))
+            }))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if node.children.len() > 3 {
                         todo!();
                     }
@@ -242,19 +347,35 @@ impl BuilderMacro {
                     let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     let (u, _) = collapse(
                         types[&arg1.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     match (t.concrete, u.concrete) {
                         (NonConcrete::Type(t), NonConcrete::Type(u)) => {
@@ -297,8 +418,28 @@ impl BuilderMacro {
 
     pub fn build_builtin_sub() -> Self {
         Self::new("-")
+            .with_universal(Box::new(|_, _, _| {
+                let result = Universe::Terminal(0);
+
+                Ok(Universe::Mapping(
+                    vec![Universe::Terminal(0), Universe::Terminal(0)],
+                    Box::new(result),
+                ))
+            }))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if node.children.len() > 3 {
                         todo!();
                     }
@@ -306,19 +447,35 @@ impl BuilderMacro {
                     let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     let (u, _) = collapse(
                         types[&arg1.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     match (t.concrete, u.concrete) {
                         (NonConcrete::Type(t), NonConcrete::Type(u)) => {
@@ -361,8 +518,28 @@ impl BuilderMacro {
 
     pub fn build_builtin_mul() -> Self {
         Self::new("*")
+            .with_universal(Box::new(|_, _, _| {
+                let result = Universe::Terminal(0);
+
+                Ok(Universe::Mapping(
+                    vec![Universe::Terminal(0), Universe::Terminal(0)],
+                    Box::new(result),
+                ))
+            }))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if node.children.len() > 3 {
                         todo!();
                     }
@@ -370,19 +547,35 @@ impl BuilderMacro {
                     let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     let (u, _) = collapse(
                         types[&arg1.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     match (t.concrete, u.concrete) {
                         (NonConcrete::Type(t), NonConcrete::Type(u)) => {
@@ -425,8 +618,28 @@ impl BuilderMacro {
 
     pub fn build_builtin_div() -> Self {
         Self::new("/")
+            .with_universal(Box::new(|_, _, _| {
+                let result = Universe::Terminal(0);
+
+                Ok(Universe::Mapping(
+                    vec![Universe::Terminal(0), Universe::Terminal(0)],
+                    Box::new(result),
+                ))
+            }))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if node.children.len() > 3 {
                         todo!();
                     }
@@ -434,19 +647,35 @@ impl BuilderMacro {
                     let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     let (u, _) = collapse(
                         types[&arg1.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     match (t.concrete, u.concrete) {
                         (NonConcrete::Type(t), NonConcrete::Type(u)) => {
@@ -489,8 +718,28 @@ impl BuilderMacro {
 
     pub fn build_builtin_rem() -> Self {
         Self::new("%")
+            .with_universal(Box::new(|_, _, _| {
+                let result = Universe::Terminal(0);
+
+                Ok(Universe::Mapping(
+                    vec![Universe::Terminal(0), Universe::Terminal(0)],
+                    Box::new(result),
+                ))
+            }))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if node.children.len() > 3 {
                         todo!();
                     }
@@ -498,19 +747,35 @@ impl BuilderMacro {
                     let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     let (u, _) = collapse(
                         types[&arg1.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     match (t.concrete, u.concrete) {
                         (NonConcrete::Type(t), NonConcrete::Type(u)) => {
@@ -553,8 +818,28 @@ impl BuilderMacro {
 
     pub fn build_builtin_bit_and() -> Self {
         Self::new("&")
+            .with_universal(Box::new(|_, _, _| {
+                let result = Universe::Terminal(0);
+
+                Ok(Universe::Mapping(
+                    vec![Universe::Terminal(0), Universe::Terminal(0)],
+                    Box::new(result),
+                ))
+            }))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if node.children.len() > 3 {
                         todo!();
                     }
@@ -562,19 +847,35 @@ impl BuilderMacro {
                     let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     let (u, _) = collapse(
                         types[&arg1.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     match (t.concrete, u.concrete) {
                         (NonConcrete::Type(t), NonConcrete::Type(u)) => {
@@ -618,8 +919,28 @@ impl BuilderMacro {
 
     pub fn build_builtin_bit_or() -> Self {
         Self::new("|")
+            .with_universal(Box::new(|_, _, _| {
+                let result = Universe::Terminal(0);
+
+                Ok(Universe::Mapping(
+                    vec![Universe::Terminal(0), Universe::Terminal(0)],
+                    Box::new(result),
+                ))
+            }))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if node.children.len() > 3 {
                         todo!();
                     }
@@ -627,19 +948,35 @@ impl BuilderMacro {
                     let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     let (u, _) = collapse(
                         types[&arg1.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     match (t.concrete, u.concrete) {
                         (NonConcrete::Type(t), NonConcrete::Type(u)) => {
@@ -683,8 +1020,28 @@ impl BuilderMacro {
 
     pub fn build_builtin_bit_xor() -> Self {
         Self::new("^")
+            .with_universal(Box::new(|_, _, _| {
+                let result = Universe::Terminal(0);
+
+                Ok(Universe::Mapping(
+                    vec![Universe::Terminal(0), Universe::Terminal(0)],
+                    Box::new(result),
+                ))
+            }))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if node.children.len() > 3 {
                         todo!();
                     }
@@ -692,19 +1049,35 @@ impl BuilderMacro {
                     let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     let (u, _) = collapse(
                         types[&arg1.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     match (t.concrete, u.concrete) {
                         (NonConcrete::Type(t), NonConcrete::Type(u)) => {
@@ -748,10 +1121,21 @@ impl BuilderMacro {
 
     pub fn build_builtin_eq() -> Self {
         Self::new("==")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::BOOL)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -770,10 +1154,21 @@ impl BuilderMacro {
 
     pub fn build_builtin_ne() -> Self {
         Self::new("!=")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::BOOL)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -792,10 +1187,21 @@ impl BuilderMacro {
 
     pub fn build_builtin_lt() -> Self {
         Self::new("<")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::BOOL)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -814,10 +1220,21 @@ impl BuilderMacro {
 
     pub fn build_builtin_gt() -> Self {
         Self::new(">")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::BOOL)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -836,10 +1253,21 @@ impl BuilderMacro {
 
     pub fn build_builtin_le() -> Self {
         Self::new("<=")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::BOOL)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -858,10 +1286,21 @@ impl BuilderMacro {
 
     pub fn build_builtin_ge() -> Self {
         Self::new(">=")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::BOOL)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -880,29 +1319,58 @@ impl BuilderMacro {
 
     pub fn build_builtin_if() -> Self {
         Self::new("if")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |node, nodes, named_types, strings, scopes, dispatch, types, _target| {
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
                     if !matches!(node.children.len(), 3..=4) {
                         todo!();
                     }
                     let arg0 = nodes.get(node.children[2].unwrap()).unwrap();
                     let (t, _) = collapse(
                         types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
                         scopes,
-                        strings,
+                        contexts,
                         dispatch,
                         named_types,
+                        strings,
+                        builders,
+                        locations,
                         nodes,
+                        types,
                     )?;
                     if node.children.len() == 3 {
                         let arg1 = nodes.get(node.children[2].unwrap()).unwrap();
                         let (_u, _) = collapse(
                             types[&arg1.id()],
+                            root,
+                            node,
+                            target,
+                            roots,
                             scopes,
-                            strings,
+                            contexts,
                             dispatch,
                             named_types,
+                            strings,
+                            builders,
+                            locations,
                             nodes,
+                            types,
                         )?;
                     }
                     // TODO: compare types
@@ -964,10 +1432,21 @@ impl BuilderMacro {
 
     pub fn build_builtin_while() -> Self {
         Self::new("while")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |_node, _nodes, _named_types, _strings, _scopes, _dispatch, _types, _target| {
-                    Ok(*primitive::UNIT)
-                },
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| { Ok(*primitive::UNIT) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut bb0 = BasicBlock::new(0);

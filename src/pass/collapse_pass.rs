@@ -1,21 +1,35 @@
+use std::mem;
+
 use failure::Fallible;
 use hashbrown::{HashMap, HashSet};
 
-use crate::assets::{AssetBundle, Handle, LazyUpdate, Resources};
-use crate::ast::{Kind, Node, RootNode, Visit, VisitResult};
+use crate::assets::{AssetBundle, Handle, LazyUpdate, Resources, Static};
+use crate::ast::{Kind, Node, NodeId, RootNode, Visit, VisitResult};
+use crate::builder::BuilderMacro;
 use crate::dispatch::*;
 use crate::error::MultiError;
+use crate::lexer::Location;
+use crate::lir::{context::ExecutionContext, target::Target};
+use crate::pass::infer;
 use crate::scope::{Scope, ScopeId};
 use crate::types::{NamedType, NonConcrete, TypeId};
 use crate::values::Payload;
 
-pub fn collapse<A: AssetBundle, B: AssetBundle>(
+pub fn collapse(
     typ: TypeId,
+    root: &Node,
+    node: &Node,
+    target: &Target,
+    roots: &Resources<&RootNode>,
     scopes: &Resources<&Scope>,
+    contexts: &Resources<&ExecutionContext>,
+    dispatch: &mut Resources<&mut Dispatcher>,
+    named_types: &mut Resources<&mut NamedType>,
     strings: &Resources<&String>,
-    dispatch: &Resources<B>,
-    named_types: &Resources<A>,
+    builders: &Resources<&BuilderMacro>,
+    locations: &Resources<&Location>,
     nodes: &Resources<&mut Node>,
+    types: &mut HashMap<NodeId, TypeId>,
 ) -> Fallible<(TypeId, Option<ScopeId>)> {
     match typ.concrete {
         NonConcrete::Type(_) => Ok((typ, None)),
@@ -50,7 +64,23 @@ pub fn collapse<A: AssetBundle, B: AssetBundle>(
                     1 => results[0].result_type(),
                     _ => todo!(),
                 };
-                let (t, _) = collapse(t, scopes, strings, dispatch, named_types, nodes)?;
+                mem::drop(results);
+                let (t, _) = collapse(
+                    t,
+                    root,
+                    node,
+                    target,
+                    roots,
+                    scopes,
+                    contexts,
+                    dispatch,
+                    named_types,
+                    strings,
+                    builders,
+                    locations,
+                    nodes,
+                    types,
+                )?;
                 return Ok((t, Some(scope)));
             }
             // TODO: a proper error type
@@ -59,24 +89,72 @@ pub fn collapse<A: AssetBundle, B: AssetBundle>(
                 string.as_str()
             )))
         }
-        NonConcrete::Typeof(id) => collapse(
-            nodes.get(id).unwrap().type_of.unwrap(),
-            scopes,
-            strings,
-            dispatch,
-            named_types,
-            nodes,
-        ),
+        NonConcrete::Typeof(id) => {
+            if let Some(t) = nodes.get(id).unwrap().type_of {
+                collapse(
+                    t,
+                    root,
+                    node,
+                    target,
+                    roots,
+                    scopes,
+                    contexts,
+                    dispatch,
+                    named_types,
+                    strings,
+                    builders,
+                    locations,
+                    nodes,
+                    types,
+                )
+            } else {
+                infer(
+                    root,
+                    &nodes.get(id).unwrap(),
+                    target,
+                    roots,
+                    scopes,
+                    contexts,
+                    dispatch,
+                    named_types,
+                    strings,
+                    builders,
+                    locations,
+                    nodes,
+                    types,
+                )?;
+                collapse(
+                    types[&id],
+                    root,
+                    node,
+                    target,
+                    roots,
+                    scopes,
+                    contexts,
+                    dispatch,
+                    named_types,
+                    strings,
+                    builders,
+                    locations,
+                    nodes,
+                    types,
+                )
+            }
+        }
     }
 }
 
 pub fn collapse_update(
     _lazy: &mut LazyUpdate,
+    target: &Static<Target>,
     roots: Resources<&RootNode>,
     scopes: Resources<&Scope>,
+    contexts: Resources<&ExecutionContext>,
+    mut dispatch: Resources<&mut Dispatcher>,
+    mut named_types: Resources<&mut NamedType>,
     strings: Resources<&String>,
-    dispatch: Resources<&Dispatcher>,
-    named_types: Resources<&NamedType>,
+    builders: Resources<&BuilderMacro>,
+    locations: Resources<&Location>,
     mut nodes: Resources<&mut Node>,
 ) -> Fallible<Option<&'static str>> {
     let mut errors = Vec::new();
@@ -125,8 +203,22 @@ pub fn collapse_update(
             }
 
             if let Some(typ) = node.type_of {
-                let (t, s) = match collapse(typ, &scopes, &strings, &dispatch, &named_types, &nodes)
-                {
+                let (t, s) = match collapse(
+                    typ,
+                    &root,
+                    node,
+                    &target,
+                    &roots,
+                    &scopes,
+                    &contexts,
+                    &mut dispatch,
+                    &mut named_types,
+                    &strings,
+                    &builders,
+                    &locations,
+                    &nodes,
+                    &mut types,
+                ) {
                     Ok(tuple) => tuple,
                     Err(err) => {
                         errors.push(err);
@@ -140,7 +232,7 @@ pub fn collapse_update(
             }
             VisitResult::Recurse
         });
-        for (handle, typ) in types {
+        for (handle, typ) in types.drain() {
             nodes.get_mut::<Node>(handle).unwrap().type_of = Some(typ);
         }
         let root = nodes.get::<Node>(root_node.0).unwrap();
@@ -152,15 +244,28 @@ pub fn collapse_update(
             if let Some(payload) = node.payload {
                 match payload {
                     Payload::Type(typ) => {
-                        let (t, s) =
-                            match collapse(typ, &scopes, &strings, &dispatch, &named_types, &nodes)
-                            {
-                                Ok(tuple) => tuple,
-                                Err(err) => {
-                                    errors.push(err);
-                                    return VisitResult::Recurse;
-                                }
-                            };
+                        let (t, s) = match collapse(
+                            typ,
+                            &root,
+                            node,
+                            &target,
+                            &roots,
+                            &scopes,
+                            &contexts,
+                            &mut dispatch,
+                            &mut named_types,
+                            &strings,
+                            &builders,
+                            &locations,
+                            &nodes,
+                            &mut types,
+                        ) {
+                            Ok(tuple) => tuple,
+                            Err(err) => {
+                                errors.push(err);
+                                return VisitResult::Recurse;
+                            }
+                        };
                         payloads.insert(node.id(), Payload::Type(t));
                         if let Some(s) = s {
                             new_scopes.insert(node.id(), s);
@@ -174,6 +279,9 @@ pub fn collapse_update(
         //for (handle, scope) in new_scopes {
         //    nodes.get_mut::<Node>(handle).unwrap().scope = Some(scope);
         //}
+        for (handle, typ) in types {
+            nodes.get_mut::<Node>(handle).unwrap().type_of = Some(typ);
+        }
         for (handle, payload) in payloads {
             nodes.get_mut::<Node>(handle).unwrap().payload = Some(payload);
         }

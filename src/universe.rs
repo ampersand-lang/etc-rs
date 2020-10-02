@@ -8,7 +8,9 @@ pub enum Universe {
     Terminal(i32),
     /// A mapping from some number of arbitrary universes into another universe.
     Mapping(Vec<Universe>, Box<Universe>),
-    /// A mapping from some number of arbitrary universes into another universe.
+    /// A hack that allows polymorphism to work.
+    ///
+    /// See `Universe::Mapping` for details.
     MappingStar(i32, Vec<Universe>, Box<Universe>),
 }
 

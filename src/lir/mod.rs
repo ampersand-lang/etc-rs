@@ -184,7 +184,9 @@ pub mod foreign {
                         ..
                     }) => {
                         let handle = *t;
-                        *t = mapping[&handle];
+                        if let Some(new) = mapping.get(&handle) {
+                            *t = *new;
+                        }
                     }
                     _ => {}
                 }
