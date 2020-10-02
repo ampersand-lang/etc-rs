@@ -224,19 +224,19 @@ impl BuilderMacro {
         Self::new("format-ast")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::NODE) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::NODE) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::new();
@@ -260,19 +260,19 @@ impl BuilderMacro {
         Self::new("quasiquote")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::NODE) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::NODE) },
             ))
             .with_compile(Box::new(|node, _res, _builders, builder| {
                 let node =
@@ -285,19 +285,19 @@ impl BuilderMacro {
         Self::new("compile")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::UNIT) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::UNIT) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::new();
@@ -1123,19 +1123,19 @@ impl BuilderMacro {
         Self::new("==")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::BOOL) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -1156,19 +1156,19 @@ impl BuilderMacro {
         Self::new("!=")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::BOOL) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -1189,19 +1189,19 @@ impl BuilderMacro {
         Self::new("<")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::BOOL) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -1222,19 +1222,19 @@ impl BuilderMacro {
         Self::new(">")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::BOOL) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -1255,19 +1255,19 @@ impl BuilderMacro {
         Self::new("<=")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::BOOL) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -1288,19 +1288,19 @@ impl BuilderMacro {
         Self::new(">=")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::BOOL) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::BOOL) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut args = SmallVec::<[_; 2]>::new();
@@ -1434,19 +1434,19 @@ impl BuilderMacro {
         Self::new("while")
             .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
             .with_infer(Box::new(
-                |root,
-                 node,
-                 target,
-                 roots,
-                 scopes,
-                 contexts,
-                 dispatch,
-                 named_types,
-                 strings,
-                 builders,
-                 locations,
-                 nodes,
-                 types| { Ok(*primitive::UNIT) },
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::UNIT) },
             ))
             .with_compile(Box::new(|node, res, builders, mut builder| {
                 let mut bb0 = BasicBlock::new(0);

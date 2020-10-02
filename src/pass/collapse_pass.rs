@@ -3,7 +3,7 @@ use std::mem;
 use failure::Fallible;
 use hashbrown::{HashMap, HashSet};
 
-use crate::assets::{AssetBundle, Handle, LazyUpdate, Resources, Static};
+use crate::assets::{Handle, LazyUpdate, Resources, Static};
 use crate::ast::{Kind, Node, NodeId, RootNode, Visit, VisitResult};
 use crate::builder::BuilderMacro;
 use crate::dispatch::*;
