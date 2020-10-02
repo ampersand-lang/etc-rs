@@ -1,6 +1,8 @@
 //! Contains a runnable, normalized pipeline for the compiler.
+use std::time::{Duration, Instant};
 
 use failure::Fallible;
+use hashbrown::HashMap;
 #[allow(unused_imports)]
 use rayon::prelude::*;
 
@@ -18,6 +20,7 @@ pub struct Stage {
 pub struct Pipeline {
     stages: Vec<Stage>,
     repeat: Option<Box<dyn FnMut(&World) -> Option<&'static str> + Send + Sync + 'static>>,
+    bench: HashMap<&'static str, Duration>,
 }
 
 impl Pipeline {
@@ -26,6 +29,7 @@ impl Pipeline {
         Self {
             stages: Vec::new(),
             repeat: None,
+            bench: HashMap::new(),
         }
     }
 
@@ -48,6 +52,7 @@ impl Pipeline {
             .map(|stage| stage.name.clone())
             .collect::<Vec<_>>();
         while let Some(stage) = self.stages.get_mut(idx) {
+            let start = Instant::now();
             if brk {
                 break;
             }
@@ -76,12 +81,19 @@ impl Pipeline {
                     Err(err) => errors.push(err),
                 }
             });
+            let duration = start.elapsed();
+            *self.bench.entry(stage.name).or_default() += duration;
             // let errors = rx.iter().collect::<Vec<_>>();
             if !errors.is_empty() {
                 return Err(From::from(MultiError::from(errors)));
             }
         }
         Ok(())
+    }
+
+    // Gets the duration of the total stage runtime.
+    pub fn benchmark(&self, stage: &'static str) -> Option<Duration> {
+        self.bench.get(&stage).copied()
     }
 
     /// Add an empty stage.

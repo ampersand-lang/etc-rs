@@ -4,6 +4,7 @@ use std::io::{self, Read, Write};
 use std::mem;
 use std::path::Path;
 use std::process;
+use std::time::{Duration, Instant};
 
 use etc_rs::assets::*;
 use etc_rs::ast::{Node, RootNode};
@@ -22,7 +23,7 @@ fn try_main() -> io::Result<()> {
     let directory = env::args().skip(1).next().unwrap_or(".".to_string());
     let directory: &Path = directory.as_ref();
     let filename = directory.join("manifest.amp");
-    println!("* etc-rs: reading manifest from: `{}`", filename.display());
+    println!("* etc: reading manifest from: `{}`", filename.display());
     let mut file = File::open(&filename)?;
     let mut src = String::new();
     file.read_to_string(&mut src)?;
@@ -35,11 +36,14 @@ fn try_main() -> io::Result<()> {
     foreign::init(world.resources());
     dispatch::init(world.resources());
 
+    let mut total_parsing = Duration::new(0, 0);
+    let start = Instant::now();
     let filename = &filename.to_string_lossy();
     let node = grammar::parse(&mut State::new(
         Lexer::new(filename, &src, world.resources()),
         world.resources(),
     ));
+    total_parsing += start.elapsed();
 
     let node = match node {
         Ok(node) => node,
@@ -61,6 +65,10 @@ fn try_main() -> io::Result<()> {
         eprintln!("{}", err);
         process::exit(1);
     }
+    etc_rs::print_benchmark(&pipeline);
+    println!("# parsing: {:?}\n", total_parsing);
+
+    let mut total_parsing = Duration::new(0, 0);
 
     let node = world.get(node).unwrap();
     let ctx = world.get(node.thread.unwrap()).unwrap();
@@ -103,16 +111,18 @@ fn try_main() -> io::Result<()> {
         mem::drop(threads);
 
         let filename = directory.join(filename);
-        println!("* etc-rs: interpreting: `{}`", filename.display());
+        println!("* etc: interpreting: `{}`", filename.display());
         let mut file = File::open(&filename)?;
         let mut src = String::new();
         file.read_to_string(&mut src)?;
 
         let filename = &filename.to_string_lossy();
+        let start = Instant::now();
         let node = grammar::parse(&mut State::new(
             Lexer::new(filename, &src, world.resources()),
             world.resources(),
         ));
+        total_parsing += start.elapsed();
 
         let node = match node {
             Ok(node) => node,
@@ -136,9 +146,12 @@ fn try_main() -> io::Result<()> {
             eprintln!("{}", err);
             process::exit(1);
         }
+        etc_rs::print_benchmark(&pipeline);
+        println!("# parsing: {:?}\n", total_parsing);
     }
 
     if let Some(filename) = compiled {
+        let mut total_parsing = Duration::new(0, 0);
         let mut remove = Vec::new();
         let mut roots = world.resources::<&mut RootNode>();
         let nodes = world.resources::<&Node>();
@@ -167,16 +180,18 @@ fn try_main() -> io::Result<()> {
         mem::drop(threads);
 
         let filename = directory.join(filename);
-        println!("* etc-rs: compiling: `{}`", filename.display());
+        println!("* etc: compiling: `{}`", filename.display());
         let mut file = File::open(&filename)?;
         let mut src = String::new();
         file.read_to_string(&mut src)?;
 
         let filename = &filename.to_string_lossy();
+        let start = Instant::now();
         let node = grammar::parse(&mut State::new(
             Lexer::new(filename, &src, world.resources()),
             world.resources(),
         ));
+        total_parsing += start.elapsed();
 
         let node = match node {
             Ok(node) => node,
@@ -200,12 +215,14 @@ fn try_main() -> io::Result<()> {
             eprintln!("{}", err);
             process::exit(1);
         }
+        etc_rs::print_benchmark(&pipeline);
+        println!("# parsing: {:?}\n", total_parsing);
 
         let output = world.global::<Output>();
         let bytes = &output.0;
         let outpath = directory.with_extension("asm");
         let mut outfile = File::create(&outpath)?;
-        println!("* etc-rs: writing output to: `{}`", outpath.display());
+        println!("* etc: writing output to: `{}`", outpath.display());
         outfile.write_all(bytes)?;
     }
 

@@ -1,6 +1,7 @@
 #![cfg_attr(feature = "docs", warn(missing_docs))]
 
 //! The reference compiler for ampersand.
+use std::time::Duration;
 
 use assets::*;
 use ast::{Node, RootNode, Visit, VisitResult};
@@ -146,4 +147,33 @@ pub fn compiler_pipeline(b: impl Backend) -> Pipeline {
     pipeline.add_system_to_stage(pass::EXEC_PASS, pass::exec_update.system());
     pipeline.add_system_to_stage(pass::BACKEND_PASS, b.system());
     pipeline
+}
+
+pub fn print_benchmark(pipeline: &Pipeline) {
+    let stages = vec![
+        pass::VALIDATE_PASS,
+        pass::REIFY_PASS,
+        pass::UNIVERSE_PASS,
+        pass::MIR_PASS,
+        pass::SCOPE_PASS,
+        pass::INFER_PASS,
+        pass::COLLAPSE_PASS,
+        pass::COMPILE_PASS,
+        pass::INTERPRET_PASS,
+        pass::EXEC_PASS,
+        pass::BACKEND_PASS,
+    ];
+
+    let mut total = Duration::new(0, 0);
+    println!("\n# etc: benchmark");
+    for stage in stages {
+        let time = pipeline.benchmark(stage);
+        if let Some(time) = time {
+            total += time;
+            println!("# stage {}: {:?}", stage, time);
+        } else {
+            println!("# stage {}: n/a", stage);
+        }
+    }
+    println!("# total: {:?}", total);
 }
