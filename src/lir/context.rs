@@ -826,6 +826,50 @@ impl ExecutionContext {
                     value = bytes;
                     Ok(Result::Continue(1))
                 }
+                Instruction::GetElementPtr => {
+                    let t = ir.typ.type_info(res, &self.target);
+                    let ptr_type = ir.args[0].typ;
+                    let unptr_type = ptr_type.unptr(res).unwrap();
+                    let mut ptr = match ir.args[0].val {
+                        Value::Arg(r) => VirtualAddress::from_bytes(
+                            &self.arguments[&Argument::new(r, self.invocation)],
+                        ),
+                        Value::Register(r) => {
+                            VirtualAddress::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Address(ptr) => ptr,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let index = match ir.args[1].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    let offset = match ir.args[1].val {
+                        Value::Arg(r) => {
+                            u64::from_bytes(&self.arguments[&Argument::new(r, self.invocation)])
+                        }
+                        Value::Register(r) => {
+                            u64::from_bytes(&self.registers[&r.build(self.invocation)])
+                        }
+                        Value::Uint(n) => n,
+                        _ => return Err(From::from(TypeError)),
+                    };
+                    ptr.0 += index * t.size as u64;
+                    // TODO: panics
+                    ptr.0 += unptr_type
+                        .offset_of(res, &self.target, offset as usize)
+                        .expect("invalid GEP") as u64;
+                    let mut bytes = smallvec![0; t.size];
+                    ptr.write_bytes(&mut bytes);
+                    value = bytes;
+                    Ok(Result::Continue(1))
+                }
                 Instruction::Add => {
                     let t = ir.typ.type_info(res, &self.target);
                     let a = match ir.args[0].val {

@@ -490,6 +490,8 @@ pub enum Instruction {
     CondBr,
     /// Any even number of arguments: value, basic block pairs
     Phi,
+    /// Three arguments: pointer to index to, index to pointer, offset pointer
+    GetElementPtr,
     /// Two arguments: two integers
     Add,
     /// Two arguments: two integers

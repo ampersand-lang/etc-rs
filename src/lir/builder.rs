@@ -308,6 +308,33 @@ impl<'a> FunctionBuilder<'a> {
         self
     }
 
+    pub fn build_gep(
+        mut self,
+        out: &mut TypedValue,
+        typ: TypeId,
+        ptr: TypedValue,
+        index: TypedValue,
+        offset: TypedValue,
+    ) -> Self {
+        let counter = &mut self.counter;
+        let binding = *counter;
+        counter.inc();
+
+        self.block_map
+            .get_mut(self.current_block.as_ref().unwrap())
+            .unwrap()
+            .body
+            .push(Ir::new(
+                self.current_block.expect("no current block started"),
+                binding,
+                typ,
+                Instruction::GetElementPtr,
+                smallvec![ptr, index, offset],
+            ));
+        *out = TypedValue::new(typ, Value::Register(binding));
+        self
+    }
+
     pub fn build_add(
         mut self,
         out: &mut TypedValue,

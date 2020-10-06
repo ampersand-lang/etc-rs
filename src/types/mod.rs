@@ -319,6 +319,73 @@ pub struct TypeId {
 }
 
 impl TypeId {
+    pub fn unptr<A: AssetBundle>(&self, res: &Resources<A>) -> Option<TypeId> {
+        match self.concrete {
+            NonConcrete::Type(handle) => {
+                let t = res.get::<NamedType>(handle).unwrap();
+                match t.t {
+                    Type::Pointer(t) => Some(t),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub fn offset_of<A: AssetBundle>(
+        &self,
+        res: &Resources<A>,
+        target: &Target,
+        field: usize,
+    ) -> Option<usize> {
+        match self.concrete {
+            NonConcrete::Type(handle) => {
+                let t = res.get::<NamedType>(handle).unwrap();
+                match t.t {
+                    Type::Bool => Some(0),
+                    Type::S8 => Some(0),
+                    Type::S16 => Some(0),
+                    Type::S32 => Some(0),
+                    Type::S64 => Some(0),
+                    Type::Sint => Some(0),
+                    Type::U8 => Some(0),
+                    Type::U16 => Some(0),
+                    Type::U32 => Some(0),
+                    Type::U64 => Some(0),
+                    Type::Uint => Some(0),
+                    Type::Float32 => Some(0),
+                    Type::Float64 => Some(0),
+                    Type::Float => Some(0),
+                    Type::Struct { ref fields } => {
+                        if field >= fields.len() {
+                            return None;
+                        }
+                        let mut offset = 0;
+                        let mut align = 1;
+                        for t in &fields[..field] {
+                            offset = offset.align_up(align);
+                            offset += t.size_of(res, target)?;
+                            align = t.align_of(res, target)?;
+                        }
+                        Some(offset)
+                    }
+                    Type::Tagged { .. } => todo!(),
+                    Type::Enum { .. } => Some(0),
+                    Type::Union { .. } => Some(0),
+                    Type::Function { .. } => Some(0),
+                    Type::Pointer(..) => Some(0),
+                    Type::Array(t, _) => t.size_of(res, target).map(|size| size * field),
+                    Type::Slice(_) => match field {
+                        0 => Some(0),
+                        1 => Some(target.pointer_width),
+                        _ => None,
+                    },
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub fn size_of<A: AssetBundle>(&self, res: &Resources<A>, target: &Target) -> Option<usize> {
         match self.concrete {
             NonConcrete::Type(handle) => {

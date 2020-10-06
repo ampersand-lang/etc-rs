@@ -346,6 +346,13 @@ pub enum Argument {
 }
 
 impl Argument {
+    pub fn as_register(&self) -> Option<Register> {
+        match self {
+            Self::Register(reg) => Some(*reg),
+            _ => None,
+        }
+    }
+
     pub fn is_register(&self) -> bool {
         matches!(self, Argument::Register(..))
     }

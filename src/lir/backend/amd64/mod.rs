@@ -5,8 +5,9 @@ use smallvec::SmallVec;
 use crate::assets::{Resources, World};
 use crate::ast::{Node, RootNode};
 use crate::lir::{
-    context::ExecutionContext, target::Target, Instruction, RegisterConstraint, Value, ICMP_EQ,
-    ICMP_GE, ICMP_GT, ICMP_LE, ICMP_LT, ICMP_NE,
+    context::{ExecutionContext, VirtualAddress},
+    target::Target,
+    Instruction, RegisterConstraint, Value, ICMP_EQ, ICMP_GE, ICMP_GT, ICMP_LE, ICMP_LT, ICMP_NE,
 };
 use crate::types::{NamedType, NonConcrete, Type, TypeInfo};
 
@@ -111,6 +112,11 @@ impl Backend for Amd64 {
                             builder.add_local(ir.binding.unwrap(), t, start, end);
                         }
                         Instruction::Phi => {
+                            let t = ir.typ.type_info(&named_types, &target);
+                            let (start, end) = func.lifetime(ir.binding.unwrap());
+                            builder.add_local(ir.binding.unwrap(), t, start, end);
+                        }
+                        Instruction::GetElementPtr => {
                             let t = ir.typ.type_info(&named_types, &target);
                             let (start, end) = func.lifetime(ir.binding.unwrap());
                             builder.add_local(ir.binding.unwrap(), t, start, end);
@@ -508,6 +514,118 @@ impl Backend for Amd64 {
                                     bb.instruction().opcode("jmp").argument(bb0).build()?;
                                 }
                             }
+                        }
+                        Instruction::GetElementPtr => {
+                            // ptr = base
+                            // index = offset
+                            // unptr_type.size = size
+                            // offset = displacement
+                            let t = ir.args[0].typ.unptr(&named_types).unwrap();
+                            let t = t.type_info(&named_types, &target);
+                            let base = match ir.args[0].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    if source.is_address() {
+                                        let source: Argument = source.into();
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(Register::rax())
+                                            .argument(source)
+                                            .build()?;
+                                        Register::rax().into()
+                                    } else {
+                                        let source: Argument = source.into();
+                                        source
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    if source.reg.is_spilled() {
+                                        let source: Argument = source.reg.into();
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(Register::rax())
+                                            .argument(source)
+                                            .build()?;
+                                        Register::rax().into()
+                                    } else {
+                                        let source: Argument = source.reg.into();
+                                        source
+                                    }
+                                }
+                                Value::Address(VirtualAddress(p)) => {
+                                    let bb = builder.basic_block_mut(bb);
+                                    bb.instruction()
+                                        .opcode("mov")
+                                        .argument(Register::rax())
+                                        .argument(p)
+                                        .build()?;
+                                    Register::rax().into()
+                                }
+                                _ => todo!(),
+                            };
+                            let offset = match ir.args[1].val {
+                                Value::Arg(r) => {
+                                    let source = program.call_conv.argument(builder, r)?;
+                                    if source.is_address() {
+                                        let source: Argument = source.into();
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(Register::rdx())
+                                            .argument(source)
+                                            .build()?;
+                                        Register::rdx().into()
+                                    } else {
+                                        source
+                                    }
+                                }
+                                Value::Register(r) => {
+                                    let source = builder.local(r).unwrap();
+                                    if source.reg.is_spilled() {
+                                        let source: Argument = source.reg.into();
+                                        let bb = builder.basic_block_mut(bb);
+                                        bb.instruction()
+                                            .opcode("mov")
+                                            .argument(Register::rdx())
+                                            .argument(source)
+                                            .build()?;
+                                        Register::rdx().into()
+                                    } else {
+                                        let source: Argument = source.reg.into();
+                                        source
+                                    }
+                                }
+                                Value::Address(VirtualAddress(p)) => {
+                                    let bb = builder.basic_block_mut(bb);
+                                    bb.instruction()
+                                        .opcode("mov")
+                                        .argument(Register::rdx())
+                                        .argument(p)
+                                        .build()?;
+                                    Register::rdx().into()
+                                }
+                                _ => todo!(),
+                            };
+                            let size = t.size as u64;
+                            let displacement = match ir.args[0].val {
+                                Value::Uint(n) => n,
+                                _ => todo!(),
+                            };
+
+                            let base = base.as_register().unwrap();
+                            let offset = offset.as_register().unwrap();
+
+                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+
+                            let bb = builder.basic_block_mut(bb);
+                            bb.instruction()
+                                .opcode("lea")
+                                .argument(target.reg)
+                                .argument(base + offset * size + displacement)
+                                .build()?;
                         }
                         Instruction::Add => {
                             let t = ir.typ.type_info(&named_types, &target);
