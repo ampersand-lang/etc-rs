@@ -10,7 +10,7 @@ use crate::dispatch::*;
 use crate::error::MultiError;
 use crate::lexer::Location;
 use crate::lir::{context::ExecutionContext, target::Target};
-use crate::pass::infer;
+use crate::pass::infer_recursively;
 use crate::scope::{Scope, ScopeId};
 use crate::types::{NamedType, NonConcrete, TypeId};
 use crate::values::Payload;
@@ -83,32 +83,9 @@ pub fn collapse(
                 )?;
                 return Ok((t, Some(scope)));
             }
-            // TODO: a proper error type
-            Err(failure::err_msg(format!(
-                "binding not found: {}",
-                string.as_str()
-            )))
-        }
-        NonConcrete::Typeof(id) => {
-            if let Some(t) = nodes.get(id).unwrap().type_of {
-                collapse(
-                    t,
-                    root,
-                    node,
-                    target,
-                    roots,
-                    scopes,
-                    contexts,
-                    dispatch,
-                    named_types,
-                    strings,
-                    builders,
-                    locations,
-                    nodes,
-                    types,
-                )
-            } else {
-                infer(
+            if let Some(id) = node.definition {
+                let mut errors = Vec::new();
+                infer_recursively(
                     root,
                     &nodes.get(id).unwrap(),
                     target,
@@ -122,11 +99,77 @@ pub fn collapse(
                     locations,
                     nodes,
                     types,
-                )?;
-                collapse(
+                    &mut errors,
+                );
+                if !errors.is_empty() {
+                    return Err(From::from(MultiError::from(errors)));
+                }
+                return collapse(
                     types[&id],
                     root,
                     node,
+                    target,
+                    roots,
+                    scopes,
+                    contexts,
+                    dispatch,
+                    named_types,
+                    strings,
+                    builders,
+                    locations,
+                    nodes,
+                    types,
+                );
+            }
+            // TODO: a proper error type
+            Err(failure::err_msg(format!(
+                "binding not found: {}",
+                string.as_str()
+            )))
+        }
+        NonConcrete::Typeof(id) => {
+            if let Some(t) = nodes.get(id).unwrap().type_of {
+                collapse(
+                    t,
+                    root,
+                    &nodes.get(id).unwrap(),
+                    target,
+                    roots,
+                    scopes,
+                    contexts,
+                    dispatch,
+                    named_types,
+                    strings,
+                    builders,
+                    locations,
+                    nodes,
+                    types,
+                )
+            } else {
+                let mut errors = Vec::new();
+                infer_recursively(
+                    root,
+                    &nodes.get(id).unwrap(),
+                    target,
+                    roots,
+                    scopes,
+                    contexts,
+                    dispatch,
+                    named_types,
+                    strings,
+                    builders,
+                    locations,
+                    nodes,
+                    types,
+                    &mut errors,
+                );
+                if !errors.is_empty() {
+                    return Err(From::from(MultiError::from(errors)));
+                }
+                collapse(
+                    types[&id],
+                    root,
+                    &nodes.get(id).unwrap(),
                     target,
                     roots,
                     scopes,

@@ -280,6 +280,8 @@ pub struct Attribute {
 pub struct Node {
     /// This node's handle.
     id: NodeId,
+    /// The node at which this variable was defined (if any).
+    pub definition: Option<NodeId>,
     /// The number of ampersands (`&`) in front of this node.
     pub amps: usize,
     pub attributes: SmallVec<[Attribute; 4]>,
@@ -339,6 +341,7 @@ impl Node {
     ) -> Self {
         Node {
             id: NodeId::new(),
+            definition: None,
             amps: 0,
             attributes: SmallVec::new(),
             no_newnode: false,
@@ -572,6 +575,7 @@ impl Clone for Node {
     fn clone(&self) -> Self {
         Self {
             id: NodeId::new(),
+            definition: self.definition,
             amps: self.amps,
             attributes: self.attributes.clone(),
             no_newnode: self.no_newnode,

@@ -65,6 +65,7 @@ pub fn interpreter_pipeline() -> Pipeline {
     pipeline.add_stage(pass::REIFY_PASS);
     pipeline.add_stage(pass::UNIVERSE_PASS);
     pipeline.add_stage(pass::MIR_PASS);
+    pipeline.add_stage(pass::DEFINITION_PASS);
     pipeline.add_stage(pass::SCOPE_PASS);
     pipeline.add_stage(pass::INFER_PASS);
     pipeline.add_stage(pass::COLLAPSE_PASS);
@@ -95,6 +96,7 @@ pub fn interpreter_pipeline() -> Pipeline {
     pipeline.add_system_to_stage(pass::REIFY_PASS, pass::reify_update.system());
     pipeline.add_system_to_stage(pass::UNIVERSE_PASS, pass::universe_update.system());
     pipeline.add_system_to_stage(pass::MIR_PASS, pass::mir_update.system());
+    pipeline.add_system_to_stage(pass::DEFINITION_PASS, pass::definition_update.system());
     pipeline.add_system_to_stage(pass::SCOPE_PASS, pass::scope_update.system());
     pipeline.add_system_to_stage(pass::INFER_PASS, pass::infer_update.system());
     pipeline.add_system_to_stage(pass::COLLAPSE_PASS, pass::collapse_update.system());
@@ -109,6 +111,7 @@ pub fn compiler_pipeline(b: impl Backend) -> Pipeline {
     pipeline.add_stage(pass::REIFY_PASS);
     pipeline.add_stage(pass::UNIVERSE_PASS);
     pipeline.add_stage(pass::MIR_PASS);
+    pipeline.add_stage(pass::DEFINITION_PASS);
     pipeline.add_stage(pass::SCOPE_PASS);
     pipeline.add_stage(pass::INFER_PASS);
     pipeline.add_stage(pass::COLLAPSE_PASS);
@@ -140,6 +143,7 @@ pub fn compiler_pipeline(b: impl Backend) -> Pipeline {
     pipeline.add_system_to_stage(pass::REIFY_PASS, pass::reify_update.system());
     pipeline.add_system_to_stage(pass::UNIVERSE_PASS, pass::universe_update.system());
     pipeline.add_system_to_stage(pass::MIR_PASS, pass::mir_update.system());
+    pipeline.add_system_to_stage(pass::DEFINITION_PASS, pass::definition_update.system());
     pipeline.add_system_to_stage(pass::SCOPE_PASS, pass::scope_update.system());
     pipeline.add_system_to_stage(pass::INFER_PASS, pass::infer_update.system());
     pipeline.add_system_to_stage(pass::COLLAPSE_PASS, pass::collapse_update.system());
@@ -155,6 +159,7 @@ pub fn print_benchmark(pipeline: &Pipeline) {
         pass::REIFY_PASS,
         pass::UNIVERSE_PASS,
         pass::MIR_PASS,
+        pass::DEFINITION_PASS,
         pass::SCOPE_PASS,
         pass::INFER_PASS,
         pass::COLLAPSE_PASS,

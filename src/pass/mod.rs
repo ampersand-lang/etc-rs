@@ -1,5 +1,6 @@
 pub use collapse_pass::*;
 pub use compile_pass::*;
+pub use definition_pass::*;
 pub use exec_pass::*;
 pub use infer_pass::*;
 pub use mir_pass::*;
@@ -10,6 +11,7 @@ pub use validate_pass::*;
 
 mod collapse_pass;
 mod compile_pass;
+mod definition_pass;
 mod exec_pass;
 mod infer_pass;
 mod mir_pass;
@@ -22,6 +24,7 @@ pub const VALIDATE_PASS: &str = "validate_pass";
 pub const REIFY_PASS: &str = "reify_pass";
 pub const UNIVERSE_PASS: &str = "universe_pass";
 pub const MIR_PASS: &str = "mir_pass";
+pub const DEFINITION_PASS: &str = "definition_pass";
 pub const SCOPE_PASS: &str = "scope_pass";
 pub const INFER_PASS: &str = "infer_pass";
 pub const COLLAPSE_PASS: &str = "collapse_pass";

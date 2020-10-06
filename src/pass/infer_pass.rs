@@ -1,11 +1,11 @@
 use std::iter;
 
-use failure::{Fail, Fallible};
+use failure::{Error, Fail, Fallible};
 use hashbrown::HashMap;
 use smallvec::SmallVec;
 
 use crate::assets::{Handle, LazyUpdate, Resources, Static};
-use crate::ast::{Kind, Node, NodeId, RootNode, VisitResult, Which};
+use crate::ast::{Kind, Node, NodeId, RootNode};
 use crate::builder::BuilderMacro;
 use crate::dispatch::*;
 use crate::error::MultiError;
@@ -48,6 +48,7 @@ pub fn infer(
     locations: &Resources<&Location>,
     nodes: &Resources<&mut Node>,
     types: &mut HashMap<NodeId, TypeId>,
+    errors: &mut Vec<Error>,
 ) -> Fallible<()> {
     let mut err = None;
     match node.kind {
@@ -74,10 +75,30 @@ pub fn infer(
                     // placeholder
                     *primitive::UNIT_BUILDER
                 }
-                Payload::Identifier(string) => TypeId {
-                    group: TypeGroup::None,
-                    concrete: NonConcrete::Dispatch(node.scope.unwrap(), string),
-                },
+                Payload::Identifier(string) => {
+                    if let Some(id) = node.definition {
+                        infer_recursively(
+                            root,
+                            &nodes.get(id).unwrap(),
+                            target,
+                            roots,
+                            scopes,
+                            contexts,
+                            dispatch,
+                            named_types,
+                            strings,
+                            builders,
+                            locations,
+                            nodes,
+                            types,
+                            errors,
+                        );
+                    }
+                    TypeId {
+                        group: TypeGroup::None,
+                        concrete: NonConcrete::Dispatch(node.scope.unwrap(), string),
+                    }
+                }
                 Payload::Type(_) => primitive::TYPE.clone(),
                 Payload::Function(id) => {
                     let ctx = contexts.get(root.thread.unwrap()).unwrap();
@@ -499,6 +520,144 @@ pub fn infer(
     }
 }
 
+pub fn infer_recursively(
+    root: &Node,
+    node: &Node,
+    target: &Target,
+    roots: &Resources<&RootNode>,
+    scopes: &Resources<&Scope>,
+    contexts: &Resources<&ExecutionContext>,
+    dispatch: &mut Resources<&mut Dispatcher>,
+    named_types: &mut Resources<&mut NamedType>,
+    strings: &Resources<&String>,
+    builders: &Resources<&BuilderMacro>,
+    locations: &Resources<&Location>,
+    nodes: &Resources<&mut Node>,
+    types: &mut HashMap<NodeId, TypeId>,
+    errors: &mut Vec<Error>,
+) {
+    if types.contains_key(&node.id()) {
+        return;
+    }
+
+    match node.kind {
+        Kind::Application => {
+            let func = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
+            match func.payload {
+                Some(Payload::Identifier(string)) if func.alternative => {
+                    match strings.get::<String>(string).unwrap().as_str() {
+                        "quasiquote" => return,
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+
+    match node.kind {
+        Kind::Nil => {}
+        Kind::Block
+        | Kind::Application
+        | Kind::Tuple
+        | Kind::Index
+        | Kind::Array
+        | Kind::With
+        | Kind::Assign
+        | Kind::Function => {
+            for &child in &node.children {
+                if let Some(child) = child {
+                    let node = nodes.get(child).unwrap();
+                    infer_recursively(
+                        root,
+                        &node,
+                        target,
+                        roots,
+                        scopes,
+                        contexts,
+                        dispatch,
+                        named_types,
+                        strings,
+                        builders,
+                        locations,
+                        nodes,
+                        types,
+                        errors,
+                    );
+                }
+            }
+        }
+        Kind::Declaration | Kind::Argument | Kind::Global | Kind::Binding => {
+            for &child in &node.children[1..] {
+                if let Some(child) = child {
+                    let node = nodes.get(child).unwrap();
+                    infer_recursively(
+                        root,
+                        &node,
+                        target,
+                        roots,
+                        scopes,
+                        contexts,
+                        dispatch,
+                        named_types,
+                        strings,
+                        builders,
+                        locations,
+                        nodes,
+                        types,
+                        errors,
+                    );
+                }
+            }
+        }
+        Kind::Dotted => {
+            for &child in &node.children[..1] {
+                if let Some(child) = child {
+                    let node = nodes.get(child).unwrap();
+                    infer_recursively(
+                        root,
+                        &node,
+                        target,
+                        roots,
+                        scopes,
+                        contexts,
+                        dispatch,
+                        named_types,
+                        strings,
+                        builders,
+                        locations,
+                        nodes,
+                        types,
+                        errors,
+                    );
+                }
+            }
+        }
+    }
+
+    let result = infer(
+        root,
+        node,
+        target,
+        roots,
+        scopes,
+        contexts,
+        dispatch,
+        named_types,
+        strings,
+        builders,
+        locations,
+        nodes,
+        types,
+        errors,
+    );
+
+    if let Err(e) = result {
+        errors.push(e);
+    }
+}
+
 pub fn infer_update(
     _lazy: &mut LazyUpdate,
     target: &Static<Target>,
@@ -515,51 +674,25 @@ pub fn infer_update(
     let mut errors = Vec::new();
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
+
         let mut types = HashMap::new();
 
-        root.visit_twice(&nodes, |_res, node, _, which| {
-            if matches!(which, Which::Before) {
-                match node.kind {
-                    Kind::Application => {
-                        let func = nodes.get::<Node>(node.children[0].unwrap()).unwrap();
-                        match func.payload {
-                            Some(Payload::Identifier(string)) if func.alternative => {
-                                match strings.get::<String>(string).unwrap().as_str() {
-                                    "quasiquote" => return VisitResult::Continue,
-                                    "replace" => return VisitResult::Continue,
-                                    _ => {}
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
-                return VisitResult::Recurse;
-            }
-
-            let result = infer(
-                &root,
-                &node,
-                &target,
-                &roots,
-                &scopes,
-                &contexts,
-                &mut dispatch,
-                &mut named_types,
-                &strings,
-                &builders,
-                &locations,
-                &nodes,
-                &mut types,
-            );
-
-            if let Err(e) = result {
-                errors.push(e);
-            }
-
-            VisitResult::Recurse
-        });
+        infer_recursively(
+            &root,
+            &root,
+            &target,
+            &roots,
+            &scopes,
+            &contexts,
+            &mut dispatch,
+            &mut named_types,
+            &strings,
+            &builders,
+            &locations,
+            &nodes,
+            &mut types,
+            &mut errors,
+        );
 
         for (handle, typ) in types {
             nodes.get_mut::<Node>(handle).unwrap().type_of = Some(typ);
