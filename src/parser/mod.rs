@@ -7,7 +7,7 @@ use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
 use crate::ast::{Kind, Node, NodeId};
-use crate::lexer::{Lexer, Location, Side, TokenKind, TokenValue};
+use crate::lexer::{Lexer, Location, Side, Token, TokenKind, TokenValue};
 use crate::values::Payload;
 
 pub mod grammar;
@@ -314,7 +314,7 @@ pub fn grouped<T>(
 
 /// A literal, like a punctuation mark.
 #[inline]
-pub fn literal(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<()> {
+pub fn literal(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<Token> {
     move |state| {
         state
             .lexer
@@ -323,7 +323,7 @@ pub fn literal(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<()> {
             .and_then(|tok| {
                 let tok = tok?;
                 if tok.kind == lit {
-                    Ok(())
+                    Ok(tok)
                 } else {
                     Err(From::from(UnexpectedToken(
                         tok.kind,

@@ -2,26 +2,28 @@ root = { stmt } , [ expr ] ;
 stmt = expr , ";" ;
 expr = binding
      | declaration ;
-binding = alternative , ":=" , binary
-        | alternative , ":" binary , "=" , binary
-        | { attribute } , alternative , "::" , binary
-        | { attribute } , alternative , ":" binary , ":" , binary
+binding = reader , ":=" , binary
+        | reader , ":" binary , "=" , binary
+        | { attribute } , reader , "::" , binary
+        | { attribute } , reader , ":" binary , ":" , binary
         | ?ident? , "=" , binary ;
 attribute = "@" , "(" , ?ident? , [ argument , { "," , argument } ] , ")"
           | "@" , ?ident? ;
-declaration = alternative , ":" , binary
+declaration = reader , ":" , binary
             | binary ;
 with-handler = binary , { "with!" , argument }
 binary = index , index , application
        | application ;
-application = alternative , argument , { "," , argument }
+application = reader , argument , { "," , argument }
             | argument ;
-argument = alternative , ":" , function
+argument = reader , ":" , function
          | function ;
 function = index , "=>" , binary | index ;
 index = index , "'" , dotted
       | dotted ;
-dotted = dotted , "." , alternative
+dotted = dotted , "." , reader
+       | reader ;
+reader = ?reader macro? , reader
        | alternative ;
 alternative = "$" , atomic
             | atomic ;

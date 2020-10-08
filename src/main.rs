@@ -10,7 +10,7 @@ use etc_rs::assets::*;
 use etc_rs::ast::{Node, RootNode};
 use etc_rs::builder;
 use etc_rs::dispatch;
-use etc_rs::lexer::Lexer;
+use etc_rs::lexer::{self, Lexer};
 use etc_rs::lir::{
     backend::{amd64::Amd64, Output},
     context::ExecutionContext,
@@ -31,6 +31,7 @@ fn try_main() -> io::Result<()> {
     let world = World::new();
     etc_rs::init_assets(&world);
 
+    lexer::init(world.resources());
     builder::init(world.resources());
     primitive::init(world.resources());
     foreign::init(world.resources());

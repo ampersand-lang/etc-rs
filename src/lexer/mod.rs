@@ -1,4 +1,5 @@
 //! Lexical analysis for ampersand.
+use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::str;
@@ -7,8 +8,13 @@ use failure::{Error, Fail, Fallible};
 
 use crate::assets::{Handle, Resources};
 
+pub use reader::init;
+use reader::ReaderMacro;
+
+pub mod reader;
+
 mod private {
-    pub trait Seal {}
+    pub trait Seal: Sized {}
 
     impl Seal for char {}
 }
@@ -26,6 +32,19 @@ pub trait CharExt: private::Seal {
     /// Returns true if the character contains the Alphabetic Unicode property, Numeric Unicode property, or is an ASCII punctuation mark, but not one of the following characters:
     /// '$', '"', '#', '\'', '(', ')', ',', '.', ':', ';', '=', '[', ']', '{', '}'
     fn is_ident_cont(self) -> bool;
+
+    /// A predicate for checking if the character may be the beginning of a reader macro.
+    fn is_reader_begin(self) -> bool;
+
+    /// A predicate for checking if the character may be a character of a reader macro, but not the first.
+    ///
+    /// Equivalent to `is_ident_cont`.
+    fn is_reader_cont(self) -> bool {
+        self.is_ident_cont()
+    }
+
+    /// A predicate for checking if the character may be the end of a reader macro.
+    fn is_reader_end(self) -> bool;
 }
 
 impl CharExt for char {
@@ -34,8 +53,7 @@ impl CharExt for char {
             || self.is_ascii_punctuation()
                 && !matches!(
                     self,
-                    '$' | '&'
-                        | '@'
+                    '$' | '@'
                         | '"'
                         | '#'
                         | '\''
@@ -58,8 +76,7 @@ impl CharExt for char {
             || self.is_ascii_punctuation()
                 && !matches!(
                     self,
-                    '$' | '&'
-                        | '@'
+                    '$' | '@'
                         | '"'
                         | '#'
                         | '\''
@@ -74,6 +91,51 @@ impl CharExt for char {
                         | '{'
                         | '}'
                 )
+    }
+
+    fn is_reader_begin(self) -> bool {
+        self.is_ascii_punctuation()
+            && !matches!(
+                self,
+                '$' | '_'
+                    | '@'
+                    | '"'
+                    | '#'
+                    | '\''
+                    | '('
+                    | ')'
+                    | ','
+                    | '.'
+                    | ':'
+                    | ';'
+                    | '['
+                    | ']'
+                    | '{'
+                    | '}'
+            )
+    }
+
+    fn is_reader_end(self) -> bool {
+        self.is_ascii_punctuation()
+            && !matches!(
+                self,
+                '$' | '-'
+                    | '_'
+                    | '@'
+                    | '"'
+                    | '#'
+                    | '\''
+                    | '('
+                    | ')'
+                    | ','
+                    | '.'
+                    | ':'
+                    | ';'
+                    | '['
+                    | ']'
+                    | '{'
+                    | '}'
+            )
     }
 }
 
@@ -132,6 +194,7 @@ pub enum TokenKind {
     Integer,
     Real,
     Identifier,
+    Reader,
     String,
     Semicolon,
     Comma,
@@ -140,7 +203,6 @@ pub enum TokenKind {
     EqualsArrow,
     Dot,
     Dollar,
-    Ampersand,
     At,
     SingleQuote,
     With,
@@ -161,7 +223,6 @@ impl TokenKind {
             "." => Self::Dot,
             "'" => Self::SingleQuote,
             "$" => Self::Dollar,
-            "&" => Self::Ampersand,
             "@" => Self::Curly(Side::Right),
             "(" => Self::Paren(Side::Left),
             ")" => Self::Paren(Side::Right),
@@ -188,6 +249,7 @@ impl Display for TokenKind {
             Self::Integer => "<int>",
             Self::Real => "<real>",
             Self::Identifier => "<ident>",
+            Self::Reader => "<reader>",
             Self::String => "<string>",
             Self::Semicolon => ";",
             Self::Comma => ",",
@@ -197,7 +259,6 @@ impl Display for TokenKind {
             Self::Dot => ".",
             Self::SingleQuote => "'",
             Self::Dollar => "$",
-            Self::Ampersand => "&",
             Self::At => "@",
             Self::With => "with!",
             Self::True => "true",
@@ -259,7 +320,7 @@ pub struct Token {
 /// Cloneable lexer data. Specifies at which point in the source file the lexer is currently at.
 #[derive(Clone)]
 pub struct LexerData<'a> {
-    next: Option<Token>,
+    pub(crate) stack: VecDeque<Token>,
     src: Peekable<str::Chars<'a>>,
     filename: &'a str,
     line: usize,
@@ -268,7 +329,7 @@ pub struct LexerData<'a> {
 
 /// Non-cloneable lexer.
 pub struct Lexer<'a, 'res> {
-    pub(crate) res: Resources<(&'res mut String, &'res mut Location)>,
+    pub(crate) res: Resources<(&'res mut String, &'res mut Location, &'res ReaderMacro)>,
     pub(crate) data: LexerData<'a>,
     pub(crate) errors: Vec<Error>,
 }
@@ -278,12 +339,12 @@ impl<'a, 'res> Lexer<'a, 'res> {
     pub fn new(
         filename: &'a str,
         src: &'a str,
-        res: Resources<(&'res mut String, &'res mut Location)>,
+        res: Resources<(&'res mut String, &'res mut Location, &'res ReaderMacro)>,
     ) -> Self {
         Self {
             res,
             data: LexerData {
-                next: None,
+                stack: VecDeque::new(),
                 src: src.chars().peekable(),
                 filename,
                 line: 0,
@@ -302,19 +363,23 @@ impl<'a, 'res> Lexer<'a, 'res> {
     }
 
     pub fn peek(&mut self) -> Option<Token> {
-        match self.data.next {
+        match self.data.stack.front() {
             None => {
-                self.data.next = match self.next() {
-                    Some(Ok(next)) => Some(next),
+                let next = match self.next() {
+                    Some(Ok(next)) => {
+                        // NOTE: yes, this should be push_front
+                        self.data.stack.push_front(next);
+                        Some(next)
+                    }
                     Some(Err(err)) => {
                         self.errors.push(err);
                         None
                     }
                     None => None,
                 };
-                self.data.next
+                next
             }
-            next @ Some(_) => next,
+            next @ Some(_) => next.copied(),
         }
     }
 }
@@ -327,7 +392,7 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
             return Some(Err(self.errors.remove(0)));
         }
 
-        self.data.next.take().map(Ok).or_else(|| {
+        self.data.stack.pop_front().map(Ok).or_else(|| {
             let location = Location {
                 line: self.data.line,
                 column: self.data.column,
@@ -419,11 +484,6 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                 '$' => Some(Ok(Token {
                     location: handle,
                     kind: TokenKind::Dollar,
-                    value: TokenValue::None,
-                })),
-                '&' => Some(Ok(Token {
-                    location: handle,
-                    kind: TokenKind::Ampersand,
                     value: TokenValue::None,
                 })),
                 '@' => Some(Ok(Token {
@@ -563,7 +623,57 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                             _ => return Some(Err(From::from(LexerError { location }))),
                         }
                     }
-                    if ident == "with!" {
+                    let mut is_reader = false;
+                    let mut reader_count = 0;
+                    let mut reader_ident = None;
+                    for (_, reader) in self.res.iter::<ReaderMacro>() {
+                        if ident == reader.ident() {
+                            is_reader = true;
+                            break;
+                        } else if ident.starts_with(reader.ident()) {
+                            let r = reader.ident();
+                            while ident.starts_with(reader.ident()) {
+                                let end = r.len();
+                                ident.replace_range(0..end, "");
+                                reader_count += 1;
+                            }
+                            reader_ident = Some(r.to_string());
+                            is_reader = true;
+                            break;
+                        }
+                    }
+                    if is_reader {
+                        let id_handle = Handle::from_hash(&ident);
+                        self.res.insert(id_handle, ident);
+                        if reader_count > 0 {
+                            let reader = reader_ident.unwrap();
+                            let reader_handle = Handle::from_hash(&reader);
+                            self.res.insert(reader_handle, reader);
+                            for _ in 0..reader_count - 1 {
+                                self.data.stack.push_back(Token {
+                                    location: handle,
+                                    kind: TokenKind::Reader,
+                                    value: TokenValue::Identifier(reader_handle),
+                                });
+                            }
+                            self.data.stack.push_back(Token {
+                                location: handle,
+                                kind: TokenKind::Identifier,
+                                value: TokenValue::Identifier(id_handle),
+                            });
+                            Some(Ok(Token {
+                                location: handle,
+                                kind: TokenKind::Reader,
+                                value: TokenValue::Identifier(reader_handle),
+                            }))
+                        } else {
+                            Some(Ok(Token {
+                                location: handle,
+                                kind: TokenKind::Reader,
+                                value: TokenValue::Identifier(id_handle),
+                            }))
+                        }
+                    } else if ident == "with!" {
                         Some(Ok(Token {
                             location: handle,
                             kind: TokenKind::With,

@@ -1,7 +1,5 @@
-Foo :: struct {
-  foo: sint;
-  answer: sint;
-};
-
-foo := Foo answer: 42;
-foo.answer
+foo := 0;
+foo_ptr := >foo;
+<foo = 42;
+bar := <foo;
+bar

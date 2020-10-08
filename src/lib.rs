@@ -7,7 +7,7 @@ use assets::*;
 use ast::{Node, RootNode, Visit, VisitResult};
 use builder::BuilderMacro;
 use dispatch::Dispatcher;
-use lexer::Location;
+use lexer::{reader::ReaderMacro, Location};
 use lir::{
     backend::{Backend, IntoBackendSystem},
     context::ExecutionContext,
@@ -56,6 +56,7 @@ pub fn init_assets(world: &World) {
     world.init_asset::<Bytes>();
     world.init_asset::<Foreign>();
     world.init_asset::<BuilderMacro>();
+    world.init_asset::<ReaderMacro>();
     world.init_static::<Target>();
 }
 

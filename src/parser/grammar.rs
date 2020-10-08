@@ -7,9 +7,11 @@ use crate::error::MultiError;
 
 use crate::assets::Handle;
 use crate::ast::{Attribute, AttributeKind, Kind, Node, NodeId};
-use crate::lexer::{Location, Side, TokenKind};
+use crate::lexer::{reader::ReaderMacro, Location, Side, TokenKind};
 
 use super::*;
+
+const READER_AMP: &str = "&";
 
 /// Parses a program from a `State`, or returns an error, possibly a multi-error.
 pub fn parse(state: &mut State) -> Fallible<NodeId> {
@@ -102,7 +104,7 @@ fn expr(state: &mut State) -> Fallible<NodeId> {
 fn binding(state: &mut State) -> Fallible<NodeId> {
     let location = state.location().unwrap_or_else(Handle::nil);
     let (name, _, typ, _, value) = and5(
-        alternative,
+        reader,
         literal(TokenKind::Colon),
         optional(binary),
         literal(TokenKind::Equals),
@@ -204,7 +206,7 @@ fn global(state: &mut State) -> Fallible<NodeId> {
     let attributes = repeat(attribute)(state)?;
     let location = state.location().unwrap_or_else(Handle::nil);
     let (name, _, typ, _, value) = and5(
-        alternative,
+        reader,
         literal(TokenKind::Colon),
         optional(binary),
         literal(TokenKind::Colon),
@@ -225,11 +227,7 @@ fn global(state: &mut State) -> Fallible<NodeId> {
 
 fn assign(state: &mut State) -> Fallible<NodeId> {
     let location = state.location().unwrap_or_else(Handle::nil);
-    let (name, _, value) = and3(
-        atom(TokenKind::Identifier),
-        literal(TokenKind::Equals),
-        binary,
-    )(state)?;
+    let (name, _, value) = and3(with_handler, literal(TokenKind::Equals), binary)(state)?;
     let node = Node::new(
         Kind::Assign,
         location,
@@ -244,18 +242,16 @@ fn declaration(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
             let location = state.location().unwrap_or_else(Handle::nil);
-            and3(alternative, literal(TokenKind::Colon), with_handler)(state).map(
-                |(name, _, typ)| {
-                    let node = Node::new(
-                        Kind::Declaration,
-                        location,
-                        iter::once(Some(name)).chain(iter::once(Some(typ))),
-                    );
-                    let handle = node.id();
-                    state.nodes.insert(handle, node);
-                    handle
-                },
-            )
+            and3(reader, literal(TokenKind::Colon), with_handler)(state).map(|(name, _, typ)| {
+                let node = Node::new(
+                    Kind::Declaration,
+                    location,
+                    iter::once(Some(name)).chain(iter::once(Some(typ))),
+                );
+                let handle = node.id();
+                state.nodes.insert(handle, node);
+                handle
+            })
         },
         with_handler,
     )(state)?
@@ -306,7 +302,7 @@ fn application(state: &mut State) -> Fallible<NodeId> {
         |state| {
             let location = state.location().unwrap_or_else(Handle::nil);
             and3(
-                alternative,
+                reader,
                 argument,
                 repeat(and(literal(TokenKind::Comma), argument)),
             )(state)
@@ -332,7 +328,7 @@ fn argument(state: &mut State) -> Fallible<NodeId> {
     Ok(or(
         |state| {
             let location = state.location().unwrap_or_else(Handle::nil);
-            and3(alternative, literal(TokenKind::Colon), function)(state).map(|(name, _, value)| {
+            and3(reader, literal(TokenKind::Colon), function)(state).map(|(name, _, value)| {
                 let node = Node::new(
                     Kind::Argument,
                     location,
@@ -400,14 +396,11 @@ fn index(state: &mut State) -> Fallible<NodeId> {
 
 fn dotted(state: &mut State) -> Fallible<NodeId> {
     let location = state.location().unwrap_or_else(Handle::nil);
-    and(
-        repeat(and(alternative, literal(TokenKind::Dot))),
-        alternative,
-    )(state)
-    .map(|(mut left, field)| {
-        left.push((field, ()));
+    and(repeat(and(reader, literal(TokenKind::Dot))), reader)(state).map(|(left, field)| {
+        let mut left = left.into_iter().map(|(fst, _)| fst).collect::<Vec<_>>();
+        left.push(field);
         let mut last = None;
-        for (&(left, _), &(field, _)) in left.iter().zip(&left[1..]) {
+        for (&left, &field) in left.iter().zip(&left[1..]) {
             let node = Node::new(
                 Kind::Dotted,
                 location,
@@ -417,10 +410,54 @@ fn dotted(state: &mut State) -> Fallible<NodeId> {
             state.nodes.insert(handle, node);
             last = Some(handle);
         }
-        let (right, _) = left.remove(left.len() - 1);
+        let right = left.remove(left.len() - 1);
         let handle = if let Some(last) = last { last } else { right };
         handle
     })
+}
+
+fn reader(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
+    Ok(or(
+        move |state| {
+            and(literal(TokenKind::Reader), reader)(state).map(|(reader, expr)| {
+                let reader = match reader.value {
+                    TokenValue::Identifier(ident) => ident,
+                    _ => unimplemented!(),
+                };
+                let reader = state.lexer.res.get(reader).unwrap();
+                let handle = Handle::from_hash(reader.as_bytes());
+                let reader = state.lexer.res.get::<ReaderMacro>(handle).unwrap();
+                if reader.ident() == READER_AMP {
+                    let mut expr = state.nodes.get_mut(expr).unwrap();
+                    expr.amps += 1;
+                    expr.id()
+                } else {
+                    let func = reader.function();
+                    // PERF: clone bad
+                    let func = state.nodes.get(func).unwrap().as_ref().clone();
+                    let func = func.clone_with(&mut state.nodes, |_, this, children| {
+                        let mut this = this.clone();
+                        this.children = children;
+                        this
+                    });
+                    let handle = func.id();
+                    state.nodes.insert(handle, func);
+                    let func = handle;
+                    let node = Node::new(
+                        Kind::Application,
+                        location,
+                        iter::once(Some(func)).chain(iter::once(Some(expr))),
+                    );
+                    let handle = node.id();
+                    state.nodes.insert(handle, node);
+                    handle
+                }
+            })
+        },
+        alternative,
+    )(state)?
+    .into_inner())
 }
 
 fn alternative(state: &mut State) -> Fallible<NodeId> {
@@ -431,17 +468,6 @@ fn alternative(state: &mut State) -> Fallible<NodeId> {
 }
 
 fn atomic(state: &mut State) -> Fallible<NodeId> {
-    let mut amps = 0;
-    loop {
-        let lexer = state.lexer.data.clone();
-        match literal(TokenKind::Ampersand)(state) {
-            Ok(_) => amps += 1,
-            Err(_) => {
-                state.lexer.data = lexer;
-                break;
-            }
-        }
-    }
     let handle = or14(
         move |state| {
             let location = state.location().unwrap_or_else(Handle::nil);
@@ -510,7 +536,6 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
         atom(TokenKind::Tagged),
         atom(TokenKind::Class),
     )(state)?;
-    state.nodes.get_mut(handle).unwrap().amps = amps;
     Ok(handle)
 }
 
