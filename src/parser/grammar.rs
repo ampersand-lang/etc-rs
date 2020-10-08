@@ -404,37 +404,28 @@ fn dotted(state: &mut State) -> Fallible<NodeId> {
         repeat(and(alternative, literal(TokenKind::Dot))),
         alternative,
     )(state)
-    .map(|(left, field)| {
+    .map(|(mut left, field)| {
+        left.push((field, ()));
         let mut last = None;
-        if !left.is_empty() {
-            for (&(left, _), &(field, _)) in left.iter().zip(&left[1..]) {
-                let node = Node::new(
-                    Kind::Dotted,
-                    location,
-                    iter::once(Some(last.unwrap_or(left))).chain(iter::once(Some(field))),
-                );
-                let handle = node.id();
-                state.nodes.insert(handle, node);
-                last = Some(handle);
-            }
-        }
-        last.map(|last| {
+        for (&(left, _), &(field, _)) in left.iter().zip(&left[1..]) {
             let node = Node::new(
                 Kind::Dotted,
                 location,
-                iter::once(Some(last)).chain(iter::once(Some(field))),
+                iter::once(Some(last.unwrap_or(left))).chain(iter::once(Some(field))),
             );
             let handle = node.id();
             state.nodes.insert(handle, node);
-            handle
-        })
-        .unwrap_or(field)
+            last = Some(handle);
+        }
+        let (right, _) = left.remove(left.len() - 1);
+        let handle = if let Some(last) = last { last } else { right };
+        handle
     })
 }
 
 fn alternative(state: &mut State) -> Fallible<NodeId> {
     and(optional(literal(TokenKind::Dollar)), atomic)(state).map(|(alt, handle)| {
-        state.nodes.get_mut::<Node>(handle).unwrap().alternative = alt.is_some();
+        state.nodes.get_mut::<Node>(handle).unwrap().alternative |= alt.is_some();
         handle
     })
 }
@@ -451,17 +442,18 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
             }
         }
     }
-    let handle = or9(
+    let handle = or14(
         move |state| {
             let location = state.location().unwrap_or_else(Handle::nil);
             Ok(grouped(
                 TokenKind::Curly,
-                optional(and(
+                optional(and3(
                     declaration,
                     repeat(and(literal(TokenKind::Semicolon), declaration)),
+                    optional(literal(TokenKind::Semicolon)),
                 )),
             )(state)?
-            .map(|(first, rest)| {
+            .map(|(first, rest, _)| {
                 let node = Node::new(
                     Kind::Tuple,
                     location,
@@ -482,12 +474,13 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
             let location = state.location().unwrap_or_else(Handle::nil);
             Ok(grouped(
                 TokenKind::Bracket,
-                optional(and(
+                optional(and3(
                     declaration,
                     repeat(and(literal(TokenKind::Semicolon), declaration)),
+                    optional(literal(TokenKind::Semicolon)),
                 )),
             )(state)?
-            .map(|(first, rest)| {
+            .map(|(first, rest, _)| {
                 let node = Node::new(
                     Kind::Array,
                     location,
@@ -511,6 +504,11 @@ fn atomic(state: &mut State) -> Fallible<NodeId> {
         atom(TokenKind::Real),
         atom(TokenKind::Identifier),
         atom(TokenKind::String),
+        atom(TokenKind::Struct),
+        atom(TokenKind::Enum),
+        atom(TokenKind::Union),
+        atom(TokenKind::Tagged),
+        atom(TokenKind::Class),
     )(state)?;
     state.nodes.get_mut(handle).unwrap().amps = amps;
     Ok(handle)

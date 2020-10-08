@@ -135,7 +135,7 @@ pub fn validate_update(
                     }
                 }
                 Kind::Dotted => {
-                    if node.children.len() != 2 {
+                    if node.children.len() < 2 {
                         errors.push(From::from(MalformedTree(loc.clone())));
                         return VisitResult::Recurse;
                     }

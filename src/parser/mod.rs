@@ -221,11 +221,11 @@ pub fn or4<T, U, V, W>(
     }
 }
 
-/// A disjunction of seven parsers.
+/// A disjunction of fourteen (!!!) parsers.
 ///
 /// `|` in EBNF.
 #[inline]
-pub fn or9<T: Clone>(
+pub fn or14<T: Clone>(
     a: impl Fn(&mut State) -> Fallible<T>,
     b: impl Fn(&mut State) -> Fallible<T>,
     c: impl Fn(&mut State) -> Fallible<T>,
@@ -235,6 +235,11 @@ pub fn or9<T: Clone>(
     g: impl Fn(&mut State) -> Fallible<T>,
     h: impl Fn(&mut State) -> Fallible<T>,
     i: impl Fn(&mut State) -> Fallible<T>,
+    j: impl Fn(&mut State) -> Fallible<T>,
+    k: impl Fn(&mut State) -> Fallible<T>,
+    l: impl Fn(&mut State) -> Fallible<T>,
+    m: impl Fn(&mut State) -> Fallible<T>,
+    n: impl Fn(&mut State) -> Fallible<T>,
 ) -> impl Fn(&mut State) -> Fallible<T> {
     move |state| {
         let lexer = state.lexer.data.clone();
@@ -270,6 +275,26 @@ pub fn or9<T: Clone>(
             .or_else(|_| {
                 state.lexer.data = lexer.clone();
                 i(state)
+            })
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                j(state)
+            })
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                k(state)
+            })
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                l(state)
+            })
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                m(state)
+            })
+            .or_else(|_| {
+                state.lexer.data = lexer.clone();
+                n(state)
             })
     }
 }
@@ -326,15 +351,26 @@ pub fn atom(lit: TokenKind) -> impl Fn(&mut State) -> Fallible<NodeId> {
             .and_then(|tok| {
                 let tok = tok?;
                 if tok.kind == lit {
-                    let payload = match tok.value {
-                        TokenValue::None => panic!("atom is not an atom"),
-                        TokenValue::Bool(p) => Payload::Bool(p),
-                        TokenValue::Integer(int) => Payload::Integer(int),
-                        TokenValue::Real(real) => Payload::Float(real),
-                        TokenValue::Identifier(ident) => Payload::Identifier(ident),
-                        TokenValue::String(string) => Payload::String(string),
+                    let (payload, alt) = match tok.kind {
+                        TokenKind::Struct => (Payload::Struct, true),
+                        TokenKind::Enum => (Payload::Enum, true),
+                        TokenKind::Union => (Payload::Union, true),
+                        TokenKind::Tagged => (Payload::Tagged, true),
+                        TokenKind::Class => (Payload::Class, true),
+                        _ => {
+                            let payload = match tok.value {
+                                TokenValue::None => panic!("atom is not an atom"),
+                                TokenValue::Bool(p) => Payload::Bool(p),
+                                TokenValue::Integer(int) => Payload::Integer(int),
+                                TokenValue::Real(real) => Payload::Float(real),
+                                TokenValue::Identifier(ident) => Payload::Identifier(ident),
+                                TokenValue::String(string) => Payload::String(string),
+                            };
+                            (payload, false)
+                        }
                     };
                     let mut node = Node::new(Kind::Nil, tok.location, iter::empty());
+                    node.alternative = alt;
                     node.payload = Some(payload);
                     let handle = node.id();
                     state.nodes.insert(handle, node);

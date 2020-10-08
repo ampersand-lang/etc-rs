@@ -453,7 +453,6 @@ impl ExecutionContext {
                         Value::Array(_) => todo!(),
                         Value::Struct(_) => todo!(),
                         Value::Union(_) => todo!(),
-                        Value::Tagged(..) => todo!(),
                         Value::Ffi(foreign) => foreign.write_bytes(&mut value),
                     }
                     self.write(ptr, &value)?;
@@ -511,7 +510,6 @@ impl ExecutionContext {
                                 Value::Array(_) => todo!(),
                                 Value::Struct(_) => todo!(),
                                 Value::Union(_) => todo!(),
-                                Value::Tagged(..) => todo!(),
                                 Value::Ffi(foreign) => foreign.write_bytes(&mut bytes),
                             }
                             value = bytes;
@@ -553,7 +551,6 @@ impl ExecutionContext {
                                 Value::Array(_) => todo!(),
                                 Value::Struct(_) => todo!(),
                                 Value::Union(_) => todo!(),
-                                Value::Tagged(..) => todo!(),
                                 Value::Ffi(foreign) => foreign.write_bytes(&mut value),
                             }
                             self.arguments
@@ -603,6 +600,7 @@ impl ExecutionContext {
                                 TypeGroup::Enum => todo!(),
                                 TypeGroup::Union => todo!(),
                                 TypeGroup::Function => todo!(),
+                                TypeGroup::Constructor => todo!(),
                                 TypeGroup::Pointer => todo!(),
                                 TypeGroup::Array => todo!(),
                                 TypeGroup::Slice => todo!(),
@@ -633,6 +631,7 @@ impl ExecutionContext {
                                 TypeGroup::Enum => todo!(),
                                 TypeGroup::Union => todo!(),
                                 TypeGroup::Function => todo!(),
+                                TypeGroup::Constructor => todo!(),
                                 TypeGroup::Pointer => todo!(),
                                 TypeGroup::Array => todo!(),
                                 TypeGroup::Slice => todo!(),
@@ -705,7 +704,6 @@ impl ExecutionContext {
                             Value::Array(_) => todo!(),
                             Value::Struct(_) => todo!(),
                             Value::Union(_) => todo!(),
-                            Value::Tagged(..) => todo!(),
                             Value::Ffi(foreign) => foreign.write_bytes(&mut value),
                         }
                         self.registers.insert(binding, value);
@@ -779,7 +777,6 @@ impl ExecutionContext {
                         Value::Array(_) => todo!(),
                         Value::Struct(_) => todo!(),
                         Value::Union(_) => todo!(),
-                        Value::Tagged(..) => todo!(),
                         Value::Ffi(foreign) => foreign.write_bytes(&mut bytes),
                     }
                     value = bytes;
@@ -820,7 +817,6 @@ impl ExecutionContext {
                         Value::Array(_) => todo!(),
                         Value::Struct(_) => todo!(),
                         Value::Union(_) => todo!(),
-                        Value::Tagged(..) => todo!(),
                         Value::Ffi(foreign) => foreign.write_bytes(&mut bytes),
                     }
                     value = bytes;
@@ -1211,7 +1207,6 @@ impl ExecutionContext {
                 Value::Array(_) => todo!(),
                 Value::Struct(_) => todo!(),
                 Value::Union(_) => todo!(),
-                Value::Tagged(..) => todo!(),
                 Value::Ffi(foreign) => foreign.write_bytes(&mut value),
             }
             self.arguments
@@ -1246,6 +1241,7 @@ impl ExecutionContext {
                     TypeGroup::Enum => todo!(),
                     TypeGroup::Union => todo!(),
                     TypeGroup::Function => todo!(),
+                    TypeGroup::Constructor => todo!(),
                     TypeGroup::Pointer => todo!(),
                     TypeGroup::Array => todo!(),
                     TypeGroup::Slice => todo!(),
@@ -1278,6 +1274,7 @@ impl ExecutionContext {
                     TypeGroup::Enum => todo!(),
                     TypeGroup::Union => todo!(),
                     TypeGroup::Function => todo!(),
+                    TypeGroup::Constructor => todo!(),
                     TypeGroup::Pointer => todo!(),
                     TypeGroup::Array => todo!(),
                     TypeGroup::Slice => todo!(),

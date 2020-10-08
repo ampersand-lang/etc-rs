@@ -1,5 +1,7 @@
-+ :: {a; b} => a $+ b;
+Foo :: struct {
+  foo: sint;
+  answer: sint;
+};
 
-x := 0;
-
-x + 1
+foo := Foo answer: 42;
+foo.answer

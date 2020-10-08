@@ -1,7 +1,7 @@
 use failure::Fallible;
 use hashbrown::{HashMap, HashSet};
 
-use crate::assets::{LazyUpdate, Resources};
+use crate::assets::{Handle, LazyUpdate, Resources};
 use crate::ast::{Kind, Node, RootNode, Visit, VisitResult, Which};
 use crate::values::Payload;
 
@@ -9,8 +9,19 @@ pub fn definition_update(
     _lazy: &mut LazyUpdate,
     roots: Resources<&RootNode>,
     mut nodes: Resources<&mut Node>,
-    strings: Resources<&String>,
+    mut strings: Resources<&mut String>,
 ) -> Fallible<Option<&'static str>> {
+    // TODO: all the builtins
+    // TODO: move this elsewhere
+    let builtins = vec!["sint", "type"]
+        .into_iter()
+        .map(|name| {
+            let handle = Handle::from_hash(name.as_bytes());
+            strings.insert(handle, name.to_string());
+            handle
+        })
+        .collect::<HashSet<_>>();
+
     for (_, root_node) in roots.iter::<RootNode>() {
         let root = nodes.get::<Node>(root_node.0).unwrap();
         let mut bindings = vec![HashMap::new()];
@@ -28,15 +39,18 @@ pub fn definition_update(
                     let ident = nodes.get(ident).unwrap();
                     if ident.alternative {
                         let ident = match ident.payload.unwrap() {
-                            Payload::Identifier(ident) => ident,
+                            Payload::Identifier(ident) => Some(ident),
+                            Payload::Struct => None,
                             _ => panic!("binding is not an identifier"),
                         };
-                        let string = strings.get(ident).unwrap();
-                        match string.as_str() {
-                            "replace" => {
-                                skip.insert(node.id());
+                        if let Some(ident) = ident {
+                            let string = strings.get(ident).unwrap();
+                            match string.as_str() {
+                                "replace" => {
+                                    skip.insert(node.id());
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -69,11 +83,15 @@ pub fn definition_update(
                     Kind::Nil if !node.alternative => match node.payload.unwrap() {
                         Payload::Identifier(ident) => {
                             let mut found = false;
-                            for bindings in bindings.iter().rev() {
-                                if let Some(handle) = bindings.get(&ident) {
-                                    found = true;
-                                    definitions.insert(node.id(), *handle);
-                                    break;
+                            if builtins.contains(&ident) {
+                                found = true;
+                            } else {
+                                for bindings in bindings.iter().rev() {
+                                    if let Some(handle) = bindings.get(&ident) {
+                                        found = true;
+                                        definitions.insert(node.id(), *handle);
+                                        break;
+                                    }
                                 }
                             }
                             if !found {

@@ -7,9 +7,11 @@ use crate::ast::{Node, RootNode};
 use crate::lir::{
     context::{ExecutionContext, VirtualAddress},
     target::Target,
-    Instruction, RegisterConstraint, Value, ICMP_EQ, ICMP_GE, ICMP_GT, ICMP_LE, ICMP_LT, ICMP_NE,
+    Elems, Instruction, RegisterConstraint, Value, ICMP_EQ, ICMP_GE, ICMP_GT, ICMP_LE, ICMP_LT,
+    ICMP_NE,
 };
 use crate::types::{NamedType, NonConcrete, Type, TypeInfo};
+use crate::utils::IntPtr;
 
 use super::Backend;
 
@@ -47,6 +49,7 @@ impl Backend for Amd64 {
         let mut threads: Resources<&mut ExecutionContext> = world.resources();
         let named_types: Resources<&NamedType> = world.resources();
         let nodes: Resources<&Node> = world.resources();
+        let elems: Resources<&Elems> = world.resources();
 
         let program = self.builder.as_mut().expect("program was already built");
 
@@ -166,9 +169,66 @@ impl Backend for Amd64 {
                             let t = ir.args[1].typ;
                             let t = t.type_info(&named_types, &target);
                             if t.size > 8 {
-                                todo!()
+                                let dest = match ir.args[0].val {
+                                    Value::Register(r) => *builder.local(r).unwrap(),
+                                    _ => todo!(),
+                                };
+                                match ir.args[1].val {
+                                    Value::Struct(fields) => {
+                                        let fields = elems.get(fields).unwrap();
+                                        let mut disp = 0_u64;
+                                        for field in fields.iter() {
+                                            let t = field.typ;
+                                            let t = t.type_info(&named_types, &target);
+                                            disp = disp.align_up(t.align as u64);
+
+                                            let dest = match dest.reg {
+                                                RegisterPurpose::Allocated(_) => todo!(),
+                                                RegisterPurpose::Spilled(offset) => {
+                                                    Register::rbp() - (offset + disp)
+                                                }
+                                            };
+
+                                            let source = match field.val {
+                                                Value::Arg(r) => {
+                                                    let source =
+                                                        program.call_conv.argument(builder, r)?;
+                                                    TypedArgument {
+                                                        info: t,
+                                                        arg: source.into(),
+                                                    }
+                                                }
+                                                Value::Register(r) => {
+                                                    let source = builder.local(r).unwrap();
+                                                    TypedArgument {
+                                                        info: t,
+                                                        arg: source.reg.into(),
+                                                    }
+                                                }
+                                                Value::Uint(n) => TypedArgument {
+                                                    info: t,
+                                                    arg: n.into(),
+                                                },
+                                                Value::Bool(n) => TypedArgument {
+                                                    info: t,
+                                                    arg: (n as u8 as u64).into(),
+                                                },
+                                                _ => todo!(),
+                                            };
+
+                                            let bb = builder.basic_block_mut(bb);
+                                            bb.instruction()
+                                                .opcode("mov")
+                                                .argument(dest)
+                                                .argument(source.arg)
+                                                .build()?;
+                                            disp += t.size as u64;
+                                        }
+                                    }
+                                    _ => todo!(),
+                                }
                             } else {
-                                let target = match ir.args[0].val {
+                                let dest = match ir.args[0].val {
                                     Value::Register(r) => *builder.local(r).unwrap(),
                                     _ => todo!(),
                                 };
@@ -178,7 +238,7 @@ impl Backend for Amd64 {
                                         bb.instruction()
                                             .opcode("mov")
                                             .size(Size::from_bytes(1).unwrap())
-                                            .argument(target.reg)
+                                            .argument(dest.reg)
                                             .argument(p as u8 as u64)
                                             .build()?;
                                     }
@@ -187,13 +247,13 @@ impl Backend for Amd64 {
                                         bb.instruction()
                                             .opcode("mov")
                                             .size(Size::from_bytes(t.size).unwrap())
-                                            .argument(target.reg)
+                                            .argument(dest.reg)
                                             .argument(int)
                                             .build()?;
                                     }
                                     Value::Arg(r) => {
                                         let source = program.call_conv.argument(builder, r)?;
-                                        if target.reg.is_spilled() && source.is_address() {
+                                        if dest.reg.is_spilled() && source.is_address() {
                                             let bb = builder.basic_block_mut(bb);
                                             bb.instruction()
                                                 .opcode("push")
@@ -203,20 +263,20 @@ impl Backend for Amd64 {
                                             bb.instruction()
                                                 .opcode("pop")
                                                 .size(Size::from_bytes(t.size).unwrap())
-                                                .argument(target.reg)
+                                                .argument(dest.reg)
                                                 .build()?;
                                         } else {
                                             let bb = builder.basic_block_mut(bb);
                                             bb.instruction()
                                                 .opcode("mov")
-                                                .argument(target.reg)
+                                                .argument(dest.reg)
                                                 .argument(source)
                                                 .build()?;
                                         }
                                     }
                                     Value::Register(r) => {
                                         let source = *builder.local(r).unwrap();
-                                        if target.reg.is_spilled() && source.reg.is_spilled() {
+                                        if dest.reg.is_spilled() && source.reg.is_spilled() {
                                             let bb = builder.basic_block_mut(bb);
                                             bb.instruction()
                                                 .opcode("push")
@@ -226,13 +286,13 @@ impl Backend for Amd64 {
                                             bb.instruction()
                                                 .opcode("pop")
                                                 .size(Size::from_bytes(t.size).unwrap())
-                                                .argument(target.reg)
+                                                .argument(dest.reg)
                                                 .build()?;
                                         } else {
                                             let bb = builder.basic_block_mut(bb);
                                             bb.instruction()
                                                 .opcode("mov")
-                                                .argument(target.reg)
+                                                .argument(dest.reg)
                                                 .argument(source.reg)
                                                 .build()?;
                                         }
@@ -242,9 +302,60 @@ impl Backend for Amd64 {
                                         let bb = builder.basic_block_mut(bb);
                                         bb.instruction()
                                             .opcode("mov")
-                                            .argument(target.reg)
+                                            .argument(dest.reg)
                                             .argument(source)
                                             .build()?;
+                                    }
+                                    Value::Struct(fields) => {
+                                        let fields = elems.get(fields).unwrap();
+                                        let mut disp = 0_u64;
+                                        for field in fields.iter() {
+                                            let t = field.typ;
+                                            let t = t.type_info(&named_types, &target);
+                                            disp = disp.align_up(t.align as u64);
+
+                                            let dest = match dest.reg {
+                                                RegisterPurpose::Allocated(_) => todo!(),
+                                                RegisterPurpose::Spilled(offset) => {
+                                                    Register::rbp() - (offset + disp)
+                                                }
+                                            };
+
+                                            let source = match field.val {
+                                                Value::Arg(r) => {
+                                                    let source =
+                                                        program.call_conv.argument(builder, r)?;
+                                                    TypedArgument {
+                                                        info: t,
+                                                        arg: source.into(),
+                                                    }
+                                                }
+                                                Value::Register(r) => {
+                                                    let source = builder.local(r).unwrap();
+                                                    TypedArgument {
+                                                        info: t,
+                                                        arg: source.reg.into(),
+                                                    }
+                                                }
+                                                Value::Uint(n) => TypedArgument {
+                                                    info: t,
+                                                    arg: n.into(),
+                                                },
+                                                Value::Bool(n) => TypedArgument {
+                                                    info: t,
+                                                    arg: (n as u8 as u64).into(),
+                                                },
+                                                _ => todo!(),
+                                            };
+
+                                            let bb = builder.basic_block_mut(bb);
+                                            bb.instruction()
+                                                .opcode("mov")
+                                                .argument(dest)
+                                                .argument(source.arg)
+                                                .build()?;
+                                            disp += t.size as u64;
+                                        }
                                     }
                                     _ => todo!(),
                                 }
@@ -255,11 +366,11 @@ impl Backend for Amd64 {
                             if t.size > 8 {
                                 todo!()
                             } else {
-                                let target = *builder.local(ir.binding.unwrap()).unwrap();
+                                let dest = *builder.local(ir.binding.unwrap()).unwrap();
                                 match ir.args[0].val {
                                     Value::Register(r) => {
                                         let source = *builder.local(r).unwrap();
-                                        if target.reg.is_spilled() && source.reg.is_spilled() {
+                                        if dest.reg.is_spilled() && source.reg.is_spilled() {
                                             let bb = builder.basic_block_mut(bb);
                                             bb.instruction()
                                                 .opcode("push")
@@ -269,13 +380,13 @@ impl Backend for Amd64 {
                                             bb.instruction()
                                                 .opcode("pop")
                                                 .size(Size::from_bytes(t.size).unwrap())
-                                                .argument(target.reg)
+                                                .argument(dest.reg)
                                                 .build()?;
                                         } else {
                                             let bb = builder.basic_block_mut(bb);
                                             bb.instruction()
                                                 .opcode("mov")
-                                                .argument(target.reg)
+                                                .argument(dest.reg)
                                                 .argument(source.reg)
                                                 .build()?;
                                         }
@@ -598,7 +709,7 @@ impl Backend for Amd64 {
                                         source
                                     }
                                 }
-                                Value::Address(VirtualAddress(p)) => {
+                                Value::Uint(p) => {
                                     let bb = builder.basic_block_mut(bb);
                                     bb.instruction()
                                         .opcode("mov")
@@ -610,7 +721,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
                             let size = t.size as u64;
-                            let displacement = match ir.args[0].val {
+                            let displacement = match ir.args[2].val {
                                 Value::Uint(n) => n,
                                 _ => todo!(),
                             };
@@ -618,12 +729,12 @@ impl Backend for Amd64 {
                             let base = base.as_register().unwrap();
                             let offset = offset.as_register().unwrap();
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
                                 .opcode("lea")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(base + offset * size + displacement)
                                 .build()?;
                         }
@@ -675,7 +786,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -690,7 +801,7 @@ impl Backend for Amd64 {
                                 .build()?;
                             bb.instruction()
                                 .opcode("mov")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::rax())
                                 .build()?;
                         }
@@ -742,7 +853,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -757,7 +868,7 @@ impl Backend for Amd64 {
                                 .build()?;
                             bb.instruction()
                                 .opcode("mov")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::rax())
                                 .build()?;
                         }
@@ -809,7 +920,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -824,7 +935,7 @@ impl Backend for Amd64 {
                                 .build()?;
                             bb.instruction()
                                 .opcode("mov")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::rax())
                                 .build()?;
                         }
@@ -876,7 +987,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -892,7 +1003,7 @@ impl Backend for Amd64 {
                             bb.instruction().opcode("idiv").argument(arg1.arg).build()?;
                             bb.instruction()
                                 .opcode("mov")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::rax())
                                 .build()?;
                         }
@@ -944,7 +1055,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -960,7 +1071,7 @@ impl Backend for Amd64 {
                             bb.instruction().opcode("idiv").argument(arg1.arg).build()?;
                             bb.instruction()
                                 .opcode("mov")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::rdx())
                                 .build()?;
                         }
@@ -1017,7 +1128,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -1032,7 +1143,7 @@ impl Backend for Amd64 {
                                 .build()?;
                             bb.instruction()
                                 .opcode("mov")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::rax())
                                 .build()?;
                         }
@@ -1089,7 +1200,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -1104,7 +1215,7 @@ impl Backend for Amd64 {
                                 .build()?;
                             bb.instruction()
                                 .opcode("mov")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::rax())
                                 .build()?;
                         }
@@ -1161,7 +1272,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -1176,7 +1287,7 @@ impl Backend for Amd64 {
                                 .build()?;
                             bb.instruction()
                                 .opcode("mov")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::rax())
                                 .build()?;
                         }
@@ -1230,7 +1341,7 @@ impl Backend for Amd64 {
                                 _ => todo!(),
                             };
 
-                            let target = *builder.local(ir.binding.unwrap()).unwrap();
+                            let dest = *builder.local(ir.binding.unwrap()).unwrap();
 
                             let bb = builder.basic_block_mut(bb);
                             bb.instruction()
@@ -1397,7 +1508,7 @@ impl Backend for Amd64 {
                             }
                             bb.instruction()
                                 .opcode("movzx")
-                                .argument(target.reg)
+                                .argument(dest.reg)
                                 .argument(Register::eax())
                                 .build()?;
                         }

@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 use crate::assets::{AssetBundle, Handle, Resources};
 use crate::lir::{TypedValue, Value};
 use crate::scope::ScopeId;
-use crate::types::{primitive, TypeId};
+use crate::types::{primitive, Assoc, AssocOptional, TypeId};
 
 pub fn init(mut res: Resources<(&mut Dispatcher, &mut String, &mut TypedValue)>) {
     let i_sint = Handle::new();
@@ -65,7 +65,7 @@ pub enum IsFunction {
 pub struct Query {
     name: Name,
     is_func: IsFunction,
-    arg_types: Option<SmallVec<[TypeId; 4]>>,
+    arg_types: Option<AssocOptional<TypeId>>,
     result_type: Option<TypeId>,
 }
 
@@ -74,7 +74,7 @@ impl Query {
     pub fn new(
         name: Name,
         is_func: IsFunction,
-        arg_types: Option<SmallVec<[TypeId; 4]>>,
+        arg_types: Option<AssocOptional<TypeId>>,
         result_type: Option<TypeId>,
     ) -> Self {
         Self {
@@ -149,21 +149,27 @@ impl Dispatcher {
 pub struct Definition {
     universe: i32,
     is_func: bool,
-    arg_types: Option<SmallVec<[TypeId; 4]>>,
+    arg_types: Option<Assoc<TypeId>>,
     result_type: TypeId,
 }
 
 impl Definition {
     /// Creates a new function definition.
-    pub fn new_function(
-        universe: i32,
-        arg_types: SmallVec<[TypeId; 4]>,
-        result_type: TypeId,
-    ) -> Self {
+    pub fn new_function(universe: i32, arg_types: Assoc<TypeId>, result_type: TypeId) -> Self {
         Self {
             universe,
             is_func: true,
             arg_types: Some(arg_types),
+            result_type,
+        }
+    }
+
+    /// Creates a new variable or constant definition.
+    pub fn new_constructor(universe: i32, result_type: TypeId) -> Self {
+        Self {
+            universe,
+            is_func: true,
+            arg_types: None,
             result_type,
         }
     }
@@ -179,8 +185,8 @@ impl Definition {
     }
 
     /// Obtain a slice of the arguments for this definition, if any.
-    pub fn arg_types(&self) -> Option<&[TypeId]> {
-        self.arg_types.as_ref().map(AsRef::as_ref)
+    pub fn arg_types(&self) -> Option<&Assoc<TypeId>> {
+        self.arg_types.as_ref()
     }
 
     /// For functions obtains the result type, for variables and constants obtains the binding type.
@@ -199,15 +205,16 @@ impl Definition {
 
         if self.is_func {
             if let Some(b) = q.arg_types.as_ref() {
-                let a = self.arg_types.as_ref().unwrap();
-                // NOTE: too-many-args auto-currying
-                // NOTE: too-few-args auto-currying is unimplemented yet
-                if a.len() > b.len() {
-                    return false;
-                }
-                for (a, b) in a.iter().zip(b) {
-                    if !a.matches(b, res) {
+                if let Some(a) = self.arg_types.as_ref() {
+                    // NOTE: too-many-args auto-currying
+                    // NOTE: too-few-args auto-currying is unimplemented yet
+                    if a.len() > b.len() {
                         return false;
+                    }
+                    for (a, b) in a.values().zip(b.values()) {
+                        if !a.matches(b, res) {
+                            return false;
+                        }
                     }
                 }
             }

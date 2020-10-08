@@ -1436,7 +1436,20 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                 write!(f, "}}")
             }
             Kind::Index => todo!(),
-            Kind::Dotted => todo!(),
+            Kind::Dotted => write!(
+                f,
+                "{}.{}",
+                &node.children[0]
+                    .map(|node| {
+                        PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node)
+                    })
+                    .unwrap(),
+                &node.children[1]
+                    .map(|node| {
+                        PrettyPrinterRef::new(self.config, self.res, self.types, self.strings, node)
+                    })
+                    .unwrap(),
+            ),
             Kind::Array => todo!(),
             Kind::With => {
                 write!(

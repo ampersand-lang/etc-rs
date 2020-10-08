@@ -145,6 +145,22 @@ pub fn universe_update(
                                             );
                                         }
                                     }
+                                    Payload::Struct => {
+                                        let fields = node.children[1].unwrap();
+                                        let fields = res.get(fields).unwrap();
+                                        let mut ufields = Vec::new();
+                                        for child in &fields.children {
+                                            let child = child.unwrap();
+                                            let child = res.get(child).unwrap();
+                                            ufields.push(universes[&child.id()].clone());
+                                        }
+                                        let body = Universe::Terminal(0);
+                                        universe = Universe::Mapping(ufields, Box::new(body));
+                                    }
+                                    Payload::Enum
+                                    | Payload::Union
+                                    | Payload::Tagged
+                                    | Payload::Class => universe = Universe::Terminal(0),
                                     _ => todo!(),
                                 }
                             } else {
@@ -180,7 +196,11 @@ pub fn universe_update(
                                 }
                             }
                         }
-                        Kind::Index | Kind::Dotted => todo!(),
+                        Kind::Dotted => {
+                            let elem = node.children[0].as_ref().unwrap();
+                            universe = universe.min(&universes[elem]);
+                        }
+                        Kind::Index => todo!(),
                     }
                     universes.insert(node.id(), universe);
                 }

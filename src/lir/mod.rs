@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 
 use crate::assets::{Handle, Resources};
 use crate::ast::{Kind, Node, NodeId, Visit, VisitResult};
-use crate::types::{primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId, TypeInfo};
+use crate::types::{primitive, Assoc, NamedType, NonConcrete, Type, TypeGroup, TypeId, TypeInfo};
 use crate::values::Payload;
 
 use self::context::{ExecutionContext, TypeError, VirtualAddress};
@@ -75,8 +75,8 @@ pub mod foreign {
             _ => return Err(From::from(TypeError)),
         };
 
-        let mut param_types = SmallVec::new();
-        for arg in args.iter().skip(1) {
+        let mut param_types = Assoc::new();
+        for (i, arg) in args.iter().skip(1).enumerate() {
             let param = match arg.val {
                 Value::Type(t) => t,
                 Value::Arg(r) => {
@@ -85,7 +85,7 @@ pub mod foreign {
                 Value::Register(r) => TypeId::from_bytes(&ctx.registers[&r.build(ctx.invocation)]),
                 _ => return Err(From::from(TypeError)),
             };
-            param_types.push(param);
+            param_types.insert(format!("{}", i), param);
         }
 
         let named = NamedType {
@@ -437,7 +437,6 @@ pub enum Value {
     Node(NodeId),
     Array(Handle<Elems>),
     Struct(Handle<Elems>),
-    Tagged(Handle<TypedValue>, Handle<Elems>, Handle<Variants>),
     Union(Handle<Bytes>),
     Function(FuncId),
     Label(BasicBlock),
@@ -458,8 +457,7 @@ impl Display for Value {
             Value::Node(id) => write!(f, "node {}", id.display()),
             Value::Array(..) => todo!(),
             // TODO
-            Value::Struct(_fields) => write!(f, "()"),
-            Value::Tagged(..) => todo!(),
+            Value::Struct(_fields) => write!(f, "{{}}"),
             Value::Union(..) => todo!(),
             Value::Function(func) => write!(f, "@{}+{}", func.offset, func.idx),
             Value::Label(b) => write!(f, ".L{}", b.number()),

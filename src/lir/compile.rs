@@ -10,7 +10,7 @@ use crate::lir::builder::*;
 use crate::lir::context::{ExecutionContext, VirtualAddress};
 
 use crate::scope::Scope;
-use crate::types::{primitive, NamedType};
+use crate::types::{primitive, NamedType, NonConcrete, Type};
 use crate::values::Payload;
 
 use super::*;
@@ -201,6 +201,11 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     TypedValue::new(this.type_of.unwrap(), Value::Function(id)),
                     builder.0,
                 ),
+                Payload::Struct
+                | Payload::Enum
+                | Payload::Union
+                | Payload::Tagged
+                | Payload::Class => unimplemented!(),
             },
             Kind::Block => {
                 let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
@@ -288,8 +293,8 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 let func = res.get::<Node>(func).unwrap().as_ref().clone();
                 // NOTE: special forms
                 match func.kind {
-                    Kind::Nil => match func.payload.unwrap() {
-                        Payload::Identifier(ident) if func.alternative => {
+                    Kind::Nil if func.alternative => match func.payload.unwrap() {
+                        Payload::Identifier(ident) => {
                             let alternative = res.get::<String>(ident).unwrap();
                             let handle = Handle::from_hash(alternative.as_bytes());
                             if let Some(b) = builders.get::<BuilderMacro>(handle) {
@@ -301,8 +306,37 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                                 panic!("not an alternative: `${}`", alternative.as_str());
                             }
                         }
+                        Payload::Struct => {
+                            let result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                            return Ok((result, builder.0));
+                        }
                         _ => {}
                     },
+                    _ => {}
+                }
+                match func.type_of.unwrap().concrete {
+                    NonConcrete::Type(t) => {
+                        let typ = builder.0.builder.res.get(t).unwrap();
+                        match typ.t {
+                            Type::Constructor(t) => {
+                                let mut args = SmallVec::new();
+                                for expr in &this.children[1..] {
+                                    if let Some(expr) = expr {
+                                        let (v, f) =
+                                            Node::compile(*expr, None, res, builders, builder)?;
+                                        builder = ValueBuilder(f);
+                                        args.push(v);
+                                    }
+                                }
+
+                                let elems = Handle::new();
+                                res.insert(elems, args);
+                                let result = TypedValue::new(t, Value::Struct(elems));
+                                return Ok((result, builder.0));
+                            }
+                            _ => {}
+                        }
+                    }
                     _ => {}
                 }
                 let mut args = SmallVec::new();
@@ -355,8 +389,19 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                 }
                 let v = if let Some(expr) = this.children[2] {
                     let value = res.get(expr).unwrap();
-                    let eliminate = match value.payload {
+                    let mut eliminate = match value.payload {
                         Some(Payload::Function(_)) => true,
+                        _ => false,
+                    };
+                    eliminate |= match value.kind {
+                        Kind::Application => {
+                            let func = value.children[0].unwrap();
+                            let func = res.get(func).unwrap();
+                            match func.payload {
+                                Some(Payload::Struct) => true,
+                                _ => false,
+                            }
+                        }
                         _ => false,
                     };
                     if eliminate {
@@ -417,7 +462,9 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     builder.0,
                 )
             }
-            Kind::Argument => todo!(),
+            Kind::Argument => {
+                Node::compile(this.children[1].unwrap(), None, res, builders, builder)?
+            }
             Kind::Declaration => {
                 Node::compile(this.children[0].unwrap(), None, res, builders, builder)?
             }
@@ -435,8 +482,60 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     builder.0,
                 )
             }
+            Kind::Dotted => {
+                let value = this.children[0].unwrap();
+                let value = res.get(value).unwrap();
+                let typ = value.type_of.unwrap();
+                let b = PointerBuilder(builder.0);
+                let (v, f) = Node::compile(value.id(), None, res, builders, b)?;
+                builder = ValueBuilder(f);
+
+                let ident = res.get::<Node>(this.children[1].unwrap()).unwrap();
+                let ident = match ident.kind {
+                    Kind::Nil => match ident.payload.unwrap() {
+                        Payload::Identifier(ident) => ident,
+                        _ => todo!(),
+                    },
+                    _ => todo!(),
+                };
+                let name = res.get(ident).unwrap();
+
+                let index = typ.index_of(&builder.0.builder.res, name.as_str()).unwrap();
+                let typ = match typ.concrete {
+                    NonConcrete::Type(handle) => {
+                        let t = builder.0.builder.res.get::<NamedType>(handle).unwrap();
+                        match t.t {
+                            Type::Struct { ref fields } => *fields.nth(index).unwrap(),
+                            _ => todo!(),
+                        }
+                    }
+                    _ => todo!(),
+                };
+
+                let ptr_typ = {
+                    let handle = Handle::new();
+                    let t = NamedType {
+                        name: None,
+                        t: Type::Pointer(typ),
+                    };
+                    builder.0.builder.res.insert(handle, t);
+                    TypeId {
+                        group: TypeGroup::Pointer,
+                        concrete: NonConcrete::Type(handle),
+                    }
+                };
+
+                let mut value = TypedValue::new(*primitive::UNIT, Value::Unit);
+                let mut load = TypedValue::new(*primitive::UNIT, Value::Unit);
+                let offset = TypedValue::new(*primitive::UINT, Value::Uint(index as _));
+                let index = TypedValue::new(*primitive::UINT, Value::Uint(0));
+                let b = builder
+                    .0
+                    .build_gep(&mut value, ptr_typ, v, index, offset)
+                    .build_load(&mut load, value);
+                (load, b)
+            }
             Kind::Index => todo!(),
-            Kind::Dotted => todo!(),
             Kind::With => todo!(),
         };
         Ok(value)

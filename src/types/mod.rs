@@ -2,7 +2,6 @@ use std::convert::TryFrom;
 use std::fmt::{self, Display};
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use smallvec::{smallvec, SmallVec};
 
 use crate::assets::{AssetBundle, Handle, Resources};
 use crate::ast::NodeId;
@@ -10,6 +9,10 @@ use crate::lir::repr::{Repr, ReprExt};
 use crate::lir::target::Target;
 use crate::scope::ScopeId;
 use crate::utils::IntPtr;
+
+pub use assoc::*;
+
+mod assoc;
 
 pub mod primitive {
     use lazy_static::lazy_static;
@@ -22,7 +25,7 @@ pub mod primitive {
             NamedType {
                 name: Some("unit".to_string()),
                 t: Type::Struct {
-                    fields: SmallVec::new(),
+                    fields: Assoc::new(),
                 },
             },
         );
@@ -40,7 +43,10 @@ pub mod primitive {
             NamedType {
                 name: Some("type".to_string()),
                 t: Type::Struct {
-                    fields: smallvec![*U8, *U64, *U64],
+                    fields: Assoc::new()
+                        .with("kind", *U8)
+                        .with("id1", *U64)
+                        .with("id2", *U64),
                 },
             },
         );
@@ -50,7 +56,7 @@ pub mod primitive {
             NamedType {
                 name: Some("node".to_string()),
                 t: Type::Struct {
-                    fields: smallvec![*U64, *U64],
+                    fields: Assoc::new().with("id1", *U64).with("id2", *U64),
                 },
             },
         );
@@ -165,7 +171,7 @@ pub mod primitive {
                 name: Some("builder".to_string()),
                 t: Type::Function {
                     result_type: *primitive::UNIT,
-                    param_types: smallvec![],
+                    param_types: Assoc::new(),
                 },
             },
         );
@@ -176,7 +182,18 @@ pub mod primitive {
                 name: Some("builder".to_string()),
                 t: Type::Function {
                     result_type: *primitive::NODE,
-                    param_types: smallvec![],
+                    param_types: Assoc::new(),
+                },
+            },
+        );
+
+        res.insert(
+            METATYPE.concrete.to_type(),
+            NamedType {
+                name: None,
+                t: Type::Function {
+                    result_type: *primitive::TYPE,
+                    param_types: Assoc::new(),
                 },
             },
         );
@@ -297,6 +314,12 @@ pub mod primitive {
                 concrete: NonConcrete::Type(Handle::new()),
             }
         };
+        pub static ref METATYPE: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: NonConcrete::Type(Handle::new()),
+            }
+        };
     }
 }
 
@@ -326,6 +349,44 @@ impl TypeId {
                 match t.t {
                     Type::Pointer(t) => Some(t),
                     _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub fn index_of<A: AssetBundle>(&self, res: &Resources<A>, field: &str) -> Option<usize> {
+        match self.concrete {
+            NonConcrete::Type(handle) => {
+                let t = res.get::<NamedType>(handle).unwrap();
+                match t.t {
+                    Type::Bool => None,
+                    Type::S8 => None,
+                    Type::S16 => None,
+                    Type::S32 => None,
+                    Type::S64 => None,
+                    Type::Sint => None,
+                    Type::U8 => None,
+                    Type::U16 => None,
+                    Type::U32 => None,
+                    Type::U64 => None,
+                    Type::Uint => None,
+                    Type::Float32 => None,
+                    Type::Float64 => None,
+                    Type::Float => None,
+                    Type::Struct { ref fields } => fields.position(field),
+                    Type::Tagged { .. } => todo!(),
+                    Type::Enum { .. } => None,
+                    Type::Union { .. } => None,
+                    Type::Function { .. } => None,
+                    Type::Constructor(_) => None,
+                    Type::Pointer(..) => None,
+                    Type::Array(_, _) => None,
+                    Type::Slice(_) => match field {
+                        "ptr" => Some(0),
+                        "len" => Some(1),
+                        _ => None,
+                    },
                 }
             }
             _ => None,
@@ -373,6 +434,7 @@ impl TypeId {
                     Type::Enum { .. } => Some(0),
                     Type::Union { .. } => Some(0),
                     Type::Function { .. } => Some(0),
+                    Type::Constructor(_) => Some(0),
                     Type::Pointer(..) => Some(0),
                     Type::Array(t, _) => t.size_of(res, target).map(|size| size * field),
                     Type::Slice(_) => match field {
@@ -407,11 +469,11 @@ impl TypeId {
                     Type::Float => Some(target.pointer_width / 8),
                     Type::Struct { ref fields } => {
                         let mut size = 0;
-                        let mut align = 1;
-                        for t in fields {
+                        let mut align;
+                        for t in fields.values() {
+                            align = t.align_of(res, target)?;
                             size = size.align_up(align);
                             size += t.size_of(res, target)?;
-                            align = t.align_of(res, target)?;
                         }
                         Some(size)
                     }
@@ -419,12 +481,13 @@ impl TypeId {
                     Type::Enum { width } => Some(width / 8),
                     Type::Union { ref fields } => Some(
                         fields
-                            .iter()
+                            .values()
                             .map(|t| t.size_of(res, target).unwrap_or(0))
                             .max()
                             .unwrap_or(0),
                     ),
                     Type::Function { .. } => Some(target.pointer_width / 8),
+                    Type::Constructor(_) => None,
                     Type::Pointer(..) => Some(target.pointer_width / 8),
                     Type::Array(t, n) => t.size_of(res, target).map(|size| size * n),
                     Type::Slice(..) => Some(target.pointer_width / 8 * 2),
@@ -454,19 +517,20 @@ impl TypeId {
                     Type::Float64 => Some(8),
                     Type::Float => Some(target.pointer_align / 8),
                     Type::Struct { ref fields } => fields
-                        .get(0)
+                        .nth(0)
                         .map(|t| t.align_of(res, target))
                         .unwrap_or(Some(1)),
                     Type::Tagged { .. } => todo!(),
                     Type::Enum { width } => Some(width / 8),
                     Type::Union { ref fields } => Some(
                         fields
-                            .iter()
+                            .values()
                             .map(|t| t.size_of(res, target).unwrap_or(1))
                             .max()
                             .unwrap_or(1),
                     ),
                     Type::Function { .. } => Some(target.pointer_align / 8),
+                    Type::Constructor(_) => None,
                     Type::Pointer(..) => Some(target.pointer_align / 8),
                     Type::Array(t, n) => t.size_of(res, target).map(|size| size * n),
                     Type::Slice(..) => Some(target.pointer_align / 8 * 2),
@@ -568,6 +632,7 @@ pub enum TypeGroup {
     Enum,
     Union,
     Function,
+    Constructor,
     Pointer,
     Array,
     Slice,
@@ -577,13 +642,13 @@ trait Matches {
     fn matches<A: AssetBundle>(&self, other: &Self, res: &Resources<A>) -> bool;
 }
 
-impl Matches for SmallVec<[TypeId; 4]> {
+impl Matches for Assoc<TypeId> {
     fn matches<A: AssetBundle>(&self, other: &Self, res: &Resources<A>) -> bool {
         if self.len() != other.len() {
             return false;
         }
 
-        for (a, b) in self.iter().zip(other) {
+        for (a, b) in self.values().zip(other.values()) {
             if !a.matches(b, res) {
                 return false;
             }
@@ -671,22 +736,23 @@ pub enum Type {
     Float64,
     Float,
     Struct {
-        fields: SmallVec<[TypeId; 4]>,
+        fields: Assoc<TypeId>,
     },
     Tagged {
-        fields: SmallVec<[TypeId; 4]>,
-        variants: SmallVec<[SmallVec<[TypeId; 4]>; 4]>,
+        fields: Assoc<TypeId>,
+        variants: Assoc<Assoc<TypeId>>,
     },
     Enum {
         width: usize,
     },
     Union {
-        fields: SmallVec<[TypeId; 4]>,
+        fields: Assoc<TypeId>,
     },
     Function {
         result_type: TypeId,
-        param_types: SmallVec<[TypeId; 4]>,
+        param_types: Assoc<TypeId>,
     },
+    Constructor(TypeId),
     Pointer(TypeId),
     Array(TypeId, usize),
     Slice(TypeId),
@@ -805,14 +871,14 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                             param_types,
                         } => {
                             write!(f, "(")?;
-                            if let Some(param) = param_types.first() {
+                            if let Some(param) = param_types.nth(0) {
                                 write!(
                                     f,
                                     "{}",
                                     PrettyPrinterRef::new(self.config, self.res, *param)
                                 )?;
                             }
-                            for param in param_types.iter().skip(1) {
+                            for param in param_types.values().skip(1) {
                                 write!(
                                     f,
                                     ", {}",
@@ -824,6 +890,10 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                                 ") -> {}",
                                 PrettyPrinterRef::new(self.config, self.res, *result_type)
                             )
+                        }
+                        Type::Constructor(t) => {
+                            write!(f, "cons ")?;
+                            write!(f, "{}", PrettyPrinterRef::new(self.config, self.res, *t))
                         }
                         Type::Pointer(pointee) => write!(
                             f,

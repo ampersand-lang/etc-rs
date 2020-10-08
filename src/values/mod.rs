@@ -25,6 +25,16 @@ pub enum Payload {
     Type(TypeId),
     /// Any lir function.
     Function(FuncId),
+    /// The struct meta-type. Builtin meta-types are not first-class.
+    Struct,
+    /// The enum meta-type. Builtin meta-types are not first-class.
+    Enum,
+    /// The union meta-type. Builtin meta-types are not first-class.
+    Union,
+    /// The tagged meta-type. Builtin meta-types are not first-class.
+    Tagged,
+    /// The class meta-type. Builtin meta-types are not first-class.
+    Class,
 }
 
 /// The configuration for pretty-printing a type.
@@ -137,6 +147,11 @@ impl<'a, 'res> Display for PrettyPrinterRef<'a, 'res> {
                 types::PrettyPrinterRef::new(&Default::default(), self.types, typ)
             ),
             Payload::Function(func) => write!(f, "@{}+{}", func.offset, func.idx),
+            Payload::Struct => write!(f, "struct"),
+            Payload::Enum => write!(f, "enum"),
+            Payload::Union => write!(f, "union"),
+            Payload::Tagged => write!(f, "tagged"),
+            Payload::Class => write!(f, "class"),
         }
     }
 }

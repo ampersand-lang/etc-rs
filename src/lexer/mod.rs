@@ -124,6 +124,11 @@ pub enum Side {
 pub enum TokenKind {
     True,
     False,
+    Struct,
+    Enum,
+    Union,
+    Tagged,
+    Class,
     Integer,
     Real,
     Identifier,
@@ -167,6 +172,11 @@ impl TokenKind {
             "with!" => Self::With,
             "true" => Self::True,
             "false" => Self::False,
+            "struct" => Self::Struct,
+            "enum" => Self::Enum,
+            "union" => Self::Union,
+            "tagged" => Self::Tagged,
+            "class" => Self::Class,
             _ => panic!("{:?} is not a literal token", lit),
         }
     }
@@ -192,6 +202,11 @@ impl Display for TokenKind {
             Self::With => "with!",
             Self::True => "true",
             Self::False => "false",
+            Self::Struct => "struct",
+            Self::Enum => "enum",
+            Self::Union => "union",
+            Self::Tagged => "tagged",
+            Self::Class => "class",
             Self::Paren(Side::Left) => "(",
             Self::Paren(Side::Right) => ")",
             Self::Bracket(Side::Left) => "[",
@@ -565,6 +580,36 @@ impl<'a, 'res> Iterator for Lexer<'a, 'res> {
                             location: handle,
                             kind: TokenKind::True,
                             value: TokenValue::Bool(false),
+                        }))
+                    } else if ident == "struct" {
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::Struct,
+                            value: TokenValue::None,
+                        }))
+                    } else if ident == "enum" {
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::Enum,
+                            value: TokenValue::None,
+                        }))
+                    } else if ident == "union" {
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::Union,
+                            value: TokenValue::None,
+                        }))
+                    } else if ident == "tagged" {
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::Tagged,
+                            value: TokenValue::None,
+                        }))
+                    } else if ident == "class" {
+                        Some(Ok(Token {
+                            location: handle,
+                            kind: TokenKind::Class,
+                            value: TokenValue::None,
                         }))
                     } else {
                         let id_handle = Handle::from_hash(&ident);
