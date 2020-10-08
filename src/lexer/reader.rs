@@ -29,13 +29,13 @@ pub fn init(mut res: Resources<(&mut String, &mut Node, &mut ReaderMacro)>) {
         // NOTE: this reader has special support from the grammar
         //       and `>expr` doesn't actually return `(ref expr)`
         ReaderMacro {
-            reader: ">".to_string(),
+            reader: ">>".to_string(),
             function: make_reader_alternative(&mut res, "ref"),
         },
         // NOTE: this reader has special support from the grammar
         //       and `<expr` doesn't actually return `(deref expr)`
         ReaderMacro {
-            reader: "<".to_string(),
+            reader: "<<".to_string(),
             function: make_reader_alternative(&mut res, "deref"),
         },
         ReaderMacro {

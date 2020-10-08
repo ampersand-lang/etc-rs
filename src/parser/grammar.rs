@@ -12,8 +12,8 @@ use crate::lexer::{reader::ReaderMacro, Location, Side, TokenKind};
 use super::*;
 
 const READER_AMP: &str = "&";
-const READER_REF: &str = ">";
-const READER_DEREF: &str = "<";
+const READER_REF: &str = ">>";
+const READER_DEREF: &str = "<<";
 
 /// Parses a program from a `State`, or returns an error, possibly a multi-error.
 pub fn parse(state: &mut State) -> Fallible<NodeId> {

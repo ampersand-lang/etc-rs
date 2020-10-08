@@ -3,6 +3,6 @@ Foo :: struct {
 };
 
 x := 42;
-foo := Foo p: >x;
-<foo.p = 0;
+foo := Foo p: >>x;
+<<foo.p = 0;
 x
