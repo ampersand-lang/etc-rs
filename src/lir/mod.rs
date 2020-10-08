@@ -222,10 +222,7 @@ pub mod foreign {
         let bytes = ctx.read_nul(ptr)?;
         let string = String::from_utf8_lossy(&bytes[..bytes.len() - 1]).into_owned();
         ctx.vars.compile_list.push(string);
-        Ok(TypedValue {
-            typ: *primitive::UNIT,
-            val: Value::Unit,
-        })
+        Ok(TypedValue::new(*primitive::UNIT, Value::Unit))
     }
 }
 

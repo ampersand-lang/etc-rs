@@ -21,9 +21,9 @@ argument = reader , ":" , function
 function = index , "=>" , binary | index ;
 index = index , "'" , dotted
       | dotted ;
-dotted = dotted , "." , reader
-       | reader ;
 reader = ?reader macro? , reader
+       | dotted ;
+dotted = dotted , "." , alternative
        | alternative ;
 alternative = "$" , atomic
             | atomic ;

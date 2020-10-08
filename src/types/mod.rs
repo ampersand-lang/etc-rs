@@ -188,6 +188,17 @@ pub mod primitive {
         );
 
         res.insert(
+            PTR_BUILDER.concrete.to_type(),
+            NamedType {
+                name: Some("ptr".to_string()),
+                t: Type::Function {
+                    result_type: *primitive::TYPE,
+                    param_types: Assoc::new().with("pointee", *primitive::TYPE),
+                },
+            },
+        );
+
+        res.insert(
             METATYPE.concrete.to_type(),
             NamedType {
                 name: None,
@@ -309,6 +320,12 @@ pub mod primitive {
             }
         };
         pub static ref NODE_BUILDER: TypeId = {
+            TypeId {
+                group: TypeGroup::Function,
+                concrete: NonConcrete::Type(Handle::new()),
+            }
+        };
+        pub static ref PTR_BUILDER: TypeId = {
             TypeId {
                 group: TypeGroup::Function,
                 concrete: NonConcrete::Type(Handle::new()),

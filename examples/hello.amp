@@ -1,5 +1,8 @@
-foo := 0;
-foo_ptr := >foo;
-<foo = 42;
-bar := <foo;
-bar
+Foo :: struct {
+  p: ^sint;
+};
+
+x := 42;
+foo := Foo p: >x;
+<foo.p = 0;
+x

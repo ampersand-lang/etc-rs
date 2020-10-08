@@ -12,6 +12,8 @@ use crate::lexer::{reader::ReaderMacro, Location, Side, TokenKind};
 use super::*;
 
 const READER_AMP: &str = "&";
+const READER_REF: &str = ">";
+const READER_DEREF: &str = "<";
 
 /// Parses a program from a `State`, or returns an error, possibly a multi-error.
 pub fn parse(state: &mut State) -> Fallible<NodeId> {
@@ -366,7 +368,7 @@ fn function(state: &mut State) -> Fallible<NodeId> {
 
 fn index(state: &mut State) -> Fallible<NodeId> {
     let location = state.location().unwrap_or_else(Handle::nil);
-    and(repeat(and(dotted, literal(TokenKind::SingleQuote))), dotted)(state).map(|(a, i)| {
+    and(repeat(and(reader, literal(TokenKind::SingleQuote))), reader)(state).map(|(a, i)| {
         let mut last = None;
         if !a.is_empty() {
             for (&(array, _), &(index, _)) in a.iter().zip(&a[1..]) {
@@ -394,28 +396,6 @@ fn index(state: &mut State) -> Fallible<NodeId> {
     })
 }
 
-fn dotted(state: &mut State) -> Fallible<NodeId> {
-    let location = state.location().unwrap_or_else(Handle::nil);
-    and(repeat(and(reader, literal(TokenKind::Dot))), reader)(state).map(|(left, field)| {
-        let mut left = left.into_iter().map(|(fst, _)| fst).collect::<Vec<_>>();
-        left.push(field);
-        let mut last = None;
-        for (&left, &field) in left.iter().zip(&left[1..]) {
-            let node = Node::new(
-                Kind::Dotted,
-                location,
-                iter::once(Some(last.unwrap_or(left))).chain(iter::once(Some(field))),
-            );
-            let handle = node.id();
-            state.nodes.insert(handle, node);
-            last = Some(handle);
-        }
-        let right = left.remove(left.len() - 1);
-        let handle = if let Some(last) = last { last } else { right };
-        handle
-    })
-}
-
 fn reader(state: &mut State) -> Fallible<NodeId> {
     let location = state.location().unwrap_or_else(Handle::nil);
     Ok(or(
@@ -431,6 +411,14 @@ fn reader(state: &mut State) -> Fallible<NodeId> {
                 if reader.ident() == READER_AMP {
                     let mut expr = state.nodes.get_mut(expr).unwrap();
                     expr.amps += 1;
+                    expr.id()
+                } else if reader.ident() == READER_REF {
+                    let mut expr = state.nodes.get_mut(expr).unwrap();
+                    expr.refs += 1;
+                    expr.id()
+                } else if reader.ident() == READER_DEREF {
+                    let mut expr = state.nodes.get_mut(expr).unwrap();
+                    expr.refs -= 1;
                     expr.id()
                 } else {
                     let func = reader.function();
@@ -455,9 +443,35 @@ fn reader(state: &mut State) -> Fallible<NodeId> {
                 }
             })
         },
-        alternative,
+        dotted,
     )(state)?
     .into_inner())
+}
+
+fn dotted(state: &mut State) -> Fallible<NodeId> {
+    let location = state.location().unwrap_or_else(Handle::nil);
+    and(
+        repeat(and(alternative, literal(TokenKind::Dot))),
+        alternative,
+    )(state)
+    .map(|(left, field)| {
+        let mut left = left.into_iter().map(|(fst, _)| fst).collect::<Vec<_>>();
+        left.push(field);
+        let mut last = None;
+        for (&left, &field) in left.iter().zip(&left[1..]) {
+            let node = Node::new(
+                Kind::Dotted,
+                location,
+                iter::once(Some(last.unwrap_or(left))).chain(iter::once(Some(field))),
+            );
+            let handle = node.id();
+            state.nodes.insert(handle, node);
+            last = Some(handle);
+        }
+        let right = left.remove(left.len() - 1);
+        let handle = if let Some(last) = last { last } else { right };
+        handle
+    })
 }
 
 fn alternative(state: &mut State) -> Fallible<NodeId> {

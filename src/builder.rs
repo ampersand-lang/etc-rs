@@ -18,7 +18,7 @@ use crate::lir::{
 };
 use crate::pass::collapse;
 use crate::scope::Scope;
-use crate::types::{primitive, NamedType, NonConcrete, TypeId};
+use crate::types::{primitive, NamedType, NonConcrete, Type, TypeGroup, TypeId};
 use crate::universe::Universe;
 use crate::values::Payload;
 
@@ -310,6 +310,124 @@ impl BuilderMacro {
                         args.push(v);
                     }
                 }
+                let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
+                builder.0 = builder.0.build_call(&mut result, args);
+                Ok((result, builder.0))
+            }))
+    }
+
+    pub fn build_ref() -> Self {
+        Self::new("ref")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
+            .with_infer(Box::new(
+                |_root,
+                 node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 nodes,
+                 types| {
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let pointee = *types.get(&arg0.id()).unwrap();
+                    let handle = Handle::new();
+                    let t = NamedType {
+                        name: None,
+                        t: Type::Pointer(pointee),
+                    };
+                    named_types.insert(handle, t);
+                    Ok(TypeId {
+                        group: TypeGroup::Pointer,
+                        concrete: NonConcrete::Type(handle),
+                    })
+                },
+            ))
+            .with_compile(Box::new(|_node, _res, _builders, _builder| todo!()))
+    }
+
+    pub fn build_deref() -> Self {
+        Self::new("deref")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
+            .with_infer(Box::new(
+                |root,
+                 node,
+                 target,
+                 roots,
+                 scopes,
+                 contexts,
+                 dispatch,
+                 named_types,
+                 strings,
+                 builders,
+                 locations,
+                 nodes,
+                 types| {
+                    let arg0 = nodes.get(node.children[1].unwrap()).unwrap();
+                    let (t, _) = collapse(
+                        types[&arg0.id()],
+                        root,
+                        node,
+                        target,
+                        roots,
+                        scopes,
+                        contexts,
+                        dispatch,
+                        named_types,
+                        strings,
+                        builders,
+                        locations,
+                        nodes,
+                        types,
+                    )?;
+                    let pointee = match t.concrete {
+                        NonConcrete::Type(t) => {
+                            let t = named_types.get(t).unwrap();
+                            match t.t {
+                                Type::Pointer(p) => p,
+                                _ => todo!(),
+                            }
+                        }
+                        _ => todo!(),
+                    };
+                    Ok(pointee)
+                },
+            ))
+            .with_compile(Box::new(|_node, _res, _builders, _builder| todo!()))
+    }
+
+    pub fn build_ptr() -> Self {
+        Self::new("ptr")
+            .with_universal(Box::new(|_, _, _| Ok(Universe::Terminal(0))))
+            .with_infer(Box::new(
+                |_root,
+                 _node,
+                 _target,
+                 _roots,
+                 _scopes,
+                 _contexts,
+                 _dispatch,
+                 _named_types,
+                 _strings,
+                 _builders,
+                 _locations,
+                 _nodes,
+                 _types| { Ok(*primitive::TYPE) },
+            ))
+            .with_compile(Box::new(|node, res, builders, mut builder| {
+                let mut args = SmallVec::new();
+                let func = TypedValue::new(*primitive::PTR_BUILDER, Value::Ffi(*foreign::PTR));
+                args.push(func);
+
+                let expr = node.children[1].unwrap();
+                let (v, f) = Node::compile(expr, None, res, builders, builder)?;
+                args.push(v);
+                builder = ValueBuilder(f);
+
                 let mut result = TypedValue::new(*primitive::UNIT, Value::Unit);
                 builder.0 = builder.0.build_call(&mut result, args);
                 Ok((result, builder.0))
@@ -1489,6 +1607,9 @@ pub fn init(mut res: Resources<&mut BuilderMacro>) {
         BuilderMacro::build_format_ast(),
         BuilderMacro::build_quasiquote(),
         BuilderMacro::build_compile(),
+        BuilderMacro::build_ref(),
+        BuilderMacro::build_deref(),
+        BuilderMacro::build_ptr(),
         BuilderMacro::build_builtin_add(),
         BuilderMacro::build_builtin_sub(),
         BuilderMacro::build_builtin_mul(),

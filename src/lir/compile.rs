@@ -131,6 +131,7 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
         // PERF: can we avoid this clone?
         let this = res.get::<Node>(handle).unwrap().as_ref().clone();
         let value = match this.kind {
+            // TODO: check the thing the < and > the thing the rfes adn teh defucks the derefs here
             Kind::Nil => match this.payload.unwrap() {
                 Payload::Unit => (
                     TypedValue::new(this.type_of.unwrap(), Value::Unit),
@@ -189,11 +190,29 @@ impl<'a> Compile<ValueBuilder<'a>> for Node {
                     }
                     let addr = addr.expect(&format!("binding not found: {}", name.as_str()));
                     let mut value = TypedValue::new(*primitive::UNIT, Value::Unit);
-                    match addr.val {
-                        Value::Address(_) | Value::Register(_) => {
-                            builder.0 = builder.0.build_load(&mut value, addr);
+                    match this.refs {
+                        n if n < 0 => {
+                            let mut addr = addr;
+                            for _ in 0..=-n {
+                                match addr.val {
+                                    Value::Address(_) | Value::Register(_) => {
+                                        builder.0 = builder.0.build_load(&mut value, addr);
+                                        addr = value;
+                                    }
+                                    _ => todo!(),
+                                }
+                            }
                         }
-                        _ => value = addr,
+                        0 => match addr.val {
+                            Value::Address(_) | Value::Register(_) => {
+                                builder.0 = builder.0.build_load(&mut value, addr);
+                            }
+                            // FIXME: this is a hack and should not be
+                            Value::Type(_) => value = addr,
+                            _ => todo!(),
+                        },
+                        1 => value = addr,
+                        _ => todo!(),
                     }
                     (value, builder.0)
                 }
@@ -558,8 +577,8 @@ impl<'a> Compile<PointerBuilder<'a>> for Node {
             &mut Variants,
             &mut Bytes,
         )>,
-        _builders: &Resources<&BuilderMacro>,
-        builder: PointerBuilder<'a>,
+        builders: &Resources<&BuilderMacro>,
+        mut builder: PointerBuilder<'a>,
     ) -> Fallible<Self::Output> {
         // PERF: can we avoid this clone?
         let this = res.get::<Node>(handle).unwrap().as_ref().clone();
@@ -587,6 +606,55 @@ impl<'a> Compile<PointerBuilder<'a>> for Node {
                 }
                 _ => panic!("can't assign to something not an identifier"),
             },
+            Kind::Dotted => {
+                let value = this.children[0].unwrap();
+                let value = res.get(value).unwrap();
+                let typ = value.type_of.unwrap();
+                let b = PointerBuilder(builder.0);
+                let (v, f) = Node::compile(value.id(), None, res, builders, b)?;
+                builder = PointerBuilder(f);
+
+                let ident = res.get::<Node>(this.children[1].unwrap()).unwrap();
+                let ident = match ident.kind {
+                    Kind::Nil => match ident.payload.unwrap() {
+                        Payload::Identifier(ident) => ident,
+                        _ => todo!(),
+                    },
+                    _ => todo!(),
+                };
+                let name = res.get(ident).unwrap();
+
+                let index = typ.index_of(&builder.0.builder.res, name.as_str()).unwrap();
+                let typ = match typ.concrete {
+                    NonConcrete::Type(handle) => {
+                        let t = builder.0.builder.res.get::<NamedType>(handle).unwrap();
+                        match t.t {
+                            Type::Struct { ref fields } => *fields.nth(index).unwrap(),
+                            _ => todo!(),
+                        }
+                    }
+                    _ => todo!(),
+                };
+
+                let ptr_typ = {
+                    let handle = Handle::new();
+                    let t = NamedType {
+                        name: None,
+                        t: Type::Pointer(typ),
+                    };
+                    builder.0.builder.res.insert(handle, t);
+                    TypeId {
+                        group: TypeGroup::Pointer,
+                        concrete: NonConcrete::Type(handle),
+                    }
+                };
+
+                let mut value = TypedValue::new(*primitive::UNIT, Value::Unit);
+                let offset = TypedValue::new(*primitive::UINT, Value::Uint(index as _));
+                let index = TypedValue::new(*primitive::UINT, Value::Uint(0));
+                let b = builder.0.build_gep(&mut value, ptr_typ, v, index, offset);
+                Ok((value, b))
+            }
             _ => panic!("can't assign to something not an identifier"),
         }
     }

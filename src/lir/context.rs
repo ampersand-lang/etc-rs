@@ -529,7 +529,7 @@ impl ExecutionContext {
                         self.instr_ptr = ExecAddress(func as _, 0, ir.binding.unwrap());
                         let new_invocation = rand::random();
 
-                        for (idx, TypedValue { typ, val }) in ir.args[1..].iter().enumerate() {
+                        for (idx, TypedValue { typ, val, .. }) in ir.args[1..].iter().enumerate() {
                             let t = typ.type_info(res, &self.target);
 
                             let mut value = smallvec![0_u8; t.size];
@@ -1184,7 +1184,7 @@ impl ExecutionContext {
             .push((self.stack_ptr, self.invocation, self.last, self.instr_ptr));
         self.invocation = rand::random();
         self.instr_ptr = ExecAddress(f as _, 0, BindingPrototype::new(0, 0));
-        for (idx, TypedValue { typ, val }) in args.iter().enumerate() {
+        for (idx, TypedValue { typ, val, .. }) in args.iter().enumerate() {
             let t = typ.type_info(res, &self.target);
 
             let mut value = smallvec![0_u8; t.size];
@@ -1217,6 +1217,7 @@ impl ExecutionContext {
             TypedValue {
                 typ,
                 val: Value::Register(r),
+                ..
             } => {
                 let value = &self.registers[&r.build(self.invocation)];
                 match typ.group {
@@ -1250,6 +1251,7 @@ impl ExecutionContext {
             TypedValue {
                 typ,
                 val: Value::Arg(r),
+                ..
             } => {
                 let value = &self.arguments[&Argument::new(r, self.invocation)];
                 match typ.group {

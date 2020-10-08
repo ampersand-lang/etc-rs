@@ -284,6 +284,8 @@ pub struct Node {
     pub definition: Option<NodeId>,
     /// The number of ampersands (`&`) in front of this node.
     pub amps: usize,
+    /// The number of references (`>`) or derefs (`<`) in front of this node.
+    pub refs: isize,
     pub attributes: SmallVec<[Attribute; 4]>,
     /// A flag that shows if a newnode should be created.
     pub no_newnode: bool,
@@ -343,6 +345,7 @@ impl Node {
             id: NodeId::new(),
             definition: None,
             amps: 0,
+            refs: 0,
             attributes: SmallVec::new(),
             no_newnode: false,
             mark_newnode: false,
@@ -577,6 +580,7 @@ impl Clone for Node {
             id: NodeId::new(),
             definition: self.definition,
             amps: self.amps,
+            refs: self.refs,
             attributes: self.attributes.clone(),
             no_newnode: self.no_newnode,
             mark_newnode: self.mark_newnode,
